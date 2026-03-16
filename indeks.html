@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hifzi Cell - Kasir Pintar</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/pos.css">
+    <link rel="stylesheet" href="css/products.css">
+    <link rel="stylesheet" href="css/cash.css">
+    <link rel="stylesheet" href="css/reports.css">
+    <link rel="stylesheet" href="css/transactions.css">
+    <link rel="stylesheet" href="css/receipt.css">
+    <link rel="stylesheet" href="css/debt.css">
+    
+    <!-- Tesseract.js untuk OCR -->
+    <script src='https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js'></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        /* OCR Styles */
+        .ocr-upload-area {
+            border: 3px dashed #ccc;
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .ocr-upload-area:hover, .ocr-upload-area.dragover {
+            border-color: var(--primary);
+            background: #f0f8ff;
+        }
+        
+        .ocr-preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .ocr-preview-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .ocr-image-preview {
+            width: 100%;
+            border-radius: 12px;
+            border: 2px solid #eee;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        
+        .ocr-parsed-data {
+            background: #f0f8ff;
+            border: 1px solid #4a90e2;
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .ocr-data-row {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .ocr-data-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .ocr-data-label {
+            color: #666;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        
+        .ocr-data-value {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .ocr-bank-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .ocr-bank-bri { background: #0056b3; color: white; }
+        .ocr-bank-bni { background: #ff6600; color: white; }
+        .ocr-bank-bca { background: #0066cc; color: white; }
+        .ocr-bank-mandiri { background: #ffd700; color: #333; }
+        .ocr-bank-bsi { background: #009900; color: white; }
+        .ocr-bank-dana { background: #008ceb; color: white; }
+        .ocr-bank-gopay { background: #00aed6; color: white; }
+        .ocr-bank-ovo { background: #4c3494; color: white; }
+        .ocr-bank-linkaja { background: #e31e24; color: white; }
+        .ocr-bank-shopeepay { background: #ee4d2d; color: white; }
+        
+        .ocr-confidence-bar {
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        
+        .ocr-confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444 0%, #ffaa00 50%, #00c851 100%);
+            transition: width 0.5s ease;
+        }
+        
+        .ocr-loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .ocr-spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .ocr-action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .ocr-action-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .ocr-amount-box {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .ocr-amount-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .ocr-amount-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        
+        .ocr-warning {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .ocr-success {
+            margin-top: 10px;
+            padding: 10px;
+            background: #d4edda;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .ocr-filled {
+            background-color: #e8f5e9 !important;
+            border-color: #4caf50 !important;
+            transition: all 0.3s;
+        }
+        
+        .info-box {
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+        
+        .info-box.info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .info-box.warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        
+        .info-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .info-text {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+        }
+        
+        .receipt-type-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #f5f5f5;
+            padding: 5px;
+            border-radius: 12px;
+        }
+        
+        .receipt-type-tab {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .receipt-type-tab.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Memuat...</div>
+    </div>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-top">
+            <div>
+                <h1 id="headerStoreName">HIFZI CELL</h1>
+                <div id="headerStoreAddress">Alamat Toko</div>
+                
+                <div id="kasirStatusIndicator" class="kasir-indicator closed" style="margin-top: 8px;">
+                    <span id="kasirStatusDot" class="kasir-dot"></span>
+                    <span id="kasirStatusText">🔒 Kasir Tutup</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="sync-status" id="syncStatus" onclick="backupModule.manualSync()">
+                    <span>☁️</span>
+                    <span id="syncText">Ready</span>
+                </div>
+                <button class="icon-btn" onclick="app.openSettings()" title="Pengaturan" 
+                        style="cursor: pointer; z-index: 1001;">
+                    ⚙️
+                </button>
+            </div>
+        </div>
+        
+        <div class="cash-card">
+            <div class="cash-label">Kas di Tangan</div>
+            <div class="cash-amount" id="currentCash">Rp 0</div>
+            <div class="cash-detail">
+                <div class="cash-detail-item">
+                    <span>💰</span>
+                    <span>Modal: <b id="modalAwal">Rp 0</b></span>
+                </div>
+                <div class="cash-detail-item">
+                    <span>📊</span>
+                    <span>Shift: <b id="shiftStatus">Tutup</b></span>
+                </div>
+                <div class="cash-detail-item">
+                    <span>📈</span>
+                    <span>Laba: <b id="headerProfit">Rp 0</b></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="router.navigate('pos', this)">🏪 Kasir</button>
+        <button class="nav-tab" onclick="router.navigate('products', this)">📦 Produk</button>
+        <button class="nav-tab" onclick="router.navigate('cash', this)">💵 Kas</button>
+        <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
+        <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
+        <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
+        <button class="nav-tab" onclick="router.navigate('debt', this)">💳 Hutang</button>
+        <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
+    </div>
+
+    <!-- Content Container -->
+    <div id="mainContent"></div>
+
+    <!-- Cart Bar -->
+    <div class="cart-bar" id="cartBar" style="display: none;">
+        <div class="cart-info">
+            <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
+            <div class="cart-total" id="cartTotal">Rp 0</div>
+        </div>
+        <button class="btn-checkout" onclick="posModule.openCheckout()" id="checkoutBtn">
+            Bayar →
+        </button>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/pos.js"></script>
+    <script src="js/products.js"></script>
+    <script src="js/cash.js"></script>
+    <script src="js/reports.js"></script>
+    <script src="js/transactions.js"></script>
+    
+    <!-- Receipt Module with OCR - Load terakhir untuk override -->
+    <script src="js/receipt.js"></script>
+    
+    <script src="js/backup.js"></script>
+    <script src="js/debt.js"></script>
+    
+    <!-- Verifikasi module -->
+    <script>
+        console.log('=== CEK MODULE ===');
+        console.log('utils:', typeof utils);
+        console.log('dataManager:', typeof dataManager);
+        console.log('app:', typeof app);
+        console.log('router:', typeof router);
+        console.log('posModule:', typeof posModule);
+        console.log('productsModule:', typeof productsModule);
+        console.log('cashModule:', typeof cashModule);
+        console.log('reportsModule:', typeof reportsModule);
+        console.log('transactionsModule:', typeof transactionsModule);
+        console.log('receiptModule:', typeof receiptModule);
+        console.log('backupModule:', typeof backupModule);
+        console.log('debtModule:', typeof debtModule);
+    </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+/* Reports Module Styles */
+.profit-card {
+    background: linear-gradient(135deg, var(--success) 0%, #00a884 100%);
+    color: white;
+    border-radius: 20px;
+    padding: 25px;
+    margin-bottom: 15px;
+}
+
+.profit-label {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-bottom: 10px;
+}
+
+.profit-amount {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 15px;
+}
+
+.profit-details {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+}
+
+.profit-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Report Filters */
+.report-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.report-filters::-webkit-scrollbar {
+    display: none;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    border: 2px solid #e0e0e0;
+    background: white;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.filter-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* Date Range */
+.date-range {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.date-input {
+    flex: 1;
+    min-width: 120px;
+    padding: 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+/* Table */
+.table-container {
+    overflow-x: auto;
+    margin-top: 15px;
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+th {
+    font-weight: 700;
+    background: #f8f9fa;
+    position: sticky;
+    top: 0;
+}
+
+tr:active {
+    background: #f5f5f5;
+}
