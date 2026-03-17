@@ -1,8 +1,9 @@
 const cashModule = {
     currentDeleteTransaction: null,
+    isProcessing: false, // ⬅️ TAMBAH: Flag untuk mencegah double submit
     
     init() {
-        // ⬅️ PERBAIKAN: Inisialisasi currentCash jika undefined/null
+        // ⬅️ PERBAIKAN: Inisialisasi dan fix kas jika corrupt
         this.ensureCashInitialized();
         
         this.renderHTML();
@@ -10,28 +11,34 @@ const cashModule = {
         this.renderTransactions();
     },
 
-    // ⬅️ TAMBAH: Fungsi untuk memastikan currentCash selalu number
+    // ⬅️ TAMBAH: Fungsi untuk memastikan currentCash selalu number dan valid
     ensureCashInitialized() {
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
-            // Pastikan currentCash adalah number, bukan undefined/null/NaN
             let currentCash = dataManager.data.settings.currentCash;
+            let modalAwal = dataManager.data.settings.modalAwal;
             
-            // Jika undefined, null, atau bukan number, set ke 0
-            if (typeof currentCash !== 'number' || isNaN(currentCash)) {
-                console.log('[Cash] Initializing currentCash from invalid value:', currentCash);
+            // Fix: Pastikan nilai adalah number yang valid
+            if (typeof currentCash !== 'number' || isNaN(currentCash) || currentCash === null || currentCash === undefined) {
+                console.log('[Cash] Fixing invalid currentCash:', currentCash);
                 
-                // Coba hitung dari transaksi yang ada
+                // Hitung ulang dari transaksi
                 currentCash = this.calculateCashFromTransactions();
                 dataManager.data.settings.currentCash = currentCash;
-                dataManager.save();
                 
-                console.log('[Cash] currentCash initialized to:', currentCash);
+                console.log('[Cash] currentCash recalculated to:', currentCash);
             }
             
-            // Pastikan modalAwal juga terinisialisasi
-            if (typeof dataManager.data.settings.modalAwal !== 'number' || isNaN(dataManager.data.settings.modalAwal)) {
-                dataManager.data.settings.modalAwal = 0;
+            // Fix: Pastikan modalAwal juga valid
+            if (typeof modalAwal !== 'number' || isNaN(modalAwal) || modalAwal === null || modalAwal === undefined) {
+                modalAwal = this.calculateModalFromTransactions();
+                dataManager.data.settings.modalAwal = modalAwal;
+                console.log('[Cash] modalAwal recalculated to:', modalAwal);
             }
+            
+            // Fix: Hapus duplikat transaksi modal hari ini
+            this.removeDuplicateModals();
+            
+            dataManager.save();
         }
     },
 
@@ -39,33 +46,69 @@ const cashModule = {
     calculateCashFromTransactions() {
         let cash = 0;
         
-        if (typeof dataManager !== 'undefined' && dataManager.data) {
-            // Hitung dari cashTransactions
-            if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
-                dataManager.data.cashTransactions.forEach(t => {
-                    const amount = parseInt(t.amount) || 0;
-                    if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
-                        cash += amount;
-                    } else if (t.type === 'out') {
-                        cash -= amount;
-                    }
-                });
-            }
-            
-            // Hitung dari transaksi penjualan (yang profit masuk ke kas)
-            if (dataManager.data.transactions && Array.isArray(dataManager.data.transactions)) {
-                dataManager.data.transactions.forEach(t => {
-                    if (t.status !== 'deleted' && t.status !== 'voided') {
-                        // Jika transaksi tunai, total masuk ke kas
-                        if (t.paymentMethod === 'cash') {
-                            cash += parseInt(t.total) || 0;
-                        }
-                    }
-                });
-            }
+        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.cashTransactions) {
+            dataManager.data.cashTransactions.forEach(t => {
+                const amount = parseInt(t.amount) || 0;
+                if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
+                    cash += amount;
+                } else if (t.type === 'out') {
+                    cash -= amount;
+                }
+            });
         }
         
         return cash;
+    },
+
+    // ⬅️ TAMBAH: Hitung modal dari transaksi
+    calculateModalFromTransactions() {
+        let modal = 0;
+        
+        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.cashTransactions) {
+            dataManager.data.cashTransactions.forEach(t => {
+                if (t.type === 'modal_in') {
+                    modal += parseInt(t.amount) || 0;
+                }
+            });
+        }
+        
+        return modal;
+    },
+
+    // ⬅️ TAMBAH: Hapus duplikat modal hari ini (simpan yang terakhir)
+    removeDuplicateModals() {
+        const today = new Date().toDateString();
+        const modalsToday = [];
+        
+        // Cari semua modal hari ini
+        dataManager.data.cashTransactions.forEach((t, index) => {
+            if (t.type === 'modal_in' && new Date(t.date).toDateString() === today) {
+                modalsToday.push({ ...t, index });
+            }
+        });
+        
+        // Jika ada lebih dari 1, hapus semua kecuali yang terakhir
+        if (modalsToday.length > 1) {
+            console.log(`[Cash] Found ${modalsToday.length} duplicate modals, removing duplicates...`);
+            
+            // Urutkan berdasarkan waktu (terbaru di akhir)
+            modalsToday.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            // Simpan yang terakhir, hapus sisanya
+            const toDelete = modalsToday.slice(0, -1);
+            
+            // Hapus dari array (dari belakang agar index tidak bergeser)
+            for (let i = toDelete.length - 1; i >= 0; i--) {
+                dataManager.data.cashTransactions.splice(toDelete[i].index, 1);
+                console.log('[Cash] Removed duplicate modal:', toDelete[i].amount);
+            }
+            
+            // Recalculate kas
+            const correctCash = this.calculateCashFromTransactions();
+            dataManager.data.settings.currentCash = correctCash;
+            
+            console.log('[Cash] Kas fixed after removing duplicates:', correctCash);
+        }
     },
     
     renderHTML() {
@@ -123,7 +166,7 @@ const cashModule = {
                 </div>
 
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <span class="card-title">Riwayat Transaksi Kas Hari Ini</span>
                         <button class="btn btn-sm btn-secondary" onclick="cashModule.recalculateCash()" style="font-size: 12px; padding: 6px 12px;">
                             🔄 Recalculate Kas
@@ -137,9 +180,16 @@ const cashModule = {
     
     updateStats() {
         const today = new Date().toDateString();
-        const transactions = dataManager.data.cashTransactions.filter(t => 
-            new Date(t.date).toDateString() === today
-        );
+        
+        // ⬅️ PERBAIKAN: Hindari duplikat dengan menggunakan Map berdasarkan ID
+        const uniqueTrans = new Map();
+        dataManager.data.cashTransactions.forEach(t => {
+            if (new Date(t.date).toDateString() === today) {
+                uniqueTrans.set(t.id, t);
+            }
+        });
+        
+        const transactions = Array.from(uniqueTrans.values());
         
         const income = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
@@ -162,8 +212,17 @@ const cashModule = {
         
         const today = new Date().toDateString();
         
+        // ⬅️ PERBAIKAN: Hindari duplikat saat render
+        const seen = new Set();
         const transactions = dataManager.data.cashTransactions
-            .filter(t => new Date(t.date).toDateString() === today)
+            .filter(t => {
+                if (new Date(t.date).toDateString() !== today) return false;
+                
+                // Cek duplikat berdasarkan ID
+                if (seen.has(t.id)) return false;
+                seen.add(t.id);
+                return true;
+            })
             .reverse();
         
         if (transactions.length === 0) {
@@ -209,28 +268,24 @@ const cashModule = {
     
     attachDeleteListeners() {
         const deleteButtons = document.querySelectorAll('.btn-delete-cash');
-        console.log('Found delete buttons:', deleteButtons.length);
         
         deleteButtons.forEach(btn => {
             btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const transactionId = parseInt(btn.getAttribute('data-transaction-id'));
-                console.log('Deleting transaction ID:', transactionId);
                 this.deleteTransaction(transactionId);
             };
         });
     },
     
     deleteTransaction(transactionId) {
-        // Cari transaksi dengan pengecekan tipe data yang benar
         const t = dataManager.data.cashTransactions.find(tr => {
             return tr.id === transactionId || tr.id === transactionId.toString();
         });
         
         if (!t) {
             console.error('Transaction not found. ID:', transactionId);
-            console.log('Available transactions:', dataManager.data.cashTransactions);
             app.showToast('Transaksi tidak ditemukan!');
             return;
         }
@@ -314,7 +369,7 @@ const cashModule = {
                     
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveTransaction('${type}')">Simpan</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveTransaction('${type}')" id="btnSaveTransaction">Simpan</button>
                     </div>
                 </div>
             </div>
@@ -322,12 +377,30 @@ const cashModule = {
     },
     
     saveTransaction(type) {
+        // ⬅️ PERBAIKAN: Cegah double submit
+        if (this.isProcessing) {
+            console.log('[Cash] Already processing, ignoring duplicate submit');
+            return;
+        }
+        this.isProcessing = true;
+        
+        const btn = document.getElementById('btnSaveTransaction');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Menyimpan...';
+        }
+        
         const amount = parseInt(document.getElementById('cashAmount').value) || 0;
         const category = document.getElementById('cashCategory').value;
         const note = document.getElementById('cashNote').value;
         
         if (amount <= 0) {
             app.showToast('Jumlah tidak valid!');
+            this.isProcessing = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Simpan';
+            }
             return;
         }
         
@@ -336,6 +409,11 @@ const cashModule = {
         
         if (type === 'out' && amount > currentCash) {
             app.showToast('Kas tidak mencukupi!');
+            this.isProcessing = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Simpan';
+            }
             return;
         }
         
@@ -360,6 +438,11 @@ const cashModule = {
         this.updateStats();
         this.renderTransactions();
         app.showToast('Transaksi kas tersimpan!');
+        
+        // Reset flag setelah delay
+        setTimeout(() => {
+            this.isProcessing = false;
+        }, 500);
     },
     
     openModalAwal() {
@@ -390,7 +473,7 @@ const cashModule = {
                     
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')">Batal</button>
-                        <button class="btn btn-warning" onclick="cashModule.saveModalAwal()">Simpan Modal</button>
+                        <button class="btn btn-warning" onclick="cashModule.saveModalAwal()" id="btnSaveModal">Simpan Modal</button>
                     </div>
                 </div>
             </div>
@@ -398,15 +481,79 @@ const cashModule = {
     },
     
     saveModalAwal() {
+        // ⬅️ PERBAIKAN: Cegah double submit
+        if (this.isProcessing) {
+            console.log('[Cash] Already processing modal, ignoring duplicate submit');
+            return;
+        }
+        this.isProcessing = true;
+        
+        const btn = document.getElementById('btnSaveModal');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Menyimpan...';
+        }
+        
         const amount = parseInt(document.getElementById('modalAwalAmount').value) || 0;
         const note = document.getElementById('modalAwalNote').value || 'Modal Awal Shift';
         
         if (amount <= 0) {
             app.showToast('Jumlah modal harus lebih dari 0!');
+            this.isProcessing = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Simpan Modal';
+            }
             return;
         }
         
-        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
+        // ⬅️ PERBAIKAN: Cek apakah sudah ada modal dengan jumlah sama dalam 5 detik terakhir (anti-double click)
+        const fiveSecondsAgo = Date.now() - 5000;
+        const recentModal = dataManager.data.cashTransactions.find(t => 
+            t.type === 'modal_in' && 
+            t.amount === amount &&
+            new Date(t.date).getTime() > fiveSecondsAgo
+        );
+        
+        if (recentModal) {
+            app.showToast('⚠️ Modal dengan jumlah sama sudah diinput beberapa detik yang lalu!');
+            this.closeModal('modalAwalModal');
+            this.isProcessing = false;
+            return;
+        }
+        
+        // ⬅️ PERBAIKAN: Cek apakah modal sudah ada hari ini
+        const today = new Date().toDateString();
+        const todayModal = dataManager.data.cashTransactions.find(t => 
+            t.type === 'modal_in' && 
+            new Date(t.date).toDateString() === today
+        );
+        
+        if (todayModal) {
+            if (!confirm('⚠️ Modal hari ini sudah diinput!\n\n' +
+                `Modal existing: Rp ${utils.formatNumber(todayModal.amount)}\n` +
+                `Modal baru: Rp ${utils.formatNumber(amount)}\n\n` +
+                'Apakah Anda ingin MENGGANTI modal yang ada?')) {
+                this.isProcessing = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Simpan Modal';
+                }
+                return;
+            }
+            
+            // Hapus modal lama
+            dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(
+                t => !(t.type === 'modal_in' && new Date(t.date).toDateString() === today)
+            );
+            
+            // Kurangi kas dari modal lama
+            let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+            currentCash -= todayModal.amount;
+            dataManager.data.settings.currentCash = currentCash;
+        }
+        
+        // Lanjutkan simpan modal baru
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
         dataManager.data.settings.modalAwal = amount;
@@ -427,6 +574,11 @@ const cashModule = {
         this.updateStats();
         this.renderTransactions();
         app.showToast(`Modal Rp ${utils.formatNumber(amount)} tersimpan! Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
+        
+        // Reset flag setelah delay
+        setTimeout(() => {
+            this.isProcessing = false;
+        }, 1000);
     },
     
     openTopUp() {
@@ -479,7 +631,7 @@ const cashModule = {
                     
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="background: #9c27b0;">Proses</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="background: #9c27b0;" id="btnSaveTopUp">Proses</button>
                     </div>
                 </div>
             </div>
@@ -498,12 +650,27 @@ const cashModule = {
     },
     
     saveTopUp() {
+        // ⬅️ PERBAIKAN: Cegah double submit
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+        
+        const btn = document.getElementById('btnSaveTopUp');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Memproses...';
+        }
+        
         const nominal = parseInt(document.getElementById('topUpNominal').value) || 0;
         const admin = parseInt(document.getElementById('topUpAdmin').value) || 0;
         const type = document.getElementById('topUpType').value;
         
         if (nominal <= 0) {
             app.showToast('Nominal wajib diisi!');
+            this.isProcessing = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Proses';
+            }
             return;
         }
         
@@ -547,6 +714,10 @@ const cashModule = {
         this.updateStats();
         this.renderTransactions();
         app.showToast(`Top up berhasil! Laba: Rp ${utils.formatNumber(admin)}`);
+        
+        setTimeout(() => {
+            this.isProcessing = false;
+        }, 1000);
     },
     
     openTarikTunai() {
@@ -589,7 +760,7 @@ const cashModule = {
                     
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')">Batal</button>
-                        <button class="btn btn-info" onclick="cashModule.saveTarikTunai()">Proses</button>
+                        <button class="btn btn-info" onclick="cashModule.saveTarikTunai()" id="btnSaveTarik">Proses</button>
                     </div>
                 </div>
             </div>
@@ -608,12 +779,27 @@ const cashModule = {
     },
     
     saveTarikTunai() {
+        // ⬅️ PERBAIKAN: Cegah double submit
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+        
+        const btn = document.getElementById('btnSaveTarik');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Memproses...';
+        }
+        
         const nominal = parseInt(document.getElementById('tarikNominal').value) || 0;
         const admin = parseInt(document.getElementById('tarikAdmin').value) || 0;
         const total = nominal + admin;
         
         if (nominal <= 0) {
             app.showToast('Nominal wajib diisi!');
+            this.isProcessing = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Proses';
+            }
             return;
         }
         
@@ -622,6 +808,11 @@ const cashModule = {
         
         if (total > currentCash) {
             app.showToast('Kas tidak mencukupi!');
+            this.isProcessing = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Proses';
+            }
             return;
         }
         
@@ -661,6 +852,10 @@ const cashModule = {
         this.updateStats();
         this.renderTransactions();
         app.showToast(`Tarik tunai berhasil! Laba: Rp ${utils.formatNumber(admin)}`);
+        
+        setTimeout(() => {
+            this.isProcessing = false;
+        }, 1000);
     },
     
     openHistory() {
@@ -705,25 +900,58 @@ const cashModule = {
     },
     
     closeModal(id) {
-        const modal = document.getElementById(id);
-        if (modal) {
-            modal.remove();
+        if (id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.remove();
+            }
+        } else {
+            // Close all modals
+            document.querySelectorAll('.modal').forEach(m => m.remove());
         }
+        
+        // Reset processing flag setelah modal ditutup
+        setTimeout(() => {
+            this.isProcessing = false;
+        }, 300);
     },
 
     // ⬅️ TAMBAH: Fungsi untuk recalculate kas manual
     recalculateCash() {
-        if (!confirm('🔄 Recalculate Kas?\n\nIni akan menghitung ulang kas berdasarkan semua transaksi yang tersimpan.\n\nLanjutkan?')) {
+        if (!confirm('🔄 Recalculate Kas?\n\nIni akan:\n1. Menghitung ulang kas dari semua transaksi\n2. Menghapus duplikat jika ada\n3. Memperbaiki nilai yang salah\n\nLanjutkan?')) {
             return;
         }
 
-        const newCash = this.calculateCashFromTransactions();
-        dataManager.data.settings.currentCash = newCash;
-        dataManager.save();
+        app.setLoading(true);
         
-        app.updateHeader();
-        this.updateStats();
-        
-        app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(newCash)}`);
+        setTimeout(() => {
+            try {
+                // 1. Hapus duplikat
+                this.removeDuplicateModals();
+                
+                // 2. Hitung ulang kas
+                const correctCash = this.calculateCashFromTransactions();
+                const correctModal = this.calculateModalFromTransactions();
+                
+                // 3. Update settings
+                dataManager.data.settings.currentCash = correctCash;
+                dataManager.data.settings.modalAwal = correctModal;
+                
+                dataManager.save();
+                
+                // 4. Refresh UI
+                app.updateHeader();
+                this.updateStats();
+                this.renderTransactions();
+                
+                app.showToast(`✅ Kas direcalculate!\nKas: Rp ${utils.formatNumber(correctCash)}\nModal: Rp ${utils.formatNumber(correctModal)}`);
+                
+            } catch (error) {
+                console.error('[Cash] Recalculate error:', error);
+                app.showToast('❌ Error: ' + error.message);
+            } finally {
+                app.setLoading(false);
+            }
+        }, 500);
     }
 };
