@@ -1,12 +1,12 @@
 const productsModule = {
     currentView: 'list',
     batchStockData: {},
-    
+
     init() {
         this.renderHTML();
         this.renderProducts();
     },
-    
+
     renderHTML() {
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="productsSection">
@@ -40,31 +40,31 @@ const productsModule = {
                         <span class="card-title">📦 Daftar Produk</span>
                         <span style="font-size: 12px; color: #666;" id="productCount">0 produk</span>
                     </div>
-                    
+
                     <div class="search-bar">
                         <input type="text" placeholder="Cari produk..." id="searchProduct" 
                                onkeyup="productsModule.searchProducts()">
                         <button onclick="productsModule.searchProducts()">🔍</button>
                     </div>
-                    
+
                     <div id="productsList"></div>
                 </div>
             </div>
         `;
     },
-    
+
     renderProducts() {
         const container = document.getElementById('productsList');
         const search = document.getElementById('searchProduct')?.value.toLowerCase() || '';
-        
+
         let products = dataManager.getProducts();
-        
+
         if (search) {
             products = products.filter(p => p.name.toLowerCase().includes(search));
         }
-        
+
         document.getElementById('productCount').textContent = `${products.length} produk`;
-        
+
         if (products.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -76,7 +76,7 @@ const productsModule = {
                 </div>`;
             return;
         }
-        
+
         container.innerHTML = products.map(p => `
             <div class="product-item" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: white; margin-bottom: 10px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #f0f0f0;">
                 <div style="flex: 1;">
@@ -98,14 +98,14 @@ const productsModule = {
             </div>
         `).join('');
     },
-    
+
     searchProducts() {
         this.renderProducts();
     },
-    
+
     openAddModal() {
         const categories = dataManager.getCategories().filter(c => c.id !== 'all');
-        
+
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="addProductModal">
                 <div class="modal-content">
@@ -113,12 +113,12 @@ const productsModule = {
                         <span class="modal-title">➕ Tambah Produk</span>
                         <button class="close-btn" onclick="productsModule.closeModal('addProductModal')">×</button>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Nama Produk *</label>
                         <input type="text" id="prodName" placeholder="Nama produk">
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
                             <label>Harga Jual (Rp) *</label>
@@ -129,7 +129,7 @@ const productsModule = {
                             <input type="number" id="prodCost" placeholder="0">
                         </div>
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
                             <label>Stok Awal</label>
@@ -142,7 +142,7 @@ const productsModule = {
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="productsModule.closeModal('addProductModal')">Batal</button>
                         <button class="btn btn-primary" onclick="productsModule.saveProduct()">Simpan</button>
@@ -151,13 +151,13 @@ const productsModule = {
             </div>
         `);
     },
-    
+
     openEditModal(productId) {
         const p = dataManager.getProducts().find(prod => prod.id === productId);
         if (!p) return;
-        
+
         const categories = dataManager.getCategories().filter(c => c.id !== 'all');
-        
+
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="editProductModal">
                 <div class="modal-content">
@@ -165,14 +165,14 @@ const productsModule = {
                         <span class="modal-title">✏️ Edit Produk</span>
                         <button class="close-btn" onclick="productsModule.closeModal('editProductModal')">×</button>
                     </div>
-                    
+
                     <input type="hidden" id="editProdId" value="${p.id}">
-                    
+
                     <div class="form-group">
                         <label>Nama Produk *</label>
                         <input type="text" id="editProdName" value="${p.name}">
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
                             <label>Harga Jual (Rp) *</label>
@@ -183,7 +183,7 @@ const productsModule = {
                             <input type="number" id="editProdCost" value="${p.cost || 0}">
                         </div>
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
                             <label>Stok Saat Ini</label>
@@ -194,14 +194,14 @@ const productsModule = {
                             <input type="number" id="editProdStockChange" value="0" placeholder="0 (tambah) atau -5 (kurang)">
                         </div>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Kategori</label>
                         <select id="editProdCategory">
                             ${categories.map(c => `<option value="${c.id}" ${c.id === p.category ? 'selected' : ''}>${c.name}</option>`).join('')}
                         </select>
                     </div>
-                    
+
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="productsModule.closeModal('editProductModal')">Batal</button>
                         <button class="btn btn-primary" onclick="productsModule.updateProduct()">Update</button>
@@ -210,19 +210,19 @@ const productsModule = {
             </div>
         `);
     },
-    
+
     saveProduct() {
         const name = document.getElementById('prodName').value.trim();
         const price = parseInt(document.getElementById('prodPrice').value) || 0;
         const cost = parseInt(document.getElementById('prodCost').value) || 0;
         const stock = parseInt(document.getElementById('prodStock').value) || 0;
         const category = document.getElementById('prodCategory').value;
-        
+
         if (!name || price <= 0) {
             app.showToast('Nama dan harga wajib diisi!');
             return;
         }
-        
+
         const product = {
             id: Date.now(),
             name,
@@ -231,13 +231,13 @@ const productsModule = {
             stock,
             category
         };
-        
+
         dataManager.addProduct(product);
         this.closeModal('addProductModal');
         this.renderProducts();
         app.showToast('Produk ditambahkan!');
     },
-    
+
     updateProduct() {
         const id = parseInt(document.getElementById('editProdId').value);
         const name = document.getElementById('editProdName').value.trim();
@@ -245,15 +245,15 @@ const productsModule = {
         const cost = parseInt(document.getElementById('editProdCost').value) || 0;
         const stockChange = parseInt(document.getElementById('editProdStockChange').value) || 0;
         const category = document.getElementById('editProdCategory').value;
-        
+
         if (!name || price <= 0) {
             app.showToast('Nama dan harga wajib diisi!');
             return;
         }
-        
+
         const currentProduct = dataManager.getProducts().find(p => p.id === id);
         const newStock = Math.max(0, currentProduct.stock + stockChange);
-        
+
         dataManager.updateProduct(id, {
             name,
             price,
@@ -261,30 +261,30 @@ const productsModule = {
             stock: newStock,
             category
         });
-        
+
         this.closeModal('editProductModal');
         this.renderProducts();
         app.showToast('Produk diupdate!');
     },
-    
+
     deleteProduct(productId) {
         const p = dataManager.getProducts().find(prod => prod.id === productId);
         if (!p) return;
-        
+
         if (!confirm(`Hapus produk "${p.name}"?\n\nProduk yang sudah ada di transaksi history tetap tersimpan.`)) {
             return;
         }
-        
+
         dataManager.deleteProduct(productId);
         this.renderProducts();
         app.showToast('Produk dihapus!');
     },
-    
+
     // BATCH STOCK WITH DELETE FEATURE
     openBatchStock() {
         this.batchStockData = {};
         const products = dataManager.getProducts();
-        
+
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="batchStockModal">
                 <div class="modal-content" style="max-width: 500px;">
@@ -292,7 +292,7 @@ const productsModule = {
                         <span class="modal-title">📦 Update Stok Masal</span>
                         <button class="close-btn" onclick="productsModule.closeModal('batchStockModal')">×</button>
                     </div>
-                    
+
                     <div class="info-box warning" style="margin-bottom: 15px;">
                         <div class="info-title">Cara Penggunaan</div>
                         <div class="info-text">
@@ -301,12 +301,12 @@ const productsModule = {
                             • Klik 🗑️ untuk hapus produk permanen
                         </div>
                     </div>
-                    
+
                     <div class="search-bar" style="margin-bottom: 15px;">
                         <input type="text" placeholder="Cari produk..." id="batchSearch" 
                                onkeyup="productsModule.filterBatchStock()">
                     </div>
-                    
+
                     <div id="batchStockList" style="max-height: 50vh; overflow-y: auto;">
                         ${products.map(p => `
                             <div class="batch-stock-item" data-name="${p.name.toLowerCase()}">
@@ -325,14 +325,14 @@ const productsModule = {
                             </div>
                         `).join('')}
                     </div>
-                    
+
                     <div class="calculation-box" style="margin-top: 15px;">
                         <div class="calc-row">
                             <span>Produk akan diupdate:</span>
                             <span id="batchCount" style="font-weight: 700;">0</span>
                         </div>
                     </div>
-                    
+
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="productsModule.closeModal('batchStockModal')">Batal</button>
                         <button class="btn btn-primary" onclick="productsModule.saveBatchStock()">💾 Simpan Perubahan</button>
@@ -341,17 +341,17 @@ const productsModule = {
             </div>
         `);
     },
-    
+
     filterBatchStock() {
         const search = document.getElementById('batchSearch').value.toLowerCase();
         const items = document.querySelectorAll('.batch-stock-item');
-        
+
         items.forEach(item => {
             const name = item.getAttribute('data-name');
             item.style.display = name.includes(search) ? 'flex' : 'none';
         });
     },
-    
+
     trackBatchChange(productId) {
         const val = parseInt(document.getElementById(`batch_${productId}`).value) || 0;
         if (val !== 0) {
@@ -361,33 +361,33 @@ const productsModule = {
         }
         document.getElementById('batchCount').textContent = Object.keys(this.batchStockData).length;
     },
-    
+
     confirmDeleteBatch(productId) {
         const p = dataManager.getProducts().find(prod => prod.id === productId);
         if (!p) return;
-        
+
         if (!confirm(`⚠️ PERMANEN HAPUS PRODUK\n\n"${p.name}"\n\nStok: ${p.stock}\nHarga: Rp ${utils.formatNumber(p.price)}\n\nProduk akan dihapus dari database. Lanjutkan?`)) {
             return;
         }
-        
+
         dataManager.deleteProduct(productId);
-        
+
         // Refresh modal
         this.closeModal('batchStockModal');
         this.openBatchStock();
         this.renderProducts();
-        
+
         app.showToast(`Produk "${p.name}" dihapus permanen!`);
     },
-    
+
     saveBatchStock() {
         const updates = Object.entries(this.batchStockData);
-        
+
         if (updates.length === 0) {
             app.showToast('Tidak ada perubahan stok');
             return;
         }
-        
+
         updates.forEach(([id, change]) => {
             const product = dataManager.getProducts().find(p => p.id === parseInt(id));
             if (product) {
@@ -395,15 +395,15 @@ const productsModule = {
                 dataManager.updateProduct(parseInt(id), { stock: newStock });
             }
         });
-        
+
         this.closeModal('batchStockModal');
         this.renderProducts();
         app.showToast(`${updates.length} produk diupdate!`);
     },
-    
+
     openCategoryModal() {
         const categories = dataManager.getCategories().filter(c => c.id !== 'all');
-        
+
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="categoryModal">
                 <div class="modal-content">
@@ -411,20 +411,27 @@ const productsModule = {
                         <span class="modal-title">🏷️ Manajemen Kategori</span>
                         <button class="close-btn" onclick="productsModule.closeModal('categoryModal')">×</button>
                     </div>
-                    
+
                     <div class="add-category-row">
                         <input type="text" class="add-category-input" id="newCategoryName" placeholder="Nama kategori baru...">
                         <button class="add-category-btn" onclick="productsModule.addCategory()">+</button>
                     </div>
-                    
+
                     <div id="categoryList">
                         ${categories.map(c => `
-                            <div class="category-item">
-                                <div class="category-info">
-                                    <div class="category-name">${c.icon || '📦'} ${c.name}</div>
-                                    <div class="category-count">${dataManager.getProducts().filter(p => p.category === c.id).length} produk</div>
+                            <div class="category-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: white; margin-bottom: 8px; border-radius: 8px; border: 1px solid #f0f0f0;">
+                                <div class="category-info" style="flex: 1;">
+                                    <div class="category-name" style="font-weight: 600; font-size: 14px;">${c.icon || '📦'} ${c.name}</div>
+                                    <div class="category-count" style="font-size: 12px; color: #666;">${dataManager.getProducts().filter(p => p.category === c.id).length} produk</div>
                                 </div>
-                                <button class="delete-category-btn" onclick="productsModule.deleteCategory('${c.id}')">🗑️</button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button class="btn-sm btn-primary-sm" onclick="productsModule.openEditCategoryModal('${c.id}')" style="padding: 6px 10px; font-size: 12px;" title="Edit Kategori">
+                                        ✏️
+                                    </button>
+                                    <button class="btn-sm btn-danger-sm" onclick="productsModule.deleteCategory('${c.id}')" style="padding: 6px 10px; font-size: 12px;" title="Hapus Kategori">
+                                        🗑️
+                                    </button>
+                                </div>
                             </div>
                         `).join('')}
                     </div>
@@ -432,64 +439,148 @@ const productsModule = {
             </div>
         `);
     },
-    
+
     addCategory() {
         const name = document.getElementById('newCategoryName').value.trim();
         if (!name) {
             app.showToast('Nama kategori wajib diisi!');
             return;
         }
-        
+
         const id = 'cat_' + Date.now();
         dataManager.data.categories.push({
             id,
             name,
             icon: '📦'
         });
-        
+
         dataManager.save();
         this.closeModal('categoryModal');
         this.openCategoryModal();
         app.showToast('Kategori ditambahkan!');
     },
-    
+
+    // EDIT CATEGORY - FUNGSI BARU
+    openEditCategoryModal(categoryId) {
+        const category = dataManager.getCategories().find(c => c.id === categoryId);
+        if (!category) return;
+
+        document.body.insertAdjacentHTML('beforeend', `
+            <div class="modal active" id="editCategoryModal" style="z-index: 1100;">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <span class="modal-title">✏️ Edit Kategori</span>
+                        <button class="close-btn" onclick="productsModule.closeModal('editCategoryModal')">×</button>
+                    </div>
+
+                    <input type="hidden" id="editCategoryId" value="${category.id}">
+
+                    <div class="form-group">
+                        <label>Nama Kategori *</label>
+                        <input type="text" id="editCategoryName" value="${category.name}" placeholder="Nama kategori">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Ikon Kategori</label>
+                        <select id="editCategoryIcon">
+                            <option value="📦" ${category.icon === '📦' ? 'selected' : ''}>📦 Box</option>
+                            <option value="🏷️" ${category.icon === '🏷️' ? 'selected' : ''}>🏷️ Tag</option>
+                            <option value="👕" ${category.icon === '👕' ? 'selected' : ''}>👕 Pakaian</option>
+                            <option value="🍔" ${category.icon === '🍔' ? 'selected' : ''}>🍔 Makanan</option>
+                            <option value="🥤" ${category.icon === '🥤' ? 'selected' : ''}>🥤 Minuman</option>
+                            <option value="📱" ${category.icon === '📱' ? 'selected' : ''}>📱 Elektronik</option>
+                            <option value="💊" ${category.icon === '💊' ? 'selected' : ''}>💊 Obat</option>
+                            <option value="🧴" ${category.icon === '🧴' ? 'selected' : ''}>🧴 Kosmetik</option>
+                            <option value="🧸" ${category.icon === '🧸' ? 'selected' : ''}>🧸 Mainan</option>
+                            <option value="📚" ${category.icon === '📚' ? 'selected' : ''}>📚 Buku</option>
+                            <option value="⚽" ${category.icon === '⚽' ? 'selected' : ''}>⚽ Olahraga</option>
+                            <option value="🚗" ${category.icon === '🚗' ? 'selected' : ''}>🚗 Otomotif</option>
+                            <option value="🏠" ${category.icon === '🏠' ? 'selected' : ''}>🏠 Rumah Tangga</option>
+                            <option value="✏️" ${category.icon === '✏️' ? 'selected' : ''}>✏️ Alat Tulis</option>
+                        </select>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="productsModule.closeModal('editCategoryModal')">Batal</button>
+                        <button class="btn btn-primary" onclick="productsModule.updateCategory()">💾 Simpan Perubahan</button>
+                    </div>
+                </div>
+            </div>
+        `);
+    },
+
+    updateCategory() {
+        const id = document.getElementById('editCategoryId').value;
+        const name = document.getElementById('editCategoryName').value.trim();
+        const icon = document.getElementById('editCategoryIcon').value;
+
+        if (!name) {
+            app.showToast('Nama kategori wajib diisi!');
+            return;
+        }
+
+        // Check for duplicate name (excluding current category)
+        const existing = dataManager.getCategories().find(c => 
+            c.name.toLowerCase() === name.toLowerCase() && c.id !== id
+        );
+
+        if (existing) {
+            app.showToast('Nama kategori sudah ada!');
+            return;
+        }
+
+        // Update category
+        const categoryIndex = dataManager.data.categories.findIndex(c => c.id === id);
+        if (categoryIndex !== -1) {
+            dataManager.data.categories[categoryIndex].name = name;
+            dataManager.data.categories[categoryIndex].icon = icon;
+            dataManager.save();
+
+            this.closeModal('editCategoryModal');
+            this.closeModal('categoryModal');
+            this.openCategoryModal();
+            this.renderProducts();
+            app.showToast('Kategori berhasil diupdate!');
+        }
+    },
+
     deleteCategory(categoryId) {
         const productsInCategory = dataManager.getProducts().filter(p => p.category === categoryId);
-        
+
         if (productsInCategory.length > 0) {
             app.showToast(`Tidak bisa hapus! Ada ${productsInCategory.length} produk di kategori ini.`);
             return;
         }
-        
+
         if (!confirm('Hapus kategori ini?')) return;
-        
+
         dataManager.data.categories = dataManager.data.categories.filter(c => c.id !== categoryId);
         dataManager.save();
         this.closeModal('categoryModal');
         this.openCategoryModal();
         app.showToast('Kategori dihapus!');
     },
-    
+
     exportProducts() {
         const products = dataManager.getProducts();
         let csv = 'ID,Nama,Kategori,Harga Jual,Harga Modal,Stok\n';
-        
+
         products.forEach(p => {
             const cat = dataManager.getCategories().find(c => c.id === p.category)?.name || 'Lainnya';
             csv += `${p.id},"${p.name}",${cat},${p.price},${p.cost || 0},${p.stock}\n`;
         });
-        
+
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `produk-${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
-        
+
         app.showToast('Data produk diexport!');
     },
-    
-    
+
+
     // IMPORT EXCEL FEATURE
     openImportModal() {
         document.body.insertAdjacentHTML('beforeend', `
