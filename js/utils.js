@@ -1,24 +1,60 @@
 const utils = {
     formatNumber(num) {
-        return num.toLocaleString('id-ID');
+        if (num === null || num === undefined || isNaN(num)) return '0';
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     },
-    
-    formatDate(date) {
-        return new Date(date).toLocaleDateString('id-ID');
+
+    formatRupiah(num) {
+        return 'Rp ' + this.formatNumber(num);
     },
-    
-    formatDateTime(date) {
-        return new Date(date).toLocaleString('id-ID');
+
+    parseNumber(str) {
+        if (!str) return 0;
+        return parseInt(str.toString().replace(/\./g, '').replace(/[^0-9]/g, '')) || 0;
     },
-    
+
     generateId() {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
     },
-    
-    generateTrxNumber() {
-        return 'TRX-' + Date.now().toString().slice(-8);
+
+    formatDate(date) {
+        const d = new Date(date);
+        return d.toLocaleDateString('id-ID', {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
     },
-    
+
+    formatDateTime(date) {
+        const d = new Date(date);
+        return d.toLocaleString('id-ID', {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    },
+
+    getToday() {
+        return new Date().toDateString();
+    },
+
+    getStartOfDay(date = new Date()) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    },
+
+    getEndOfDay(date = new Date()) {
+        const d = new Date(date);
+        d.setHours(23, 59, 59, 999);
+        return d;
+    },
+
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -30,12 +66,40 @@ const utils = {
             timeout = setTimeout(later, wait);
         };
     },
-    
-    validateEmail(email) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    },
-    
+
     validatePhone(phone) {
-        return /^[0-9]{10,13}$/.test(phone.replace(/[^0-9]/g, ''));
+        const cleaned = phone.replace(/\D/g, '');
+        return cleaned.length >= 10 && cleaned.length <= 15;
+    },
+
+    downloadJSON(data, filename) {
+        const dataStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    },
+
+    readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = e => reject(e);
+            reader.readAsText(file);
+        });
+    },
+
+    readFileAsDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = e => reject(e);
+            reader.readAsDataURL(file);
+        });
     }
 };
