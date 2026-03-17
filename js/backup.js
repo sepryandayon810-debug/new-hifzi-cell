@@ -1,1019 +1,1559 @@
-// backup.js - Versi 13d FIXED
-// PERBAIKAN: Reset cloud, upload kosong, struktur data lengkap
+/**
+ * HIFZI CELL - Debt Module (Hutang/Piutang)
+ * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
+ * Mengelola daftar hutang dengan kontrol kas masuk/keluar
+ * + Fitur Autocomplete Nama Pelanggan (Improved)
+ */
 
-const backupModule = {
-    currentProvider: 'local',
-    autoSyncInterval: null,
-    isAutoSyncEnabled: false,
-    lastSyncTime: null,
-    gasUrl: '',
-    
-    STORAGE_KEY: 'hifzi_cell_data',
-    GAS_URL_KEY: 'hifzi_gas_url',
-    AUTO_SYNC_KEY: 'hifzi_auto_sync',
-    LAST_SYNC_KEY: 'hifzi_last_sync',
-    LOGS_KEY: 'hifzi_backup_logs',
-    
-    debugMode: true,
-    
-    log: function(level, message, data) {
-        var timestamp = new Date().toLocaleTimeString('id-ID');
-        var prefix = '[' + timestamp + '][Backup][' + level + ']';
-        if (level === 'ERROR') console.error(prefix, message, data || '');
-        else if (level === 'WARN') console.warn(prefix, message, data || '');
-        else console.log(prefix, message, data || '');
-        
-        try {
-            var logs = JSON.parse(localStorage.getItem(this.LOGS_KEY) || '[]');
-            logs.push({ 
-                time: new Date().toISOString(), 
-                level: level, 
-                message: message, 
-                data: data ? JSON.stringify(data).substring(0, 200) : null 
-            });
-            if (logs.length > 100) logs = logs.slice(-100);
-            localStorage.setItem(this.LOGS_KEY, JSON.stringify(logs));
-        } catch(e) {}
-    },
-    
-    getDebugLogs: function() {
-        return JSON.parse(localStorage.getItem(this.LOGS_KEY) || '[]');
-    },
-    
-    clearDebugLogs: function() {
-        localStorage.removeItem(this.LOGS_KEY);
-        this.log('INFO', 'Logs cleared');
-    },
+const debtModule = {
+    debts: [],
+    currentFilter: 'all',
+    searchQuery: '',
+    expandedGroups: new Set(),
+    showPaidDebts: false,
+    itemCount: 1,
 
-    init: function() {
-        this.log('INFO', 'Backup Module v13d-FIXED Initialized');
-        this.gasUrl = localStorage.getItem(this.GAS_URL_KEY) || '';
-        this.isAutoSyncEnabled = localStorage.getItem(this.AUTO_SYNC_KEY) === 'true';
-        this.lastSyncTime = localStorage.getItem(this.LAST_SYNC_KEY) || null;
-        
-        if (this.gasUrl && this.gasUrl.length > 10) {
-            this.currentProvider = 'googlesheet';
-            this.log('INFO', 'Auto-selected Google Sheets provider');
-            
-            var localData = this.getDataFromStorage();
-            var hasLocalData = localData.products.length > 0 || localData.transactions.length > 0;
-            
-            if (!hasLocalData && this.gasUrl) {
-                this.log('INFO', 'Device baru terdeteksi, auto-download...');
-                this.showToast('📥 Device baru, mengunduh data...');
-                var self = this;
-                setTimeout(function() {
-                    self.downloadData(true);
-                }, 1000);
-            }
-        }
-        
-        if (this.isAutoSyncEnabled && this.gasUrl) {
-            this.startAutoSync();
-        }
-        
+    // Inisialisasi modul - terhubung ke dataManager
+    init() {
+        console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
+        this.loadDebts();
         this.render();
     },
 
-    getDataFromStorage: function() {
-        var data = null;
-        
-        try {
-            var stored = localStorage.getItem(this.STORAGE_KEY);
-            if (stored) {
-                data = JSON.parse(stored);
+    // ============================================
+    // INTEGRASI DATABASE HIFZI APPS
+    // ============================================
+
+    // Load data hutang dari DATABASE HIFZI APPS (dataManager)
+    loadDebts() {
+        // Cek apakah dataManager tersedia
+        if (typeof dataManager !== 'undefined' && dataManager.data) {
+            // Pastikan property debts ada di dataManager
+            if (!dataManager.data.debts) {
+                dataManager.data.debts = [];
             }
-        } catch(e) {
-            this.log('ERROR', 'localStorage parse error', e.message);
-        }
+            this.debts = dataManager.data.debts;
 
-        if (!data && typeof dataManager !== 'undefined' && dataManager.data) {
-            data = dataManager.data;
-        }
-
-        var complete = {
-            categories: [
-                { id: 'all', name: 'Semua', icon: '📦' },
-                { id: 'handphone', name: 'Handphone', icon: '📱' },
-                { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
-                { id: 'pulsa', name: 'Pulsa', icon: '💳' },
-                { id: 'servis', name: 'Servis', icon: '🔧' }
-            ],
-            products: [],
-            transactions: [],
-            cashTransactions: [],
-            settings: {
-                storeName: 'Hifzi Cell',
-                address: '',
-                taxRate: 0,
-                modalAwal: 0,
-                currentCash: 0,
-                receiptHeader: {
-                    storeName: 'HIFZI CELL',
-                    address: 'Alamat Belum Diatur',
-                    phone: '',
-                    note: 'Terima kasih atas kunjungan Anda'
+            // Migrasi data lama dari localStorage jika ada
+            const oldData = localStorage.getItem('hifzi_debts');
+            if (oldData) {
+                try {
+                    const oldDebts = JSON.parse(oldData);
+                    if (Array.isArray(oldDebts) && oldDebts.length > 0) {
+                        // Merge data lama ke database utama
+                        this.debts = [...this.debts, ...oldDebts];
+                        dataManager.data.debts = this.debts;
+                        dataManager.save();
+                        // Hapus data lama dari localStorage
+                        localStorage.removeItem('hifzi_debts');
+                        console.log('✅ Data hutang lama berhasil dimigrasi ke DATABASE HIFZI APPS');
+                    }
+                } catch(e) {
+                    console.log('Tidak ada data lama yang perlu dimigrasi');
                 }
-            },
-            kasir: {
-                isOpen: false,
-                openTime: null,
-                closeTime: null,
-                date: null
-            },
-            debts: [],
-            lastBackup: null,
-            version: '1.0'
-        };
-
-        if (data) {
-            if (Array.isArray(data.categories)) complete.categories = data.categories;
-            if (Array.isArray(data.products)) complete.products = data.products;
-            if (Array.isArray(data.transactions)) complete.transactions = data.transactions;
-            if (Array.isArray(data.cashTransactions)) complete.cashTransactions = data.cashTransactions;
-            if (Array.isArray(data.debts)) complete.debts = data.debts;
-            
-            if (data.settings && typeof data.settings === 'object') {
-                complete.settings = { ...complete.settings, ...data.settings };
             }
-            if (data.kasir && typeof data.kasir === 'object') {
-                complete.kasir = { ...complete.kasir, ...data.kasir };
-            }
+        } else {
+            // Fallback jika dataManager belum siap
+            console.warn('dataManager belum tersedia, menggunakan array kosong sementara');
+            this.debts = [];
         }
 
-        return complete;
+        // TIDAK ADA DATA DUMMY - biarkan kosong jika belum ada data
+        // Data user akan muncul saat mereka mulai input
     },
 
-    hasData: function() {
-        var d = this.getDataFromStorage();
-        return d.products.length > 0 || 
-               d.transactions.length > 0 || 
-               d.debts.length > 0 || 
-               d.cashTransactions.length > 0 ||
-               d.categories.length > 1;
+    // Simpan data hutang ke DATABASE HIFZI APPS (dataManager)
+    saveDebts() {
+        if (typeof dataManager !== 'undefined' && dataManager.data) {
+            dataManager.data.debts = this.debts;
+            if (dataManager.save) {
+                dataManager.save();
+                console.log('💾 Data hutang tersimpan ke DATABASE HIFZI APPS');
+            }
+        } else {
+            console.warn('dataManager tidak tersedia untuk menyimpan data hutang');
+        }
     },
 
-    formatRupiah: function(amount) {
-        if (!amount && amount !== 0) return 'Rp 0';
+    // Sinkronisasi data dari database utama
+    syncFromDatabase() {
+        if (typeof dataManager !== 'undefined' && dataManager.data) {
+            if (dataManager.data.debts) {
+                this.debts = dataManager.data.debts;
+            } else {
+                dataManager.data.debts = [];
+                this.debts = [];
+            }
+        }
+    },
+
+    // ============================================
+    // FITUR AUTOCOMPLETE NAMA PELANGGAN (IMPROVED)
+    // ============================================
+
+    getUniqueCustomers() {
+        const customers = {};
+        this.debts.forEach(debt => {
+            if (!customers[debt.customerName]) {
+                customers[debt.customerName] = {
+                    name: debt.customerName,
+                    phone: debt.customerPhone
+                };
+            }
+        });
+        return Object.values(customers);
+    },
+
+    // Toggle tampilkan hutang lunas
+    toggleShowPaid() {
+        this.showPaidDebts = !this.showPaidDebts;
+        this.render();
+    },
+
+    // Set filter
+    setFilter(filter) {
+        this.currentFilter = filter;
+        this.render();
+    },
+
+    // Search handler
+    handleSearch(query) {
+        this.searchQuery = query.toLowerCase();
+        this.render();
+    },
+
+    // Generate ID baru
+    generateId() {
+        const maxId = this.debts.reduce((max, d) => {
+            const num = parseInt(d.id.replace('H', ''));
+            return num > max ? num : max;
+        }, 0);
+        return `H${String(maxId + 1).padStart(3, '0')}`;
+    },
+
+    // Group debts by customer name
+    getGroupedDebts() {
+        let filtered = this.debts.filter(debt => {
+            if (this.searchQuery) {
+                const searchLower = this.searchQuery.toLowerCase();
+                const matchSearch = (
+                    debt.customerName.toLowerCase().includes(searchLower) ||
+                    debt.customerPhone.includes(searchLower) ||
+                    debt.id.toLowerCase().includes(searchLower)
+                );
+                if (!matchSearch) return false;
+            }
+
+            if (!this.showPaidDebts && debt.status === 'paid') {
+                return false;
+            }
+
+            if (this.currentFilter !== 'all' && debt.status !== this.currentFilter) {
+                return false;
+            }
+
+            return true;
+        });
+
+        const grouped = {};
+        filtered.forEach(debt => {
+            if (!grouped[debt.customerName]) {
+                grouped[debt.customerName] = {
+                    customerName: debt.customerName,
+                    customerPhone: debt.customerPhone,
+                    debts: [],
+                    totalDebt: 0,
+                    totalPaid: 0,
+                    totalRemaining: 0,
+                    count: 0,
+                    hasOverdue: false,
+                    allPaid: true,
+                    hasPaid: false
+                };
+            }
+
+            const group = grouped[debt.customerName];
+            group.debts.push(debt);
+            group.totalDebt += debt.total;
+            group.totalPaid += debt.paid;
+            group.count++;
+
+            if (debt.status === 'overdue') {
+                group.hasOverdue = true;
+            }
+            if (debt.status === 'paid') {
+                group.hasPaid = true;
+            }
+            if (debt.status !== 'paid') {
+                group.allPaid = false;
+            }
+        });
+
+        Object.values(grouped).forEach(group => {
+            group.totalRemaining = group.totalDebt - group.totalPaid;
+        });
+
+        return Object.values(grouped).sort((a, b) => {
+            if (a.allPaid !== b.allPaid) return a.allPaid ? 1 : -1;
+            return b.totalRemaining - a.totalRemaining;
+        });
+    },
+
+    // Get summary statistics
+    getSummary() {
+        const allDebts = this.debts;
+        const totalDebt = allDebts.reduce((sum, d) => sum + d.total, 0);
+        const totalPaid = allDebts.reduce((sum, d) => sum + d.paid, 0);
+        const totalRemaining = totalDebt - totalPaid;
+
+        const activeDebts = allDebts.filter(d => d.status !== 'paid');
+        const activeDebtTotal = activeDebts.reduce((sum, d) => sum + d.total, 0);
+        const activePaidTotal = activeDebts.reduce((sum, d) => sum + d.paid, 0);
+        const activeRemaining = activeDebtTotal - activePaidTotal;
+
+        const overdueCount = activeDebts.filter(d => d.status === 'overdue').length;
+        const paidCount = allDebts.filter(d => d.status === 'paid').length;
+        const customerCount = new Set(activeDebts.map(d => d.customerName)).size;
+
+        return { 
+            totalDebt, 
+            totalPaid, 
+            totalRemaining, 
+            activeRemaining,
+            overdueCount, 
+            paidCount,
+            customerCount 
+        };
+    },
+
+    // Toggle group expansion
+    toggleGroup(customerName) {
+        if (this.expandedGroups.has(customerName)) {
+            this.expandedGroups.delete(customerName);
+        } else {
+            this.expandedGroups.add(customerName);
+        }
+        this.renderGroups();
+    },
+
+    // Render main view
+    render() {
+        const container = document.getElementById('mainContent');
+        if (!container) {
+            console.error('mainContent not found');
+            return;
+        }
+
+        const summary = this.getSummary();
+        const groupedDebts = this.getGroupedDebts();
+
+        container.innerHTML = `
+            <div class="debt-container">
+                <!-- Summary Cards -->
+                <div class="debt-summary">
+                    <div class="debt-card">
+                        <div class="debt-card-label">Total Piutang Aktif</div>
+                        <div class="debt-card-value">${this.formatRupiah(summary.activeRemaining)}</div>
+                        <div class="debt-card-sub">${summary.customerCount} pelanggan aktif</div>
+                    </div>
+                    <div class="debt-card success">
+                        <div class="debt-card-label">Sudah Dibayar</div>
+                        <div class="debt-card-value">${this.formatRupiah(summary.totalPaid)}</div>
+                        <div class="debt-card-sub">${summary.paidCount} lunas</div>
+                    </div>
+                    <div class="debt-card warning">
+                        <div class="debt-card-label">Sisa Piutang</div>
+                        <div class="debt-card-value">${this.formatRupiah(summary.totalRemaining)}</div>
+                        <div class="debt-card-sub">${summary.overdueCount} overdue</div>
+                    </div>
+                </div>
+
+                <!-- Controls & Add Button -->
+                <div class="debt-controls-header">
+                    <div class="debt-controls">
+                        <div class="debt-search">
+                            <span class="debt-search-icon">🔍</span>
+                            <input type="text" id="debtSearch" placeholder="Cari nama, no HP, atau kode..." 
+                                   value="${this.searchQuery}" oninput="debtModule.handleSearch(this.value)">
+                        </div>
+                        <div class="debt-filter">
+                            <button class="debt-filter-btn ${this.currentFilter === 'all' ? 'active' : ''}" 
+                                    onclick="debtModule.setFilter('all')">Semua</button>
+                            <button class="debt-filter-btn ${this.currentFilter === 'pending' ? 'active' : ''}" 
+                                    onclick="debtModule.setFilter('pending')">Pending</button>
+                            <button class="debt-filter-btn ${this.currentFilter === 'overdue' ? 'active' : ''}" 
+                                    onclick="debtModule.setFilter('overdue')">Overdue</button>
+                            <button class="debt-filter-btn ${this.currentFilter === 'paid' ? 'active' : ''}" 
+                                    onclick="debtModule.setFilter('paid')">Lunas</button>
+                        </div>
+                    </div>
+
+                    <button class="debt-add-btn" onclick="debtModule.openAddDebtModal()">
+                        <span>➕</span>
+                        <span>Tambah Hutang</span>
+                    </button>
+                </div>
+
+                <!-- Toggle Show Paid -->
+                <div class="debt-toggle-paid">
+                    <label class="debt-toggle-switch">
+                        <input type="checkbox" ${this.showPaidDebts ? 'checked' : ''} 
+                               onchange="debtModule.toggleShowPaid()">
+                        <span class="debt-toggle-slider"></span>
+                        <span class="debt-toggle-label">
+                            ${this.showPaidDebts ? '🔓 Sembunyikan hutang lunas' : '🔒 Tampilkan hutang lunas'}
+                        </span>
+                    </label>
+                    <span class="debt-toggle-hint">
+                        ${!this.showPaidDebts ? `( ${summary.paidCount} hutang lunas disembunyikan )` : ''}
+                    </span>
+                </div>
+
+                <!-- Grouped Debt List -->
+                <div class="debt-groups" id="debtGroups">
+                    ${this.renderGroupsHTML(groupedDebts)}
+                </div>
+
+                ${groupedDebts.length === 0 ? `
+                    <div class="debt-empty">
+                        <div class="debt-empty-icon">📋</div>
+                        <div class="debt-empty-title">Tidak ada data hutang</div>
+                        <div class="debt-empty-text">
+                            ${!this.showPaidDebts && summary.paidCount > 0 
+                                ? 'Semua hutang sudah lunas. Aktifkan toggle di atas untuk melihat riwayat.' 
+                                : 'Belum ada catatan hutang yang sesuai dengan filter'}
+                        </div>
+                        <button class="debt-add-btn-empty" onclick="debtModule.openAddDebtModal()">
+                            <span>➕</span> Tambah Hutang Baru
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    },
+
+    // Format rupiah helper
+    formatRupiah(amount) {
         return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     },
 
-    render: function() {
-        var container = document.getElementById('mainContent');
+    // Format date helper
+    formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    },
+
+    // Render groups HTML
+    renderGroupsHTML(groupedDebts) {
+        if (groupedDebts.length === 0) return '';
+
+        return groupedDebts.map(group => {
+            const isExpanded = this.expandedGroups.has(group.customerName);
+            const remaining = group.totalRemaining;
+            const avatarLetter = group.customerName.charAt(0).toUpperCase();
+
+            let avatarClass = '';
+            if (group.allPaid) avatarClass = 'paid';
+            else if (group.hasOverdue) avatarClass = 'overdue';
+
+            let statusBadge = '';
+            if (group.allPaid) {
+                statusBadge = '<span class="debt-badge paid">✓ Lunas</span>';
+            } else if (group.hasOverdue) {
+                statusBadge = '<span class="debt-badge overdue">⚠ Overdue</span>';
+            } else {
+                statusBadge = '<span class="debt-badge pending">⏳ Pending</span>';
+            }
+
+            let amountClass = '';
+            if (group.allPaid) amountClass = 'paid';
+            else if (group.hasOverdue) amountClass = 'overdue';
+
+            if (group.allPaid && !this.showPaidDebts) return '';
+
+            return `
+                <div class="debt-group ${isExpanded ? 'expanded' : ''} ${group.allPaid ? 'all-paid' : ''}" data-customer="${group.customerName}">
+                    <div class="debt-group-header" onclick="debtModule.toggleGroup('${group.customerName}')">
+                        <div class="debt-group-info">
+                            <div class="debt-avatar ${avatarClass}">${avatarLetter}</div>
+                            <div class="debt-group-title">
+                                <div class="debt-customer-name">${group.customerName}</div>
+                                <div class="debt-customer-meta">
+                                    ${statusBadge}
+                                    <span class="debt-meta-item">📱 ${group.customerPhone || '-'}</span>
+                                    <span class="debt-meta-item">📝 ${group.count} transaksi</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="debt-group-amount">
+                            <div class="debt-total-label">${group.allPaid ? 'Total' : 'Sisa Hutang'}</div>
+                            <div class="debt-total-value ${amountClass}">${this.formatRupiah(remaining)}</div>
+                        </div>
+                        <div class="debt-group-actions" onclick="event.stopPropagation()">
+                            ${!group.allPaid ? `
+                                <button class="debt-action-btn whatsapp" onclick="debtModule.sendWhatsApp('${group.customerPhone}', '${group.customerName}', ${remaining})" 
+                                        title="Kirim WA" ${!group.customerPhone ? 'disabled style="opacity:0.5"' : ''}>💬</button>
+                                <button class="debt-action-btn pay" onclick="debtModule.payAll('${group.customerName}')" 
+                                        title="Bayar Semua">💰</button>
+                            ` : `
+                                <button class="debt-action-btn view" onclick="debtModule.viewPaidHistory('${group.customerName}')" 
+                                        title="Lihat Riwayat">📋</button>
+                            `}
+                            <button class="debt-toggle">${isExpanded ? '▲' : '▼'}</button>
+                        </div>
+                    </div>
+
+                    <div class="debt-items" style="${isExpanded ? 'display: block;' : 'display: none;'}">
+                        ${group.debts.map(debt => this.renderDebtItem(debt)).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    // Re-render only groups
+    renderGroups() {
+        const container = document.getElementById('debtGroups');
         if (!container) return;
 
-        var data = this.getDataFromStorage();
-        var products = data.products.length;
-        var categories = data.categories.length;
-        var transactions = data.transactions.length;
-        var cashTrans = data.cashTransactions.length;
-        var debts = data.debts.length;
-        
-        var settings = data.settings || {};
-        var currentCash = settings.currentCash || 0;
-        var storeName = settings.storeName || 'HIFZI CELL';
-        
-        var logs = this.getDebugLogs();
-        var recentLogs = logs.slice(-5).reverse().map(function(log) {
-            var color = log.level === 'ERROR' ? '#e74c3c' : (log.level === 'WARN' ? '#f39c12' : '#27ae60');
-            var time = log.time.split('T')[1] ? log.time.split('T')[1].substr(0,8) : '--:--:--';
-            return '<div style="font-size:10px;color:' + color + ';margin-bottom:2px;">[' + time + '] ' + log.message + '</div>';
-        }).join('');
+        const groupedDebts = this.getGroupedDebts();
+        container.innerHTML = this.renderGroupsHTML(groupedDebts);
+    },
 
-        var html = '<div class="content-section active" id="backupSection">';
+    // Render individual debt item
+    renderDebtItem(debt) {
+        const remaining = debt.total - debt.paid;
+        const isPaid = debt.status === 'paid';
+        const isOverdue = debt.status === 'overdue';
 
-        // Status Card
-        var syncStatusColor = this.isAutoSyncEnabled ? '#4CAF50' : '#999';
-        var syncStatusText = this.isAutoSyncEnabled ? '🟢 Auto Sync ON' : '⚪ Auto Sync OFF';
-        
-        html += '<div class="card" style="border:2px solid ' + syncStatusColor + ';margin-bottom:15px;">';
-        html += '<div class="card-header"><span class="card-title">' + syncStatusText + '</span></div>';
-        html += '<div style="padding:10px;font-size:12px;color:#666;">';
-        if (this.lastSyncTime) {
-            html += 'Last activity: ' + new Date(this.lastSyncTime).toLocaleString('id-ID');
+        const productSummary = debt.items.map(i => `${i.name} x${i.qty}`).join(', ');
+
+        if (isPaid && !this.showPaidDebts) return '';
+
+        const cashIndicator = debt.reduceCash 
+            ? '<span class="debt-cash-indicator reduce">📉 Kurangi Kas</span>' 
+            : '<span class="debt-cash-indicator normal">📋 Tidak Kurangi Kas</span>';
+
+        return `
+            <div class="debt-item ${isPaid ? 'paid-item' : ''}" data-debt-id="${debt.id}">
+                <div class="debt-item-info">
+                    <div class="debt-item-header">
+                        <span class="debt-item-id">#${debt.id}</span>
+                        ${isPaid ? '<span class="debt-item-status-badge paid">✓ LUNAS</span>' : ''}
+                        ${isOverdue ? '<span class="debt-item-status-badge overdue">⚠ OVERDUE</span>' : ''}
+                    </div>
+                    <div class="debt-item-cash-status">
+                        ${cashIndicator}
+                    </div>
+                    <div class="debt-item-date">
+                        <span>📅 ${this.formatDate(debt.date)}</span>
+                        ${isPaid 
+                            ? `<span>✅ Lunas: ${this.formatDate(debt.paidDate)}</span>`
+                            : `<span>⏰ Jatuh tempo: ${this.formatDate(debt.dueDate)}</span>`
+                        }
+                    </div>
+                    <div class="debt-item-products">${productSummary}</div>
+                </div>
+                <div class="debt-item-amount">
+                    <div class="debt-item-total">${this.formatRupiah(debt.total)}</div>
+                    ${debt.paid > 0 && !isPaid ? `
+                        <div class="debt-item-paid">Dibayar: ${this.formatRupiah(debt.paid)}</div>
+                    ` : ''}
+                    ${!isPaid ? `
+                        <div class="debt-item-remaining">Sisa: ${this.formatRupiah(remaining)}</div>
+                    ` : ''}
+                </div>
+                <div class="debt-item-actions">
+                    <button class="debt-item-btn detail" onclick="debtModule.viewDetail('${debt.id}')">Detail</button>
+                    ${!isPaid ? `
+                        <button class="debt-item-btn pay" onclick="debtModule.openPaymentModal('${debt.id}')">Bayar</button>
+                    ` : ''}
+                    <button class="debt-item-btn delete" onclick="debtModule.confirmDelete('${debt.id}')" title="Hapus">🗑️</button>
+                </div>
+            </div>
+        `;
+    },
+
+    // ============================================
+    // MODAL TAMBAH HUTANG BARU - DENGAN AUTOCOMPLETE YANG LEBIH BAIK
+    // ============================================
+
+    openAddDebtModal() {
+        this.itemCount = 1;
+        const customers = this.getUniqueCustomers();
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'addDebtModal';
+        modal.innerHTML = `
+            <div class="debt-modal" style="max-width: 600px;">
+                <div class="debt-modal-header">
+                    <div class="debt-modal-title">➕ Tambah Hutang Baru</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body" style="max-height: 75vh;">
+
+                    <div class="debt-section-title">👤 Informasi Pelanggan</div>
+
+                    <div class="debt-form-group" style="position: relative;">
+                        <label class="debt-form-label">Nama Pelanggan *</label>
+                        <input type="text" 
+                               class="debt-form-input" 
+                               id="addCustomerName" 
+                               placeholder="Ketik nama pelanggan..."
+                               autocomplete="off"
+                               oninput="debtModule.handleNameInput(this.value)"
+                               onblur="setTimeout(() => debtModule.hideCustomerList(), 200)">
+
+                        <div id="customerList" class="customer-autocomplete-list" style="display: none;">
+                            <!-- List akan diisi saat user mengetik -->
+                        </div>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">No. Telepon</label>
+                        <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional - 0812-3456-7890">
+                    </div>
+
+                    <div class="debt-section-title">📦 Produk yang Dihutangkan</div>
+                    <div id="addDebtItems">
+                        <div class="debt-item-input">
+                            <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName0">
+                            <div class="debt-item-row">
+                                <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
+                                <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="debt-add-item-btn" onclick="debtModule.addItemField()">
+                        <span>➕</span> Tambah Produk Lain
+                    </button>
+
+                    <div class="debt-total-section">
+                        <div class="debt-total-row">
+                            <span>Total Hutang:</span>
+                            <span id="addDebtTotal" class="debt-total-amount">${this.formatRupiah(0)}</span>
+                        </div>
+                    </div>
+
+                    <div class="debt-section-title">💰 Pembayaran (Opsional)</div>
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">DP / Pembayaran Awal</label>
+                        <input type="number" class="debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
+                    </div>
+
+                    <div class="debt-cash-option ${this.getCurrentCash() < 0 ? 'warning' : ''}">
+                        <div class="debt-cash-option-title">📉 Pengaruh ke Kas/Laci?</div>
+                        <div class="debt-cash-current">
+                            Kas saat ini: <strong>${this.formatRupiah(this.getCurrentCash())}</strong>
+                        </div>
+                        <div class="debt-cash-option-desc">
+                            Pilih apakah hutang ini akan mengurangi saldo kas toko (barang keluar tanpa uang masuk)
+                        </div>
+                        <div class="debt-cash-toggle">
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="reduceCash" value="yes" checked onchange="debtModule.updateCashPreview()">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Ya, Kurangi Kas</strong>
+                                    <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
+                                </span>
+                            </label>
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="reduceCash" value="no" onchange="debtModule.updateCashPreview()">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✗</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Tidak, Jangan Kurangi Kas</strong>
+                                    <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="debt-cash-preview" id="cashPreview"></div>
+                    </div>
+
+                    <div class="debt-section-title">📅 Jatuh Tempo</div>
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Tanggal Jatuh Tempo *</label>
+                        <input type="date" class="debt-form-input" id="addDueDate">
+                    </div>
+
+                    <div class="debt-section-title">📝 Catatan</div>
+                    <div class="debt-form-group">
+                        <textarea class="debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
+                    </div>
+
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="debt-btn debt-btn-primary" onclick="debtModule.saveNewDebt()">Simpan Hutang</button>
+                </div>
+            </div>
+        `;
+
+        this.addAutocompleteStyles();
+
+        const today = new Date();
+        today.setDate(today.getDate() + 30);
+        document.body.appendChild(modal);
+
+        setTimeout(() => {
+            modal.classList.add('active');
+            document.getElementById('addDueDate').value = today.toISOString().split('T')[0];
+            this.updateCashPreview();
+        }, 10);
+    },
+
+    addAutocompleteStyles() {
+        if (document.getElementById('autocomplete-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'autocomplete-styles';
+        style.textContent = `
+            .customer-autocomplete-list {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                max-height: 200px;
+                overflow-y: auto;
+                z-index: 1000;
+                margin-top: 4px;
+            }
+            .customer-list-header {
+                padding: 8px 12px;
+                background: #f1f5f9;
+                font-size: 12px;
+                color: #64748b;
+                font-weight: 600;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .customer-list-item {
+                padding: 10px 12px;
+                cursor: pointer;
+                border-bottom: 1px solid #f1f5f9;
+                transition: background 0.2s;
+            }
+            .customer-list-item:hover {
+                background: #f8fafc;
+            }
+            .customer-list-item:last-child {
+                border-bottom: none;
+            }
+            .customer-list-name {
+                font-weight: 500;
+                color: #1e293b;
+                margin-bottom: 2px;
+            }
+            .customer-list-phone {
+                font-size: 12px;
+                color: #64748b;
+            }
+            .customer-list-empty {
+                padding: 16px;
+                text-align: center;
+                color: #94a3b8;
+                font-size: 14px;
+            }
+            .customer-highlight {
+                background: #dbeafe;
+                color: #1d4ed8;
+                font-weight: 600;
+            }
+        `;
+        document.head.appendChild(style);
+    },
+
+    showCustomerList() {
+        const list = document.getElementById('customerList');
+        if (list) list.style.display = 'block';
+    },
+
+    hideCustomerList() {
+        const list = document.getElementById('customerList');
+        if (list) list.style.display = 'none';
+    },
+
+    // Hanya tampilkan suggestion saat user mengetik (minimal 2 karakter)
+    handleNameInput(value) {
+        const list = document.getElementById('customerList');
+        if (!list) return;
+
+        // Minimal 2 karakter untuk menampilkan suggestion
+        if (value.length < 2) {
+            list.style.display = 'none';
+            return;
+        }
+
+        const customers = this.getUniqueCustomers();
+        const searchLower = value.toLowerCase();
+        const filtered = customers.filter(c => 
+            c.name.toLowerCase().includes(searchLower)
+        );
+
+        if (filtered.length === 0) {
+            list.style.display = 'none';
+            return;
+        }
+
+        // Tampilkan hasil pencarian
+        list.innerHTML = `
+            <div class="customer-list-header">🔍 Pelanggan ditemukan:</div>
+            ${filtered.map(c => {
+                const regex = new RegExp(`(${value})`, 'gi');
+                const highlightedName = c.name.replace(regex, '<span class="customer-highlight">$1</span>');
+                return `
+                    <div class="customer-list-item" onclick="debtModule.selectCustomer('${c.name}', '${c.phone || ''}')">
+                        <div class="customer-list-name">${highlightedName}</div>
+                        ${c.phone ? `<div class="customer-list-phone">📱 ${c.phone}</div>` : ''}
+                    </div>
+                `;
+            }).join('')}
+        `;
+
+        list.style.display = 'block';
+    },
+
+    selectCustomer(name, phone) {
+        document.getElementById('addCustomerName').value = name;
+        if (phone) {
+            document.getElementById('addCustomerPhone').value = phone;
+        }
+        this.hideCustomerList();
+    },
+
+    getCurrentCash() {
+        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
+            return dataManager.data.settings.currentCash || 0;
+        }
+        return 0;
+    },
+
+    updateCashPreview() {
+        const total = this.calculateTotalOnly();
+        const dp = parseInt(document.getElementById('addDP')?.value) || 0;
+        const reduceCash = document.querySelector('input[name="reduceCash"]:checked')?.value === 'yes';
+        const currentCash = this.getCurrentCash();
+
+        const previewDiv = document.getElementById('cashPreview');
+        if (!previewDiv) return;
+
+        if (reduceCash) {
+            const newCash = currentCash - (total - dp);
+            const isNegative = newCash < 0;
+
+            previewDiv.innerHTML = `
+                <div class="debt-cash-calculation ${isNegative ? 'negative' : ''}">
+                    <div class="calc-row"><span>Kas saat ini:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                    <div class="calc-row minus"><span>Total Hutang:</span><span>- ${this.formatRupiah(total)}</span></div>
+                    ${dp > 0 ? `<div class="calc-row plus"><span>DP Masuk:</span><span>+ ${this.formatRupiah(dp)}</span></div>` : ''}
+                    <div class="calc-row total"><span>Kas setelahnya:</span><span class="${isNegative ? 'negative-amount' : ''}">${this.formatRupiah(newCash)}</span></div>
+                    ${isNegative ? `<div class="calc-warning">⚠️ Kas akan minus! Pastikan ada cukup uang di laci.</div>` : ''}
+                </div>
+            `;
         } else {
-            html += 'Belum ada aktivitas sync';
+            const newCash = currentCash + dp;
+            previewDiv.innerHTML = `
+                <div class="debt-cash-calculation">
+                    <div class="calc-row"><span>Kas saat ini:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                    <div class="calc-row info"><span>Mode:</span><span>Tidak mengurangi kas</span></div>
+                    ${dp > 0 ? `<div class="calc-row plus"><span>DP Masuk:</span><span>+ ${this.formatRupiah(dp)}</span></div>` : ''}
+                    <div class="calc-row total"><span>Kas setelahnya:</span><span>${this.formatRupiah(newCash)}</span></div>
+                </div>
+            `;
         }
-        html += '</div></div>';
-
-        // Debug Panel
-        html += '<div class="card" style="border:2px solid #9b59b6;margin-bottom:15px;">';
-        html += '<div class="card-header" onclick="document.getElementById(\'debugPanel\').style.display=document.getElementById(\'debugPanel\').style.display===\'none\'?\'block\':\'none\'" style="cursor:pointer;">';
-        html += '<span class="card-title">🐛 Debug Panel (Klik)</span><span style="float:right;">▼</span></div>';
-        html += '<div id="debugPanel" style="display:none;padding:10px;background:#f8f9fa;">';
-        html += '<div style="background:#2c3e50;color:#ecf0f1;padding:8px;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;margin-bottom:8px;">';
-        html += recentLogs || '<span style="color:#7f8c8d;">No logs...</span>';
-        html += '</div>';
-        html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-        html += '<button onclick="backupModule.clearDebugLogs();backupModule.render();" style="flex:1;padding:8px;background:#e74c3c;color:white;border:none;border-radius:4px;font-size:11px;">Clear Logs</button>';
-        html += '<button onclick="backupModule.inspectData()" style="flex:1;padding:8px;background:#3498db;color:white;border:none;border-radius:4px;font-size:11px;">Inspect Data</button>';
-        html += '<button onclick="backupModule.testConnection()" style="flex:1;padding:8px;background:#27ae60;color:white;border:none;border-radius:4px;font-size:11px;">Test GAS</button>';
-        html += '<button onclick="backupModule.checkCloudData()" style="flex:1;padding:8px;background:#FF9800;color:white;border:none;border-radius:4px;font-size:11px;">Cek Cloud</button>';
-        html += '</div></div></div>';
-
-        // Data Summary
-        html += '<div class="card" style="border:2px solid #3498db;margin-bottom:15px;">';
-        html += '<div class="card-header"><span class="card-title">📦 Data Lokal: ' + storeName + '</span></div>';
-        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;">';
-        html += '<div style="background:#e3f2fd;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Produk</div><div style="font-size:20px;font-weight:bold;color:#2196F3;">' + products + '</div></div>';
-        html += '<div style="background:#e8f5e9;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Kategori</div><div style="font-size:20px;font-weight:bold;color:#4CAF50;">' + categories + '</div></div>';
-        html += '<div style="background:#fff3e0;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Transaksi</div><div style="font-size:20px;font-weight:bold;color:#FF9800;">' + transactions + '</div></div>';
-        html += '<div style="background:#fce4ec;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Arus Kas</div><div style="font-size:20px;font-weight:bold;color:#E91E63;">' + cashTrans + '</div></div>';
-        html += '<div style="background:#f3e5f5;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Hutang</div><div style="font-size:20px;font-weight:bold;color:#9C27B0;">' + debts + '</div></div>';
-        html += '<div style="background:#e0f2f1;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Kas</div><div style="font-size:14px;font-weight:bold;color:#009688;">' + this.formatRupiah(currentCash) + '</div></div>';
-        html += '</div></div>';
-
-        // Provider Selection
-        html += '<div class="card" style="margin-bottom:15px;">';
-        html += '<div class="card-header"><span class="card-title">☁️ Metode Backup</span></div>';
-        html += '<div style="display:flex;gap:10px;padding:10px;">';
-        
-        var localStyle = this.currentProvider === 'local' ? 'border-color:#4CAF50;background:#e8f5e9;' : 'border-color:#ddd;background:#fff;';
-        html += '<div onclick="backupModule.setProvider(\'local\')" style="flex:1;padding:15px;border:2px solid;border-radius:8px;text-align:center;cursor:pointer;' + localStyle + '">';
-        html += '<div style="font-size:28px;">💾</div><div style="font-weight:600;font-size:14px;">Local File</div></div>';
-        
-        var sheetStyle = this.currentProvider === 'googlesheet' ? 'border-color:#4CAF50;background:#e8f5e9;' : 'border-color:#ddd;background:#fff;';
-        html += '<div onclick="backupModule.setProvider(\'googlesheet\')" style="flex:1;padding:15px;border:2px solid;border-radius:8px;text-align:center;cursor:pointer;' + sheetStyle + '">';
-        html += '<div style="font-size:28px;">📊</div><div style="font-weight:600;font-size:14px;">Google Sheets</div></div>';
-        
-        html += '</div></div>';
-
-        // Google Sheets Config
-        if (this.currentProvider === 'googlesheet') {
-            html += '<div class="card" style="border:2px solid #2196F3;margin-bottom:15px;">';
-            html += '<div class="card-header"><span class="card-title">📊 Google Sheets Configuration</span></div>';
-            html += '<div style="padding:10px;">';
-            
-            html += '<div style="margin-bottom:12px;">';
-            html += '<label style="display:block;margin-bottom:5px;font-size:13px;font-weight:600;">URL Web App GAS:</label>';
-            html += '<input type="text" id="gasUrl" value="' + (this.gasUrl || '') + '" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">';
-            html += '</div>';
-            
-            html += '<button onclick="backupModule.saveUrl()" style="width:100%;background:#667eea;color:white;border:none;padding:12px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">💾 Simpan & Validasi URL</button>';
-            
-            if (this.gasUrl) {
-                var lastSync = this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah';
-                html += '<div style="padding:10px;background:#e8f5e9;border-radius:6px;font-size:12px;margin-bottom:10px;">';
-                html += '✅ URL tersimpan<br>';
-                html += '<small>Last sync: ' + lastSync + '</small>';
-                html += '</div>';
-                
-                // PINDAH DEVICE
-                html += '<div style="background:#e3f2fd;border-radius:8px;padding:12px;margin-bottom:10px;border:2px solid #2196F3;">';
-                html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px;color:#1565c0;">📥 PINDAH DEVICE</div>';
-                html += '<button onclick="backupModule.downloadData()" style="width:100%;padding:15px;background:#2196F3;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:14px;">';
-                html += '📥 DOWNLOAD DATA DARI CLOUD';
-                html += '</button>';
-                html += '</div>';
-                
-                // Sync Controls
-                html += '<div style="background:#fff3e0;border-radius:8px;padding:12px;margin-bottom:10px;">';
-                html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">🔄 Auto Sync</div>';
-                
-                var autoBg = this.isAutoSyncEnabled ? '#4CAF50' : '#ccc';
-                var autoPos = this.isAutoSyncEnabled ? '22px' : '2px';
-                html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px;background:#f5f5f5;border-radius:6px;">';
-                html += '<div><div style="font-size:13px;font-weight:600;">Auto Sync</div><div style="font-size:11px;color:#666;">Upload & Cek Download setiap 3 menit</div></div>';
-                html += '<div onclick="backupModule.toggleAutoSync()" style="cursor:pointer;width:44px;height:24px;background:' + autoBg + ';border-radius:12px;position:relative;transition:all 0.3s;">';
-                html += '<div style="width:20px;height:20px;background:white;border-radius:50%;position:absolute;top:2px;left:' + autoPos + ';transition:all 0.3s;"></div></div></div>';
-                
-                html += '<button onclick="backupModule.uploadData()" style="width:100%;padding:12px;background:#4CAF50;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;margin-bottom:8px;">';
-                html += '⬆️ UPLOAD KE CLOUD';
-                html += '</button>';
-                
-                html += '</div>';
-            }
-            html += '</div></div>';
-        }
-
-        // Local Backup
-        html += '<div class="card" style="margin-bottom:15px;">';
-        html += '<div class="card-header"><span class="card-title">💾 Backup Local (JSON)</span></div>';
-        html += '<div style="padding:10px;">';
-        html += '<button onclick="backupModule.downloadJSON()" style="width:100%;padding:12px;background:#667eea;color:white;border:none;border-radius:6px;cursor:pointer;margin-bottom:10px;font-size:13px;font-weight:600;">⬇️ Download JSON Backup</button>';
-        html += '<div style="border:2px dashed #ddd;border-radius:6px;padding:10px;text-align:center;">';
-        html += '<label style="font-size:12px;color:#666;cursor:pointer;">';
-        html += '<input type="file" accept=".json" onchange="backupModule.importJSON(this)" style="display:none;">';
-        html += '📤 Klik untuk Import JSON';
-        html += '</label>';
-        html += '</div>';
-        html += '</div></div>';
-
-        // ZONA BAHAYA - RESET
-        html += '<div class="card" style="border:2px solid #e74c3c;">';
-        html += '<div class="card-header"><span class="card-title" style="color:#e74c3c;">🗑️ Zona Bahaya</span></div>';
-        html += '<div style="padding:10px;">';
-
-        // Reset Lokal
-        html += '<button onclick="backupModule.resetLocal()" style="width:100%;background:#e74c3c;color:white;border:none;padding:12px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;margin-bottom:8px;">';
-        html += '🗑️ HAPUS DATA LOKAL SAJA';
-        html += '</button>';
-        html += '<div style="font-size:11px;color:#666;margin-bottom:15px;text-align:center;">Data di cloud tetap ada</div>';
-
-        // Reset Cloud (hanya jika ada URL)
-        if (this.gasUrl) {
-            html += '<button onclick="backupModule.resetCloud()" style="width:100%;background:#9C27B0;color:white;border:none;padding:12px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;margin-bottom:8px;">';
-            html += '☁️ RESET CLOUD (Google Sheets)';
-            html += '</button>';
-            html += '<div style="font-size:11px;color:#666;margin-bottom:15px;text-align:center;">Semua data di Google Sheets dihapus</div>';
-            
-            // Reset BOTH
-            html += '<button onclick="backupModule.resetBoth()" style="width:100%;background:#000;color:white;border:none;padding:12px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;">';
-            html += '💀 RESET TOTAL (Lokal + Cloud)';
-            html += '</button>';
-            html += '<div style="font-size:11px;color:#666;text-align:center;">Hapus semua data dimana-mana</div>';
-        }
-
-        html += '</div></div>';
-
-        html += '</div>';
-        container.innerHTML = html;
     },
 
-    setProvider: function(provider) {
-        this.log('INFO', 'Provider changed to: ' + provider);
-        this.currentProvider = provider;
-        this.render();
+    calculateTotalOnly() {
+        let total = 0;
+        for (let i = 0; i < this.itemCount; i++) {
+            const qty = parseInt(document.getElementById(`itemQty${i}`)?.value) || 0;
+            const price = parseInt(document.getElementById(`itemPrice${i}`)?.value) || 0;
+            total += qty * price;
+        }
+        return total;
     },
 
-    saveUrl: function() {
-        var input = document.getElementById('gasUrl');
-        if (!input) return;
-        var url = input.value.trim();
-        
-        if (!url || url.length < 20 || !url.includes('script.google.com')) {
-            alert('❌ URL tidak valid!');
+    addItemField() {
+        const container = document.getElementById('addDebtItems');
+        const index = this.itemCount++;
+
+        const div = document.createElement('div');
+        div.className = 'debt-item-input';
+        div.innerHTML = `
+            <div class="debt-item-header-row">
+                <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName${index}">
+                <button class="debt-remove-item" onclick="this.closest('.debt-item-input').remove(); debtModule.calculateTotal(); debtModule.updateCashPreview();">✕</button>
+            </div>
+            <div class="debt-item-row">
+                <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty${index}" value="1" min="1" onchange="debtModule.calculateTotal(); debtModule.updateCashPreview();">
+                <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice${index}" onchange="debtModule.calculateTotal(); debtModule.updateCashPreview();">
+            </div>
+        `;
+        container.appendChild(div);
+        this.updateCashPreview();
+    },
+
+    calculateTotal() {
+        const total = this.calculateTotalOnly();
+        document.getElementById('addDebtTotal').textContent = this.formatRupiah(total);
+        this.updateCashPreview();
+        return total;
+    },
+
+    saveNewDebt() {
+        const customerName = document.getElementById('addCustomerName').value.trim();
+        const customerPhone = document.getElementById('addCustomerPhone').value.trim();
+        const dueDate = document.getElementById('addDueDate').value;
+        const dp = parseInt(document.getElementById('addDP').value) || 0;
+        const notes = document.getElementById('addNotes').value.trim();
+        const reduceCash = document.querySelector('input[name="reduceCash"]:checked').value === 'yes';
+
+        // Validasi: Nama wajib, telepon opsional, dueDate wajib
+        if (!customerName || !dueDate) {
+            this.showToast('Nama pelanggan dan tanggal jatuh tempo wajib diisi!', 'error');
             return;
         }
-        
-        this.gasUrl = url;
-        localStorage.setItem(this.GAS_URL_KEY, url);
-        this.log('INFO', 'GAS URL saved');
-        this.testConnection();
-    },
 
-    toggleAutoSync: function() {
-        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
-        localStorage.setItem(this.AUTO_SYNC_KEY, this.isAutoSyncEnabled);
-        
-        if (this.isAutoSyncEnabled) {
-            this.startAutoSync();
-            this.showToast('🟢 Auto sync diaktifkan');
-        } else {
-            this.stopAutoSync();
-            this.showToast('⚪ Auto sync dimatikan');
+        const items = [];
+        let total = 0;
+        for (let i = 0; i < this.itemCount; i++) {
+            const name = document.getElementById(`itemName${i}`)?.value.trim();
+            const qty = parseInt(document.getElementById(`itemQty${i}`)?.value) || 0;
+            const price = parseInt(document.getElementById(`itemPrice${i}`)?.value) || 0;
+
+            if (name && qty > 0 && price > 0) {
+                items.push({ name, qty, price });
+                total += qty * price;
+            }
         }
-        this.render();
-    },
 
-    startAutoSync: function() {
-        this.stopAutoSync();
-        var self = this;
-        
-        this.performTwoWaySync();
-        
-        this.autoSyncInterval = setInterval(function() {
-            self.performTwoWaySync();
-        }, 180000);
-        
-        this.log('INFO', 'Auto Sync started (3 min interval)');
-    },
-
-    stopAutoSync: function() {
-        if (this.autoSyncInterval) {
-            clearInterval(this.autoSyncInterval);
-            this.autoSyncInterval = null;
-            this.log('INFO', 'Auto Sync stopped');
-        }
-    },
-
-    performTwoWaySync: function() {
-        var self = this;
-        this.log('INFO', 'Auto Sync: Starting 2-way sync');
-        
-        this.uploadData(true, function(uploadSuccess) {
-            if (uploadSuccess) {
-                self.checkAndDownloadIfNeeded();
-            }
-        });
-    },
-
-    checkAndDownloadIfNeeded: function() {
-        var self = this;
-        
-        this.getCloudTimestamp(function(cloudTime) {
-            if (!cloudTime) {
-                self.log('WARN', 'Could not get cloud timestamp');
-                return;
-            }
-            
-            var localTime = self.lastSyncTime;
-            
-            if (cloudTime > localTime) {
-                self.log('INFO', 'Cloud has newer data, auto-downloading...');
-                self.showToast('📥 Data cloud lebih baru, mengunduh...');
-                self.downloadData(true);
-            }
-        });
-    },
-
-    getCloudTimestamp: function(callback) {
-        var self = this;
-        var script = document.createElement('script');
-        var cb = 'ts_check_' + Date.now();
-        
-        window[cb] = function(result) {
-            if (result && result.success && result.timestamp) {
-                callback(result.timestamp);
-            } else {
-                callback(null);
-            }
-            delete window[cb];
-            if (script.parentNode) script.parentNode.removeChild(script);
-        };
-        
-        script.onerror = function() {
-            callback(null);
-            delete window[cb];
-        };
-        
-        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb;
-        document.head.appendChild(script);
-        
-        setTimeout(function() {
-            if (window[cb]) {
-                callback(null);
-                delete window[cb];
-                if (script.parentNode) script.parentNode.removeChild(script);
-            }
-        }, 10000);
-    },
-
-    // ============================================
-    // UPLOAD
-    // ============================================
-    
-    uploadData: function(silent, callback) {
-        var self = this;
-        this.log('INFO', 'Upload started');
-        
-        if (!this.gasUrl) {
-            if (!silent) alert('❌ URL belum diisi!');
-            if (callback) callback(false);
+        if (items.length === 0) {
+            this.showToast('Minimal satu produk harus diisi!', 'error');
             return;
         }
-        
-        var data = this.getDataFromStorage();
-        
-        // KHUSUS: Izinkan upload meski kosong (untuk reset cloud via sync)
-        if (!silent) this.showToast('⬆️ Mengupload...');
-        
-        var payload = {
-            action: 'sync',
-            data: data,
-            timestamp: new Date().toISOString(),
-            device: navigator.userAgent
-        };
-        
-        fetch(this.gasUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        })
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(result) {
-            self.handleUploadSuccess(result, silent, callback);
-        })
-        .catch(function(error) {
-            self.log('ERROR', 'Fetch upload failed: ' + error.message);
-            self.uploadViaJSONP(payload, silent, callback);
-        });
-    },
-    
-    uploadViaJSONP: function(payload, silent, callback) {
-        var self = this;
-        var jsonStr = JSON.stringify(payload);
-        
-        if (jsonStr.length > 8000) {
-            this.uploadViaIframe(payload, silent, callback);
+
+        if (dp > total) {
+            this.showToast('DP tidak boleh lebih besar dari total!', 'error');
             return;
         }
-        
-        var encoded = encodeURIComponent(jsonStr);
-        var script = document.createElement('script');
-        var callbackName = 'upload_cb_' + Date.now();
-        
-        window[callbackName] = function(result) {
-            self.handleUploadSuccess(result, silent, callback);
-            delete window[callbackName];
-            if (script.parentNode) script.parentNode.removeChild(script);
-        };
-        
-        script.onerror = function() {
-            self.log('ERROR', 'JSONP upload error');
-            if (!silent) self.showToast('❌ Upload gagal');
-            delete window[callbackName];
-            self.uploadViaIframe(payload, silent, callback);
-        };
-        
-        var url = this.gasUrl + '?callback=' + callbackName + '&data=' + encoded;
-        script.src = url;
-        document.head.appendChild(script);
-        
-        setTimeout(function() {
-            if (window[callbackName]) {
-                if (!silent) self.showToast('❌ Timeout');
-                delete window[callbackName];
-                if (script.parentNode) script.parentNode.removeChild(script);
-                if (callback) callback(false);
-            }
-        }, 15000);
-    },
 
-    uploadViaIframe: function(payload, silent, callback) {
-        var self = this;
-        
-        var formId = 'up_form_' + Date.now();
-        var iframeId = 'up_ifrm_' + Date.now();
-        
-        var form = document.createElement('form');
-        form.id = formId;
-        form.method = 'POST';
-        form.action = this.gasUrl;
-        form.target = iframeId;
-        form.style.display = 'none';
-        
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'data';
-        input.value = JSON.stringify(payload);
-        form.appendChild(input);
-        
-        var iframe = document.createElement('iframe');
-        iframe.id = iframeId;
-        iframe.name = iframeId;
-        iframe.style.display = 'none';
-        
-        document.body.appendChild(form);
-        document.body.appendChild(iframe);
-        
-        iframe.onload = function() {
-            try {
-                var doc = iframe.contentDocument || iframe.contentWindow.document;
-                var text = doc.body.innerText || doc.body.textContent;
-                var result = JSON.parse(text);
-                self.handleUploadSuccess(result, silent, callback);
-            } catch(e) {
-                self.lastSyncTime = new Date().toISOString();
-                localStorage.setItem(self.LAST_SYNC_KEY, self.lastSyncTime);
-                if (!silent) self.showToast('✅ Upload selesai');
-                self.render();
-                if (callback) callback(true);
-            }
-            setTimeout(function() {
-                var f = document.getElementById(formId);
-                var i = document.getElementById(iframeId);
-                if (f) f.remove();
-                if (i) i.remove();
-            }, 2000);
-        };
-        
-        form.submit();
-    },
+        if (reduceCash) {
+            const currentCash = this.getCurrentCash();
+            const cashNeeded = total - dp;
 
-    handleUploadSuccess: function(result, silent, callback) {
-        if (result && result.success) {
-            this.lastSyncTime = new Date().toISOString();
-            localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-            
-            var msg = '✅ Upload OK!';
-            if (result.counts) {
-                msg += ' P:' + result.counts.products + ' T:' + result.counts.transactions;
+            if (currentCash < cashNeeded) {
+                if (!confirm(`⚠️ Peringatan!\n\nKas saat ini: ${this.formatRupiah(currentCash)}\nYang dibutuhkan: ${this.formatRupiah(cashNeeded)}\n\nKas akan menjadi MINUS (${this.formatRupiah(currentCash - cashNeeded)})\n\nLanjutkan?`)) {
+                    return;
+                }
             }
-            
-            if (!silent) this.showToast(msg);
-            this.log('INFO', 'Upload success', result.counts);
-            this.render();
-            if (callback) callback(true);
-        } else {
-            this.log('ERROR', 'Upload failed', result);
-            if (!silent) this.showToast('❌ Upload gagal');
-            if (callback) callback(false);
         }
-    },
 
-    // ============================================
-    // DOWNLOAD
-    // ============================================
-    
-    downloadData: function(silent) {
-        var self = this;
-        
-        if (!silent) {
-            if (!confirm('📥 Download akan mengganti data lokal dengan data dari cloud.\n\nLanjutkan?')) return;
-        }
-        
-        if (!this.gasUrl) {
-            if (!silent) alert('❌ URL belum diisi!');
-            return;
-        }
-        
-        if (!silent) this.showToast('⬇️ Mengunduh data...');
-        this.log('INFO', 'Download started');
-        
-        fetch(this.gasUrl + '?action=restore', {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-        })
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(result) {
-            self.handleDownloadResult(result, silent);
-        })
-        .catch(function(error) {
-            self.log('WARN', 'Fetch download failed: ' + error.message);
-            self.downloadViaJSONP(silent);
-        });
-    },
-    
-    downloadViaJSONP: function(silent) {
-        var self = this;
-        
-        var script = document.createElement('script');
-        var cb = 'dl_cb_' + Date.now();
-        
-        var cleanup = function() {
-            delete window[cb];
-            if (script.parentNode) script.parentNode.removeChild(script);
+        const newDebt = {
+            id: this.generateId(),
+            customerName,
+            customerPhone: customerPhone || '', // Bisa kosong
+            date: new Date().toISOString().split('T')[0],
+            dueDate,
+            items,
+            total,
+            paid: dp,
+            status: dp >= total ? 'paid' : 'pending',
+            paidDate: dp >= total ? new Date().toISOString().split('T')[0] : null,
+            notes,
+            reduceCash,
+            payments: dp > 0 ? [{
+                date: new Date().toISOString(),
+                amount: dp,
+                method: 'cash',
+                note: 'DP/ Pembayaran awal',
+                addToCash: true
+            }] : []
         };
-        
-        window[cb] = function(result) {
-            self.handleDownloadResult(result, silent);
-            cleanup();
-        };
-        
-        script.onerror = function() {
-            self.log('ERROR', 'JSONP download failed');
-            if (!silent) self.showToast('❌ Gagal terhubung ke cloud');
-            cleanup();
-        };
-        
-        var url = this.gasUrl + '?action=restore&callback=' + cb + '&_t=' + Date.now();
-        script.src = url;
-        document.head.appendChild(script);
-        
-        setTimeout(function() {
-            if (window[cb]) {
-                self.log('ERROR', 'Download timeout');
-                if (!silent) self.showToast('❌ Timeout');
-                cleanup();
+
+        // PROSES PENGURANGAN KAS - menggunakan DATABASE HIFZI APPS
+        if (reduceCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) {
+                dataManager.data.settings = {};
             }
-        }, 20000);
-    },
-    
-    handleDownloadResult: function(result, silent) {
-        this.log('INFO', 'Download result received', result);
-        
-        if (result && result.success && result.data) {
-            var d = result.data;
-            
-            if (!d.products) d.products = [];
-            if (!d.categories) d.categories = [];
-            if (!d.transactions) d.transactions = [];
-            if (!d.cashTransactions) d.cashTransactions = [];
-            if (!d.debts) d.debts = [];
-            if (!d.settings) d.settings = {};
-            if (!d.kasir) d.kasir = {isOpen: false, openTime: null, closeTime: null, date: null};
-            
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(d));
-            
-            if (typeof dataManager !== 'undefined' && dataManager) {
-                dataManager.data = d;
-                if (dataManager.save) dataManager.save();
+
+            dataManager.data.settings.currentCash -= total;
+
+            if (dp > 0) {
+                dataManager.data.settings.currentCash += dp;
             }
-            
-            this.lastSyncTime = new Date().toISOString();
-            localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-            
-            var msg = '✅ Download berhasil!\n' +
-                      '📦 Produk: ' + d.products.length + '\n' +
-                      '📝 Transaksi: ' + d.transactions.length;
-            
-            this.log('INFO', 'Download success');
-            
-            if (!silent) {
-                this.showToast(msg);
-                setTimeout(function() {
-                    location.reload();
-                }, 2000);
-            } else {
-                this.showToast('✅ Auto-download selesai');
-                this.render();
-            }
-            
-            if (typeof app !== 'undefined' && app.updateHeader) {
+
+            dataManager.save();
+
+            if (typeof app !== 'undefined') {
                 app.updateHeader();
             }
-        } else {
-            this.log('ERROR', 'Download failed', result);
-            if (!silent) {
-                var errMsg = result ? result.message : 'Tidak ada response';
-                this.showToast('❌ Download gagal: ' + errMsg);
-            }
-        }
-    },
 
-    // ============================================
-    // RESET FUNCTIONS
-    // ============================================
-    
-    resetLocal: function() {
-        if (!confirm('⚠️ HAPUS SEMUA DATA LOKAL?\n\nData di cloud TIDAK terhapus.\n\nLanjutkan?')) return;
-        if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') {
-            alert('Dibatalkan');
-            return;
-        }
-        
-        this.log('INFO', 'Resetting local data');
-        localStorage.removeItem(this.STORAGE_KEY);
-        
-        if (typeof dataManager !== 'undefined' && dataManager) {
-            dataManager.data = {
-                categories: [
-                    { id: 'all', name: 'Semua', icon: '📦' },
-                    { id: 'handphone', name: 'Handphone', icon: '📱' },
-                    { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
-                    { id: 'pulsa', name: 'Pulsa', icon: '💳' },
-                    { id: 'servis', name: 'Servis', icon: '🔧' }
-                ],
-                products: [], 
-                transactions: [], 
-                cashTransactions: [], 
-                debts: [], 
-                settings: {},
-                kasir: {isOpen: false, openTime: null, closeTime: null, date: null}
+            const cashTransaction = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'out',
+                category: 'debt_create',
+                description: `Hutang baru ${customerName} - ${newDebt.id}`,
+                amount: total - dp,
+                balance: dataManager.data.settings.currentCash
             };
-            if (dataManager.save) dataManager.save();
+
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push(cashTransaction);
+            dataManager.save();
+        } else if (dp > 0 && !reduceCash) {
+            if (!dataManager.data.settings) {
+                dataManager.data.settings = {};
+            }
+            dataManager.data.settings.currentCash += dp;
+            dataManager.save();
+
+            if (typeof app !== 'undefined') {
+                app.updateHeader();
+            }
         }
-        
-        this.showToast('✅ Data lokal dihapus!');
-        setTimeout(function() {
-            location.reload();
-        }, 1500);
+
+        this.debts.push(newDebt);
+        this.saveDebts();
+
+        this.closeModal();
+        this.render();
+
+        let msg = `Hutang ${customerName} sebesar ${this.formatRupiah(total)} tersimpan`;
+        if (reduceCash) {
+            msg += ` (Kas berkurang ${this.formatRupiah(total - dp)})`;
+        } else {
+            msg += ` (Tidak kurangi kas)`;
+        }
+        if (dp > 0) msg += ` - DP: ${this.formatRupiah(dp)}`;
+
+        this.showToast(msg, 'success');
+        this.itemCount = 1;
     },
 
-    resetCloud: function() {
-        var self = this;
-        
-        if (!this.gasUrl) {
-            alert('❌ URL belum diisi!');
+    // ============================================
+    // HAPUS HUTANG
+    // ============================================
+
+    confirmDelete(debtId) {
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'deleteModal';
+        modal.innerHTML = `
+            <div class="debt-modal" style="max-width: 400px;">
+                <div class="debt-modal-header" style="background: #fee2e2;">
+                    <div class="debt-modal-title" style="color: #dc2626;">⚠️ Hapus Hutang</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div style="text-align: center; padding: 20px 0;">
+                        <div style="font-size: 64px; margin-bottom: 16px;">🗑️</div>
+                        <p style="font-size: 16px; color: #1e293b; margin-bottom: 8px;">Yakin ingin menghapus hutang ini?</p>
+                        <p style="font-size: 14px; color: #64748b;">
+                            <strong>#${debt.id}</strong> - ${debt.customerName}<br>
+                            Total: ${this.formatRupiah(debt.total)}<br>
+                            ${debt.reduceCash ? '<span style="color: #dc2626;">⚠️ Hutang ini mengurangi kas</span>' : ''}
+                        </p>
+                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin-top: 16px;">
+                            <p style="font-size: 13px; color: #dc2626; margin: 0;">⚠️ Tindakan ini tidak dapat dibatalkan!</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="debt-btn" style="background: #dc2626; color: white;" onclick="debtModule.deleteDebt('${debtId}')">Ya, Hapus</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+    },
+
+    deleteDebt(debtId) {
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const remaining = debt.total - debt.paid;
+
+        if (debt.reduceCash && remaining > 0 && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) {
+                dataManager.data.settings = {};
+            }
+
+            dataManager.data.settings.currentCash += remaining;
+            dataManager.save();
+
+            if (typeof app !== 'undefined') {
+                app.updateHeader();
+            }
+
+            const cashTransaction = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'in',
+                category: 'debt_cancel',
+                description: `Pembatalan hutang ${debt.customerName} - ${debt.id}`,
+                amount: remaining,
+                balance: dataManager.data.settings.currentCash
+            };
+
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push(cashTransaction);
+            dataManager.save();
+
+            this.showToast(`Hutang dihapus & kas dikembalikan ${this.formatRupiah(remaining)}`, 'success');
+        } else {
+            this.showToast('Hutang berhasil dihapus!', 'success');
+        }
+
+        const index = this.debts.findIndex(d => d.id === debtId);
+        if (index === -1) return;
+
+        this.debts.splice(index, 1);
+        this.saveDebts();
+        this.closeModal();
+        this.render();
+    },
+
+    // ============================================
+    // PEMBAYARAN HUTANG
+    // ============================================
+
+    openPaymentModal(debtId) {
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const remaining = debt.total - debt.paid;
+        const currentCash = this.getCurrentCash();
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'paymentModal';
+        modal.innerHTML = `
+            <div class="debt-modal">
+                <div class="debt-modal-header">
+                    <div class="debt-modal-title">💰 Pembayaran Hutang</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div class="debt-amount-display">
+                        <div class="debt-amount-label">Sisa Hutang</div>
+                        <div class="debt-amount-value">${this.formatRupiah(remaining)}</div>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Nama Pelanggan</label>
+                        <input type="text" class="debt-form-input" value="${debt.customerName}" readonly>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">No. Telepon</label>
+                        <input type="text" class="debt-form-input" value="${debt.customerPhone || '-'}" readonly>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Jumlah Pembayaran</label>
+                        <input type="number" class="debt-form-input" id="paymentAmount" value="${remaining}" max="${remaining}" min="1">
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Metode Pembayaran</label>
+                        <select class="debt-form-select" id="paymentMethod">
+                            <option value="cash">💵 Tunai</option>
+                            <option value="transfer">🏦 Transfer Bank</option>
+                            <option value="qris">📱 QRIS</option>
+                            <option value="ewallet">💳 E-Wallet</option>
+                        </select>
+                    </div>
+
+                    <div class="debt-cash-option">
+                        <div class="debt-cash-option-title">📈 Tambah ke Kas/Laci?</div>
+                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="debt-cash-option-desc">Pilih apakah uang pembayaran ini akan ditambahkan ke saldo kas toko</div>
+                        <div class="debt-cash-toggle">
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="addToCash" value="yes" checked onchange="debtModule.updatePaymentCashPreview(${remaining})">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label"><strong>Ya, Tambah ke Kas</strong><small>Uang masuk ke laci/kas toko</small></span>
+                            </label>
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="addToCash" value="no" onchange="debtModule.updatePaymentCashPreview(${remaining})">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✗</span></span>
+                                <span class="debt-cash-radio-label"><strong>Tidak, Hanya Catat</strong><small>Uang tidak masuk kas</small></span>
+                            </label>
+                        </div>
+                        <div class="debt-cash-preview" id="paymentCashPreview"></div>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Catatan (Opsional)</label>
+                        <input type="text" class="debt-form-input" id="paymentNote" placeholder="Tambahkan catatan...">
+                    </div>
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayment('${debtId}')">Konfirmasi Pembayaran</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => {
+            modal.classList.add('active');
+            this.updatePaymentCashPreview(remaining);
+        }, 10);
+    },
+
+    updatePaymentCashPreview(remaining) {
+        const addToCash = document.querySelector('input[name="addToCash"]:checked')?.value === 'yes';
+        const currentCash = this.getCurrentCash();
+        const previewDiv = document.getElementById('paymentCashPreview');
+
+        if (!previewDiv) return;
+
+        if (addToCash) {
+            const newCash = currentCash + remaining;
+            previewDiv.innerHTML = `
+                <div class="debt-cash-calculation">
+                    <div class="calc-row"><span>Kas saat ini:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                    <div class="calc-row plus"><span>Pembayaran:</span><span>+ ${this.formatRupiah(remaining)}</span></div>
+                    <div class="calc-row total"><span>Kas setelahnya:</span><span class="positive-amount">${this.formatRupiah(newCash)}</span></div>
+                </div>
+            `;
+        } else {
+            previewDiv.innerHTML = `
+                <div class="debt-cash-calculation">
+                    <div class="calc-row"><span>Kas saat ini:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                    <div class="calc-row info"><span>Mode:</span><span>Tidak menambah kas</span></div>
+                    <div class="calc-row total"><span>Kas tetap:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                </div>
+            `;
+        }
+    },
+
+    processPayment(debtId) {
+        const amount = parseInt(document.getElementById('paymentAmount').value) || 0;
+        const method = document.getElementById('paymentMethod').value;
+        const note = document.getElementById('paymentNote').value;
+        const addToCash = document.querySelector('input[name="addToCash"]:checked').value === 'yes';
+
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const remaining = debt.total - debt.paid;
+
+        if (amount <= 0 || amount > remaining) {
+            this.showToast('Jumlah pembayaran tidak valid!', 'error');
             return;
         }
-        
-        if (!confirm('⚠️ YAKIN INGIN RESET CLOUD?\n\nSemua data di Google Sheets akan dihapus!\n\nIni tidak bisa dibatalkan.\n\nLanjutkan?')) {
-            return;
+
+        debt.paid += amount;
+        const isFullyPaid = debt.paid >= debt.total;
+
+        if (isFullyPaid) {
+            debt.status = 'paid';
+            debt.paidDate = new Date().toISOString().split('T')[0];
         }
-        
-        if (prompt('Ketik RESET untuk konfirmasi:') !== 'RESET') {
-            alert('Dibatalkan');
-            return;
-        }
-        
-        this.showToast('🗑️ Mereset cloud...');
-        this.log('INFO', 'Reset cloud started');
-        
-        var payload = {
-            action: 'reset',
-            timestamp: new Date().toISOString(),
-            device: navigator.userAgent
-        };
-        
-        fetch(this.gasUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        })
-        .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
-        .then(function(result) {
-            self.handleResetCloudResult(result);
-        })
-        .catch(function(error) {
-            self.log('ERROR', 'Reset cloud fetch failed: ' + error.message);
-            self.resetCloudViaJSONP();
+
+        if (!debt.payments) debt.payments = [];
+        debt.payments.push({
+            date: new Date().toISOString(),
+            amount: amount,
+            method: method,
+            note: note,
+            addToCash: addToCash
         });
-    },
 
-    resetCloudViaJSONP: function() {
-        var self = this;
-        var payload = { action: 'reset', timestamp: new Date().toISOString() };
-        var encoded = encodeURIComponent(JSON.stringify(payload));
-        
-        var script = document.createElement('script');
-        var cb = 'reset_cb_' + Date.now();
-        
-        window[cb] = function(result) {
-            self.handleResetCloudResult(result);
-            delete window[cb];
-            if (script.parentNode) script.parentNode.removeChild(script);
-        };
-        
-        script.onerror = function() {
-            self.log('ERROR', 'Reset cloud JSONP error');
-            self.showToast('❌ Gagal reset cloud');
-            delete window[cb];
-        };
-        
-        var url = this.gasUrl + '?callback=' + cb + '&data=' + encoded;
-        script.src = url;
-        document.head.appendChild(script);
-        
-        setTimeout(function() {
-            if (window[cb]) {
-                self.showToast('❌ Timeout reset cloud');
-                delete window[cb];
-                if (script.parentNode) script.parentNode.removeChild(script);
+        if (addToCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) {
+                dataManager.data.settings = {};
             }
-        }, 15000);
+            dataManager.data.settings.currentCash += amount;
+            dataManager.save();
+
+            if (typeof app !== 'undefined') {
+                app.updateHeader();
+            }
+
+            const cashTransaction = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'in',
+                category: 'debt_payment',
+                description: `Pembayaran hutang ${debt.customerName} - ${debt.id}`,
+                amount: amount,
+                balance: dataManager.data.settings.currentCash
+            };
+
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push(cashTransaction);
+            dataManager.save();
+        }
+
+        this.saveDebts();
+        this.closeModal();
+        this.render();
+
+        const cashMsg = addToCash ? ' (tambah ke kas)' : ' (tidak tambah kas)';
+        const lunasMsg = isFullyPaid ? ' - LUNAS!' : '';
+        this.showToast(`Pembayaran ${this.formatRupiah(amount)} berhasil${cashMsg}${lunasMsg}!`, 'success');
     },
 
-    handleResetCloudResult: function(result) {
-        if (result && result.success) {
-            this.lastSyncTime = new Date().toISOString();
-            localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-            this.showToast('✅ Cloud berhasil direset!');
-            this.log('INFO', 'Cloud reset success');
-            this.render();
+    // Bayar semua hutang customer
+    payAll(customerName) {
+        const customerDebts = this.debts.filter(d => 
+            d.customerName === customerName && d.status !== 'paid'
+        );
+
+        const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
+        const currentCash = this.getCurrentCash();
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'payAllModal';
+        modal.innerHTML = `
+            <div class="debt-modal">
+                <div class="debt-modal-header">
+                    <div class="debt-modal-title">💰 Bayar Semua Hutang</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div class="debt-amount-display">
+                        <div class="debt-amount-label">Total Hutang ${customerName}</div>
+                        <div class="debt-amount-value">${this.formatRupiah(totalRemaining)}</div>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Jumlah Transaksi</label>
+                        <input type="text" class="debt-form-input" value="${customerDebts.length} transaksi" readonly>
+                    </div>
+
+                    <div class="debt-cash-option">
+                        <div class="debt-cash-option-title">📈 Tambah ke Kas/Laci?</div>
+                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="debt-cash-toggle">
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="payAllAddToCash" value="yes" checked onchange="debtModule.updatePayAllCashPreview(${totalRemaining})">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label"><strong>Ya, Tambah ke Kas</strong><small>Kas bertambah ${this.formatRupiah(totalRemaining)}</small></span>
+                            </label>
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="payAllAddToCash" value="no" onchange="debtModule.updatePayAllCashPreview(${totalRemaining})">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✗</span></span>
+                                <span class="debt-cash-radio-label"><strong>Tidak, Hanya Catat</strong><small>Kas tidak berubah</small></span>
+                            </label>
+                        </div>
+                        <div class="debt-cash-preview" id="payAllCashPreview"></div>
+                    </div>
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayAll('${customerName}')">Bayar Semua</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => {
+            modal.classList.add('active');
+            this.updatePayAllCashPreview(totalRemaining);
+        }, 10);
+    },
+
+    updatePayAllCashPreview(totalRemaining) {
+        const addToCash = document.querySelector('input[name="payAllAddToCash"]:checked')?.value === 'yes';
+        const currentCash = this.getCurrentCash();
+        const previewDiv = document.getElementById('payAllCashPreview');
+
+        if (!previewDiv) return;
+
+        if (addToCash) {
+            const newCash = currentCash + totalRemaining;
+            previewDiv.innerHTML = `
+                <div class="debt-cash-calculation">
+                    <div class="calc-row"><span>Kas saat ini:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                    <div class="calc-row plus"><span>Total Pelunasan:</span><span>+ ${this.formatRupiah(totalRemaining)}</span></div>
+                    <div class="calc-row total"><span>Kas setelahnya:</span><span class="positive-amount">${this.formatRupiah(newCash)}</span></div>
+                </div>
+            `;
         } else {
-            this.log('ERROR', 'Cloud reset failed', result);
-            this.showToast('❌ Gagal reset: ' + (result ? result.message : 'Error'));
+            previewDiv.innerHTML = `
+                <div class="debt-cash-calculation">
+                    <div class="calc-row"><span>Kas saat ini:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                    <div class="calc-row info"><span>Mode:</span><span>Tidak menambah kas</span></div>
+                    <div class="calc-row total"><span>Kas tetap:</span><span>${this.formatRupiah(currentCash)}</span></div>
+                </div>
+            `;
         }
     },
 
-    resetBoth: function() {
-        var self = this;
-        
-        if (!confirm('💀 ANDA YAKIN?\n\nIni akan menghapus:\n1. Semua data di device ini\n2. Semua data di Google Sheets\n\nTIDAK BISA DIBATALKAN!\n\nLanjutkan?')) {
+    processPayAll(customerName) {
+        const customerDebts = this.debts.filter(d => 
+            d.customerName === customerName && d.status !== 'paid'
+        );
+
+        const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
+        const addToCash = document.querySelector('input[name="payAllAddToCash"]:checked').value === 'yes';
+
+        customerDebts.forEach(debt => {
+            const remaining = debt.total - debt.paid;
+            debt.paid = debt.total;
+            debt.status = 'paid';
+            debt.paidDate = new Date().toISOString().split('T')[0];
+
+            if (!debt.payments) debt.payments = [];
+            debt.payments.push({
+                date: new Date().toISOString(),
+                amount: remaining,
+                method: 'cash',
+                note: 'Pelunasan semua hutang',
+                addToCash: addToCash
+            });
+        });
+
+        if (addToCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) {
+                dataManager.data.settings = {};
+            }
+            dataManager.data.settings.currentCash += totalRemaining;
+            dataManager.save();
+
+            if (typeof app !== 'undefined') {
+                app.updateHeader();
+            }
+
+            const cashTransaction = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'in',
+                category: 'debt_payment',
+                description: `Pelunasan semua hutang ${customerName}`,
+                amount: totalRemaining,
+                balance: dataManager.data.settings.currentCash
+            };
+
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push(cashTransaction);
+            dataManager.save();
+        }
+
+        this.saveDebts();
+        this.closeModal();
+        this.render();
+
+        const cashMsg = addToCash ? ' (tambah ke kas)' : ' (tidak tambah kas)';
+        this.showToast(`Semua hutang ${customerName} dilunaskan${cashMsg}!`, 'success');
+    },
+
+    viewPaidHistory(customerName) {
+        const customerDebts = this.debts.filter(d => 
+            d.customerName === customerName && d.status === 'paid'
+        );
+
+        const totalPaid = customerDebts.reduce((sum, d) => sum + d.total, 0);
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'paidHistoryModal';
+        modal.innerHTML = `
+            <div class="debt-modal" style="max-width: 600px;">
+                <div class="debt-modal-header">
+                    <div class="debt-modal-title">📋 Riwayat Hutang Lunas - ${customerName}</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div class="debt-amount-display success">
+                        <div class="debt-amount-label">Total Sudah Dibayar</div>
+                        <div class="debt-amount-value">${this.formatRupiah(totalPaid)}</div>
+                    </div>
+
+                    <div class="debt-history-list">
+                        ${customerDebts.map(debt => `
+                            <div class="debt-history-item">
+                                <div class="debt-history-header">
+                                    <span class="debt-history-id">#${debt.id}</span>
+                                    <span class="debt-history-date">Lunas: ${this.formatDate(debt.paidDate)}</span>
+                                </div>
+                                <div class="debt-history-products">${debt.items.map(i => i.name).join(', ')}</div>
+                                <div class="debt-history-amount">${this.formatRupiah(debt.total)}</div>
+                                ${debt.reduceCash ? '<span class="debt-reduce-badge">📉 Kurangi Kas</span>' : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+    },
+
+    sendWhatsApp(phone, name, amount) {
+        if (!phone) {
+            this.showToast('Nomor telepon tidak tersedia!', 'error');
             return;
         }
-        
-        if (prompt('Ketik HAPUS SEMUA untuk konfirmasi:') !== 'HAPUS SEMUA') {
-            alert('Dibatalkan');
-            return;
+        const message = `Halo ${name},%0A%0AIni adalah pengingat pembayaran hutang Anda sebesar ${this.formatRupiah(amount)} di Hifzi Cell.%0A%0AMohon segera melakukan pembayaran. Terima kasih.%0A%0A_Hifzi Cell_`;
+        let formattedPhone = phone.replace(/^0/, '62').replace(/[^0-9]/g, '');
+        window.open(`https://wa.me/${formattedPhone}?text=${message}`, '_blank');
+    },
+
+    viewDetail(debtId) {
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const remaining = debt.total - debt.paid;
+        const isPaid = debt.status === 'paid';
+
+        let paymentsHtml = '';
+        if (debt.payments && debt.payments.length > 0) {
+            paymentsHtml = `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+                    <div class="debt-form-label">Riwayat Pembayaran</div>
+                    ${debt.payments.map(p => `
+                        <div class="debt-payment-history-item">
+                            <div class="debt-payment-info">
+                                <div class="debt-payment-date">${this.formatDate(p.date)}</div>
+                                <div class="debt-payment-method">${p.method} ${p.addToCash ? '✓ Tambah Kas' : '✗ Non-kas'} ${p.note ? '- ' + p.note : ''}</div>
+                            </div>
+                            <div class="debt-payment-amount">${this.formatRupiah(p.amount)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
         }
-        
-        // Step 1: Reset cloud
-        this.resetCloud();
-        
-        // Step 2: Reset lokal setelah 3 detik
-        setTimeout(function() {
-            self.resetLocal();
-        }, 3000);
+
+        const cashInfo = debt.reduceCash 
+            ? `<div class="debt-cash-info reduce">📉 Hutang ini mengurangi kas saat dibuat</div>` 
+            : `<div class="debt-cash-info normal">📋 Hutang ini tidak mengurangi kas</div>`;
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'detailModal';
+        modal.innerHTML = `
+            <div class="debt-modal">
+                <div class="debt-modal-header">
+                    <div class="debt-modal-title">Detail Hutang #${debt.id}</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    ${cashInfo}
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Pelanggan</label>
+                        <input type="text" class="debt-form-input" value="${debt.customerName}" readonly>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Tanggal</label>
+                            <input type="text" class="debt-form-input" value="${this.formatDate(debt.date)}" readonly>
+                        </div>
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">${isPaid ? 'Tanggal Lunas' : 'Jatuh Tempo'}</label>
+                            <input type="text" class="debt-form-input" value="${isPaid ? this.formatDate(debt.paidDate) : this.formatDate(debt.dueDate)}" readonly style="color: ${isPaid ? '#059669' : '#dc2626'};">
+                        </div>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Produk</label>
+                        <div style="background: #f8fafc; padding: 12px; border-radius: 8px;">
+                            ${debt.items.map(item => `
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                    <span>${item.name} x${item.qty}</span>
+                                    <span>${this.formatRupiah(item.price * item.qty)}</span>
+                                </div>
+                            `).join('')}
+                            <div style="border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 8px; display: flex; justify-content: space-between; font-weight: 700;">
+                                <span>Total</span>
+                                <span>${this.formatRupiah(debt.total)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Sudah Dibayar</label>
+                            <input type="text" class="debt-form-input" value="${this.formatRupiah(debt.paid)}" readonly style="color: #059669;">
+                        </div>
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Sisa</label>
+                            <input type="text" class="debt-form-input" value="${this.formatRupiah(remaining)}" readonly style="color: ${remaining > 0 ? '#dc2626' : '#059669'};">
+                        </div>
+                    </div>
+
+                    ${debt.notes ? `
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Catatan</label>
+                            <input type="text" class="debt-form-input" value="${debt.notes}" readonly>
+                        </div>
+                    ` : ''}
+
+                    ${paymentsHtml}
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
+                    ${!isPaid ? `
+                        <button class="debt-btn debt-btn-primary" onclick="debtModule.closeModal(); debtModule.openPaymentModal('${debt.id}')">Bayar Sekarang</button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
     },
 
-    // ============================================
-    // UTILITIES
-    // ============================================
-    
-    inspectData: function() {
-        var data = this.getDataFromStorage();
-        var raw = localStorage.getItem(this.STORAGE_KEY);
-        var rawSize = raw ? (raw.length / 1024).toFixed(2) + ' KB' : 'N/A';
-        
-        var info = 'DATA LOKAL (' + this.STORAGE_KEY + '):\n\n' +
-                   '• Produk: ' + data.products.length + '\n' +
-                   '• Kategori: ' + data.categories.length + '\n' +
-                   '• Transaksi: ' + data.transactions.length + '\n' +
-                   '• Arus Kas: ' + data.cashTransactions.length + '\n' +
-                   '• Hutang: ' + data.debts.length + '\n' +
-                   '• Kasir Open: ' + (data.kasir && data.kasir.isOpen ? 'Ya' : 'Tidak') + '\n\n' +
-                   'Ukuran: ' + rawSize + '\n' +
-                   'Last Sync: ' + (this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah');
-        
-        alert(info);
-    },
-
-    testConnection: function() {
-        this.checkCloudData();
-    },
-
-    checkCloudData: function() {
-        var self = this;
-        this.showToast('🔍 Mengecek data di cloud...');
-        
-        var script = document.createElement('script');
-        var cb = 'check_' + Date.now();
-        
-        window[cb] = function(result) {
-            if (result && result.success) {
-                var info = '📊 Data di Cloud:\n\n';
-                if (result.counts) {
-                    info += '• Produk: ' + result.counts.products + '\n';
-                    info += '• Kategori: ' + result.counts.categories + '\n';
-                    info += '• Transaksi: ' + result.counts.transactions + '\n';
-                    info += '• Arus Kas: ' + result.counts.cashTransactions + '\n';
-                    info += '• Hutang: ' + result.counts.debts + '\n';
-                }
-                info += '\n• Timestamp: ' + (result.timestamp || 'N/A');
-                info += '\n• Sheets: ' + (result.sheets ? result.sheets.join(', ') : 'N/A');
-                alert(info);
-            } else {
-                alert('❌ Gagal: ' + (result ? result.message : 'Error'));
-            }
-            delete window[cb];
-            if (script.parentNode) script.parentNode.removeChild(script);
-        };
-        
-        script.onerror = function() {
-            alert('❌ Gagal terhubung');
-            delete window[cb];
-        };
-        
-        script.src = this.gasUrl + '?action=ping&callback=' + cb;
-        document.head.appendChild(script);
-        
-        setTimeout(function() {
-            if (window[cb]) {
-                delete window[cb];
-                if (script.parentNode) script.parentNode.removeChild(script);
-            }
-        }, 10000);
-    },
-
-    downloadJSON: function() {
-        var data = this.getDataFromStorage();
-        var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'hifzi_backup_' + new Date().toISOString().split('T')[0] + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.showToast('✅ File JSON didownload!');
-    },
-
-    importJSON: function(input) {
-        var file = input.files[0];
-        if (!file) return;
-        if (!confirm('⚠️ Import akan menimpa data lokal?')) { 
-            input.value = ''; 
-            return; 
+    closeModal() {
+        const modal = document.querySelector('.debt-modal-overlay.active');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
         }
-        
-        var self = this;
-        var reader = new FileReader();
-        
-        reader.onload = function(e) {
-            try {
-                var d = JSON.parse(e.target.result);
-                
-                if (!d.products) d.products = [];
-                if (!d.categories) d.categories = [];
-                if (!d.transactions) d.transactions = [];
-                if (!d.cashTransactions) d.cashTransactions = [];
-                if (!d.debts) d.debts = [];
-                if (!d.settings) d.settings = {};
-                if (!d.kasir) d.kasir = {isOpen: false, openTime: null, closeTime: null, date: null};
-                
-                localStorage.setItem(self.STORAGE_KEY, JSON.stringify(d));
-                
-                if (typeof dataManager !== 'undefined' && dataManager) {
-                    dataManager.data = d;
-                    if (dataManager.save) dataManager.save();
-                }
-                
-                self.showToast('✅ Import berhasil!');
-                self.render();
-                
-                if (typeof app !== 'undefined' && app.updateHeader) {
-                    app.updateHeader();
-                }
-            } catch(err) {
-                alert('❌ Error: ' + err.message);
-            }
-        };
-        
-        reader.readAsText(file);
-        input.value = '';
     },
 
-    showToast: function(msg) {
-        var t = document.getElementById('toast');
-        if (t) { 
-            t.textContent = msg; 
-            t.classList.add('show'); 
-            setTimeout(function() { t.classList.remove('show'); }, 4000); 
+    showToast(message, type = 'success') {
+        if (typeof app !== 'undefined' && app.showToast) {
+            app.showToast(message);
         } else {
-            alert(msg);
+            alert(message);
         }
+    },
+
+    exportToExcel() {
+        const data = this.debts.map(d => ({
+            'ID': d.id,
+            'Nama Pelanggan': d.customerName,
+            'No Telepon': d.customerPhone || '-',
+            'Tanggal': d.date,
+            'Jatuh Tempo': d.dueDate,
+            'Total': d.total,
+            'Dibayar': d.paid,
+            'Sisa': d.total - d.paid,
+            'Status': d.status,
+            'Kurangi Kas': d.reduceCash ? 'Ya' : 'Tidak',
+            'Produk': d.items.map(i => i.name).join(', '),
+            'Catatan': d.notes || ''
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Hutang');
+        XLSX.writeFile(wb, `Hutang_HifziCell_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+        this.showToast('Data hutang berhasil diexport!', 'success');
     }
 };
