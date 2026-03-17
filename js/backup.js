@@ -1,5 +1,5 @@
-// backup.js - Versi 15 - Full Structure Support
-// Backup untuk: Products, Categories, Transactions, CashFlow, Debts, Settings, Kasir, Receipt
+// backup.js - Versi 13d FIXED
+// PERBAIKAN: Reset cloud, upload kosong, struktur data lengkap
 
 const backupModule = {
     currentProvider: 'local',
@@ -8,18 +8,7 @@ const backupModule = {
     lastSyncTime: null,
     gasUrl: '',
     
-    // Storage Keys (sesuai struktur Hifzi Cell)
-    STORAGE_KEYS: {
-        products: 'hifzi_products',
-        categories: 'hifzi_categories',
-        transactions: 'hifzi_transactions',
-        cashFlow: 'hifzi_cash',
-        debts: 'hifzi_debts',
-        settings: 'hifzi_settings',
-        kasir: 'hifzi_kasir',
-        receipt: 'hifzi_receipt'
-    },
-    
+    STORAGE_KEY: 'hifzi_cell_data',
     GAS_URL_KEY: 'hifzi_gas_url',
     AUTO_SYNC_KEY: 'hifzi_auto_sync',
     LAST_SYNC_KEY: 'hifzi_last_sync',
@@ -57,7 +46,7 @@ const backupModule = {
     },
 
     init: function() {
-        this.log('INFO', 'Backup Module v15 (Full Structure) Initialized');
+        this.log('INFO', 'Backup Module v13d-FIXED Initialized');
         this.gasUrl = localStorage.getItem(this.GAS_URL_KEY) || '';
         this.isAutoSyncEnabled = localStorage.getItem(this.AUTO_SYNC_KEY) === 'true';
         this.lastSyncTime = localStorage.getItem(this.LAST_SYNC_KEY) || null;
@@ -66,8 +55,8 @@ const backupModule = {
             this.currentProvider = 'googlesheet';
             this.log('INFO', 'Auto-selected Google Sheets provider');
             
-            var localData = this.getAllData();
-            var hasLocalData = this.hasAnyData(localData);
+            var localData = this.getDataFromStorage();
+            var hasLocalData = localData.products.length > 0 || localData.transactions.length > 0;
             
             if (!hasLocalData && this.gasUrl) {
                 this.log('INFO', 'Device baru terdeteksi, auto-download...');
@@ -86,97 +75,82 @@ const backupModule = {
         this.render();
     },
 
-    // Ambil semua data dari localStorage
-    getAllData: function() {
-        var data = {};
-        var keys = this.STORAGE_KEYS;
+    getDataFromStorage: function() {
+        var data = null;
         
-        for (var key in keys) {
-            try {
-                var stored = localStorage.getItem(keys[key]);
-                data[key] = stored ? JSON.parse(stored) : this.getDefaultData(key);
-            } catch(e) {
-                this.log('ERROR', 'Error reading ' + key, e.message);
-                data[key] = this.getDefaultData(key);
+        try {
+            var stored = localStorage.getItem(this.STORAGE_KEY);
+            if (stored) {
+                data = JSON.parse(stored);
+            }
+        } catch(e) {
+            this.log('ERROR', 'localStorage parse error', e.message);
+        }
+
+        if (!data && typeof dataManager !== 'undefined' && dataManager.data) {
+            data = dataManager.data;
+        }
+
+        var complete = {
+            categories: [
+                { id: 'all', name: 'Semua', icon: '📦' },
+                { id: 'handphone', name: 'Handphone', icon: '📱' },
+                { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
+                { id: 'pulsa', name: 'Pulsa', icon: '💳' },
+                { id: 'servis', name: 'Servis', icon: '🔧' }
+            ],
+            products: [],
+            transactions: [],
+            cashTransactions: [],
+            settings: {
+                storeName: 'Hifzi Cell',
+                address: '',
+                taxRate: 0,
+                modalAwal: 0,
+                currentCash: 0,
+                receiptHeader: {
+                    storeName: 'HIFZI CELL',
+                    address: 'Alamat Belum Diatur',
+                    phone: '',
+                    note: 'Terima kasih atas kunjungan Anda'
+                }
+            },
+            kasir: {
+                isOpen: false,
+                openTime: null,
+                closeTime: null,
+                date: null
+            },
+            debts: [],
+            lastBackup: null,
+            version: '1.0'
+        };
+
+        if (data) {
+            if (Array.isArray(data.categories)) complete.categories = data.categories;
+            if (Array.isArray(data.products)) complete.products = data.products;
+            if (Array.isArray(data.transactions)) complete.transactions = data.transactions;
+            if (Array.isArray(data.cashTransactions)) complete.cashTransactions = data.cashTransactions;
+            if (Array.isArray(data.debts)) complete.debts = data.debts;
+            
+            if (data.settings && typeof data.settings === 'object') {
+                complete.settings = { ...complete.settings, ...data.settings };
+            }
+            if (data.kasir && typeof data.kasir === 'object') {
+                complete.kasir = { ...complete.kasir, ...data.kasir };
             }
         }
-        
-        return data;
+
+        return complete;
     },
 
-    // Default data untuk masing-masing tipe
-    getDefaultData: function(type) {
-        switch(type) {
-            case 'products':
-                return [];
-            case 'categories':
-                return [
-                    { id: 'all', name: 'Semua', icon: '📦' },
-                    { id: 'handphone', name: 'Handphone', icon: '📱' },
-                    { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
-                    { id: 'pulsa', name: 'Pulsa', icon: '💳' },
-                    { id: 'servis', name: 'Servis', icon: '🔧' }
-                ];
-            case 'transactions':
-                return [];
-            case 'cashFlow':
-                return [];
-            case 'debts':
-                return [];
-            case 'settings':
-                return {
-                    storeName: 'Hifzi Cell',
-                    address: '',
-                    phone: '',
-                    taxRate: 0,
-                    modalAwal: 0,
-                    currentCash: 0,
-                    receiptHeader: {
-                        storeName: 'HIFZI CELL',
-                        address: 'Alamat Belum Diatur',
-                        phone: '',
-                        note: 'Terima kasih atas kunjungan Anda'
-                    }
-                };
-            case 'kasir':
-                return {
-                    isOpen: false,
-                    openTime: null,
-                    closeTime: null,
-                    date: null,
-                    shiftId: null,
-                    openingBalance: 0,
-                    closingBalance: 0
-                };
-            case 'receipt':
-                return {
-                    header: {
-                        storeName: 'HIFZI CELL',
-                        address: '',
-                        phone: '',
-                        note: 'Terima kasih atas kunjungan Anda'
-                    },
-                    footer: {
-                        message: '',
-                        thanks: ''
-                    },
-                    showLogo: false,
-                    logoUrl: ''
-                };
-            default:
-                return null;
-        }
-    },
-
-    hasAnyData: function(data) {
-        if (!data) data = this.getAllData();
-        return (
-            (data.products && data.products.length > 0) ||
-            (data.transactions && data.transactions.length > 0) ||
-            (data.debts && data.debts.length > 0) ||
-            (data.cashFlow && data.cashFlow.length > 0) ||
-            (data.categories && data.categories.length > 1)
-        );
+    hasData: function() {
+        var d = this.getDataFromStorage();
+        return d.products.length > 0 || 
+               d.transactions.length > 0 || 
+               d.debts.length > 0 || 
+               d.cashTransactions.length > 0 ||
+               d.categories.length > 1;
     },
 
     formatRupiah: function(amount) {
@@ -188,12 +162,12 @@ const backupModule = {
         var container = document.getElementById('mainContent');
         if (!container) return;
 
-        var data = this.getAllData();
-        var products = data.products ? data.products.length : 0;
-        var categories = data.categories ? data.categories.length : 0;
-        var transactions = data.transactions ? data.transactions.length : 0;
-        var cashFlow = data.cashFlow ? data.cashFlow.length : 0;
-        var debts = data.debts ? data.debts.length : 0;
+        var data = this.getDataFromStorage();
+        var products = data.products.length;
+        var categories = data.categories.length;
+        var transactions = data.transactions.length;
+        var cashTrans = data.cashTransactions.length;
+        var debts = data.debts.length;
         
         var settings = data.settings || {};
         var currentCash = settings.currentCash || 0;
@@ -216,7 +190,7 @@ const backupModule = {
         html += '<div class="card-header"><span class="card-title">' + syncStatusText + '</span></div>';
         html += '<div style="padding:10px;font-size:12px;color:#666;">';
         if (this.lastSyncTime) {
-            html += 'Last sync: ' + new Date(this.lastSyncTime).toLocaleString('id-ID');
+            html += 'Last activity: ' + new Date(this.lastSyncTime).toLocaleString('id-ID');
         } else {
             html += 'Belum ada aktivitas sync';
         }
@@ -244,7 +218,7 @@ const backupModule = {
         html += '<div style="background:#e3f2fd;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Produk</div><div style="font-size:20px;font-weight:bold;color:#2196F3;">' + products + '</div></div>';
         html += '<div style="background:#e8f5e9;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Kategori</div><div style="font-size:20px;font-weight:bold;color:#4CAF50;">' + categories + '</div></div>';
         html += '<div style="background:#fff3e0;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Transaksi</div><div style="font-size:20px;font-weight:bold;color:#FF9800;">' + transactions + '</div></div>';
-        html += '<div style="background:#fce4ec;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Arus Kas</div><div style="font-size:20px;font-weight:bold;color:#E91E63;">' + cashFlow + '</div></div>';
+        html += '<div style="background:#fce4ec;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Arus Kas</div><div style="font-size:20px;font-weight:bold;color:#E91E63;">' + cashTrans + '</div></div>';
         html += '<div style="background:#f3e5f5;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Hutang</div><div style="font-size:20px;font-weight:bold;color:#9C27B0;">' + debts + '</div></div>';
         html += '<div style="background:#e0f2f1;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#666;">Kas</div><div style="font-size:14px;font-weight:bold;color:#009688;">' + this.formatRupiah(currentCash) + '</div></div>';
         html += '</div></div>';
@@ -368,15 +342,13 @@ const backupModule = {
         var url = input.value.trim();
         
         if (!url || url.length < 20 || !url.includes('script.google.com')) {
-            alert('❌ URL tidak valid! Harus URL Google Apps Script Web App');
+            alert('❌ URL tidak valid!');
             return;
         }
         
         this.gasUrl = url;
         localStorage.setItem(this.GAS_URL_KEY, url);
-        this.log('INFO', 'GAS URL saved: ' + url.substring(0, 50) + '...');
-        
-        // Test koneksi setelah simpan
+        this.log('INFO', 'GAS URL saved');
         this.testConnection();
     },
 
@@ -402,7 +374,7 @@ const backupModule = {
         
         this.autoSyncInterval = setInterval(function() {
             self.performTwoWaySync();
-        }, 180000); // 3 menit
+        }, 180000);
         
         this.log('INFO', 'Auto Sync started (3 min interval)');
     },
@@ -465,7 +437,7 @@ const backupModule = {
             delete window[cb];
         };
         
-        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb + '&_t=' + Date.now();
+        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb;
         document.head.appendChild(script);
         
         setTimeout(function() {
@@ -486,13 +458,14 @@ const backupModule = {
         this.log('INFO', 'Upload started');
         
         if (!this.gasUrl) {
-            if (!silent) alert('❌ URL GAS belum diisi!');
+            if (!silent) alert('❌ URL belum diisi!');
             if (callback) callback(false);
             return;
         }
         
-        var data = this.getAllData();
+        var data = this.getDataFromStorage();
         
+        // KHUSUS: Izinkan upload meski kosong (untuk reset cloud via sync)
         if (!silent) this.showToast('⬆️ Mengupload...');
         
         var payload = {
@@ -502,28 +475,20 @@ const backupModule = {
             device: navigator.userAgent
         };
         
-        // Coba fetch dulu (modern browsers)
         fetch(this.gasUrl, {
             method: 'POST',
-            mode: 'cors',
-            headers: { 
-                'Content-Type': 'text/plain;charset=utf-8'
-            },
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         })
         .then(function(response) {
-            self.log('INFO', 'Fetch response: ' + response.status);
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
         })
         .then(function(result) {
             self.handleUploadSuccess(result, silent, callback);
         })
         .catch(function(error) {
-            self.log('WARN', 'Fetch failed, trying JSONP: ' + error.message);
-            // Fallback ke JSONP jika fetch gagal
+            self.log('ERROR', 'Fetch upload failed: ' + error.message);
             self.uploadViaJSONP(payload, silent, callback);
         });
     },
@@ -532,9 +497,7 @@ const backupModule = {
         var self = this;
         var jsonStr = JSON.stringify(payload);
         
-        // Jika data terlalu besar, pakai iframe
         if (jsonStr.length > 8000) {
-            this.log('INFO', 'Data too large for JSONP, using iframe');
             this.uploadViaIframe(payload, silent, callback);
             return;
         }
@@ -550,10 +513,9 @@ const backupModule = {
         };
         
         script.onerror = function() {
-            self.log('ERROR', 'JSONP upload error - CORS atau network issue');
-            if (!silent) self.showToast('❌ Upload gagal - Cek console (F12)');
+            self.log('ERROR', 'JSONP upload error');
+            if (!silent) self.showToast('❌ Upload gagal');
             delete window[callbackName];
-            // Coba iframe sebagai last resort
             self.uploadViaIframe(payload, silent, callback);
         };
         
@@ -563,8 +525,7 @@ const backupModule = {
         
         setTimeout(function() {
             if (window[callbackName]) {
-                self.log('ERROR', 'JSONP upload timeout');
-                if (!silent) self.showToast('❌ Timeout - Coba lagi');
+                if (!silent) self.showToast('❌ Timeout');
                 delete window[callbackName];
                 if (script.parentNode) script.parentNode.removeChild(script);
                 if (callback) callback(false);
@@ -606,10 +567,9 @@ const backupModule = {
                 var result = JSON.parse(text);
                 self.handleUploadSuccess(result, silent, callback);
             } catch(e) {
-                self.log('WARN', 'Iframe parse error, assuming success');
                 self.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(self.LAST_SYNC_KEY, self.lastSyncTime);
-                if (!silent) self.showToast('✅ Upload selesai (iframe)');
+                if (!silent) self.showToast('✅ Upload selesai');
                 self.render();
                 if (callback) callback(true);
             }
@@ -640,10 +600,7 @@ const backupModule = {
             if (callback) callback(true);
         } else {
             this.log('ERROR', 'Upload failed', result);
-            if (!silent) {
-                var errMsg = result && result.message ? result.message : 'Unknown error';
-                this.showToast('❌ Upload gagal: ' + errMsg);
-            }
+            if (!silent) this.showToast('❌ Upload gagal');
             if (callback) callback(false);
         }
     },
@@ -660,21 +617,18 @@ const backupModule = {
         }
         
         if (!this.gasUrl) {
-            if (!silent) alert('❌ URL GAS belum diisi!');
+            if (!silent) alert('❌ URL belum diisi!');
             return;
         }
         
         if (!silent) this.showToast('⬇️ Mengunduh data...');
         this.log('INFO', 'Download started');
         
-        // Coba fetch dulu
-        fetch(this.gasUrl + '?action=restore&_t=' + Date.now(), {
+        fetch(this.gasUrl + '?action=restore', {
             method: 'GET',
-            mode: 'cors',
             headers: { 'Accept': 'application/json' }
         })
         .then(function(response) {
-            self.log('INFO', 'Download response: ' + response.status);
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
         })
@@ -683,7 +637,6 @@ const backupModule = {
         })
         .catch(function(error) {
             self.log('WARN', 'Fetch download failed: ' + error.message);
-            // Fallback ke JSONP
             self.downloadViaJSONP(silent);
         });
     },
@@ -705,8 +658,8 @@ const backupModule = {
         };
         
         script.onerror = function() {
-            self.log('ERROR', 'JSONP download failed - CORS error');
-            if (!silent) self.showToast('❌ Gagal terhubung - Cek URL GAS');
+            self.log('ERROR', 'JSONP download failed');
+            if (!silent) self.showToast('❌ Gagal terhubung ke cloud');
             cleanup();
         };
         
@@ -729,15 +682,27 @@ const backupModule = {
         if (result && result.success && result.data) {
             var d = result.data;
             
-            // Simpan semua data ke localStorage
-            this.saveAllData(d);
+            if (!d.products) d.products = [];
+            if (!d.categories) d.categories = [];
+            if (!d.transactions) d.transactions = [];
+            if (!d.cashTransactions) d.cashTransactions = [];
+            if (!d.debts) d.debts = [];
+            if (!d.settings) d.settings = {};
+            if (!d.kasir) d.kasir = {isOpen: false, openTime: null, closeTime: null, date: null};
+            
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(d));
+            
+            if (typeof dataManager !== 'undefined' && dataManager) {
+                dataManager.data = d;
+                if (dataManager.save) dataManager.save();
+            }
             
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
             
             var msg = '✅ Download berhasil!\n' +
-                      '📦 Produk: ' + (d.products ? d.products.length : 0) + '\n' +
-                      '📝 Transaksi: ' + (d.transactions ? d.transactions.length : 0);
+                      '📦 Produk: ' + d.products.length + '\n' +
+                      '📝 Transaksi: ' + d.transactions.length;
             
             this.log('INFO', 'Download success');
             
@@ -757,31 +722,9 @@ const backupModule = {
         } else {
             this.log('ERROR', 'Download failed', result);
             if (!silent) {
-                var errMsg = result && result.message ? result.message : 'Tidak ada response';
+                var errMsg = result ? result.message : 'Tidak ada response';
                 this.showToast('❌ Download gagal: ' + errMsg);
             }
-        }
-    },
-
-    // Simpan semua data ke localStorage
-    saveAllData: function(data) {
-        var keys = this.STORAGE_KEYS;
-        
-        if (data.products) localStorage.setItem(keys.products, JSON.stringify(data.products));
-        if (data.categories) localStorage.setItem(keys.categories, JSON.stringify(data.categories));
-        if (data.transactions) localStorage.setItem(keys.transactions, JSON.stringify(data.transactions));
-        if (data.cashFlow || data.cashTransactions) {
-            localStorage.setItem(keys.cashFlow, JSON.stringify(data.cashFlow || data.cashTransactions || []));
-        }
-        if (data.debts) localStorage.setItem(keys.debts, JSON.stringify(data.debts));
-        if (data.settings) localStorage.setItem(keys.settings, JSON.stringify(data.settings));
-        if (data.kasir) localStorage.setItem(keys.kasir, JSON.stringify(data.kasir));
-        if (data.receipt) localStorage.setItem(keys.receipt, JSON.stringify(data.receipt));
-        
-        // Update dataManager jika ada
-        if (typeof dataManager !== 'undefined' && dataManager) {
-            dataManager.data = this.getAllData();
-            if (dataManager.save) dataManager.save();
         }
     },
 
@@ -797,15 +740,24 @@ const backupModule = {
         }
         
         this.log('INFO', 'Resetting local data');
+        localStorage.removeItem(this.STORAGE_KEY);
         
-        // Hapus semua storage keys
-        for (var key in this.STORAGE_KEYS) {
-            localStorage.removeItem(this.STORAGE_KEYS[key]);
-        }
-        
-        // Reset dataManager
         if (typeof dataManager !== 'undefined' && dataManager) {
-            dataManager.data = this.getAllData();
+            dataManager.data = {
+                categories: [
+                    { id: 'all', name: 'Semua', icon: '📦' },
+                    { id: 'handphone', name: 'Handphone', icon: '📱' },
+                    { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
+                    { id: 'pulsa', name: 'Pulsa', icon: '💳' },
+                    { id: 'servis', name: 'Servis', icon: '🔧' }
+                ],
+                products: [], 
+                transactions: [], 
+                cashTransactions: [], 
+                debts: [], 
+                settings: {},
+                kasir: {isOpen: false, openTime: null, closeTime: null, date: null}
+            };
             if (dataManager.save) dataManager.save();
         }
         
@@ -819,7 +771,7 @@ const backupModule = {
         var self = this;
         
         if (!this.gasUrl) {
-            alert('❌ URL GAS belum diisi!');
+            alert('❌ URL belum diisi!');
             return;
         }
         
@@ -843,7 +795,6 @@ const backupModule = {
         
         fetch(this.gasUrl, {
             method: 'POST',
-            mode: 'cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         })
@@ -902,7 +853,7 @@ const backupModule = {
             this.render();
         } else {
             this.log('ERROR', 'Cloud reset failed', result);
-            this.showToast('❌ Gagal reset: ' + (result && result.message ? result.message : 'Error'));
+            this.showToast('❌ Gagal reset: ' + (result ? result.message : 'Error'));
         }
     },
 
@@ -932,26 +883,19 @@ const backupModule = {
     // ============================================
     
     inspectData: function() {
-        var data = this.getAllData();
-        var info = 'DATA LOKAL:\n\n';
+        var data = this.getDataFromStorage();
+        var raw = localStorage.getItem(this.STORAGE_KEY);
+        var rawSize = raw ? (raw.length / 1024).toFixed(2) + ' KB' : 'N/A';
         
-        info += '• Products: ' + (data.products ? data.products.length : 0) + '\n';
-        info += '• Categories: ' + (data.categories ? data.categories.length : 0) + '\n';
-        info += '• Transactions: ' + (data.transactions ? data.transactions.length : 0) + '\n';
-        info += '• Cash Flow: ' + (data.cashFlow ? data.cashFlow.length : 0) + '\n';
-        info += '• Debts: ' + (data.debts ? data.debts.length : 0) + '\n';
-        info += '• Kasir Open: ' + (data.kasir && data.kasir.isOpen ? 'Ya' : 'Tidak') + '\n\n';
-        
-        // Hitung ukuran
-        var totalSize = 0;
-        for (var key in this.STORAGE_KEYS) {
-            var stored = localStorage.getItem(this.STORAGE_KEYS[key]);
-            if (stored) totalSize += stored.length;
-        }
-        
-        info += 'Total Size: ' + (totalSize / 1024).toFixed(2) + ' KB\n';
-        info += 'GAS URL: ' + (this.gasUrl ? '✅ Tersimpan' : '❌ Belum diisi') + '\n';
-        info += 'Last Sync: ' + (this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah');
+        var info = 'DATA LOKAL (' + this.STORAGE_KEY + '):\n\n' +
+                   '• Produk: ' + data.products.length + '\n' +
+                   '• Kategori: ' + data.categories.length + '\n' +
+                   '• Transaksi: ' + data.transactions.length + '\n' +
+                   '• Arus Kas: ' + data.cashTransactions.length + '\n' +
+                   '• Hutang: ' + data.debts.length + '\n' +
+                   '• Kasir Open: ' + (data.kasir && data.kasir.isOpen ? 'Ya' : 'Tidak') + '\n\n' +
+                   'Ukuran: ' + rawSize + '\n' +
+                   'Last Sync: ' + (this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah');
         
         alert(info);
     },
@@ -974,26 +918,25 @@ const backupModule = {
                     info += '• Produk: ' + result.counts.products + '\n';
                     info += '• Kategori: ' + result.counts.categories + '\n';
                     info += '• Transaksi: ' + result.counts.transactions + '\n';
-                    info += '• Arus Kas: ' + result.counts.cashFlow + '\n';
+                    info += '• Arus Kas: ' + result.counts.cashTransactions + '\n';
                     info += '• Hutang: ' + result.counts.debts + '\n';
                 }
                 info += '\n• Timestamp: ' + (result.timestamp || 'N/A');
                 info += '\n• Sheets: ' + (result.sheets ? result.sheets.join(', ') : 'N/A');
                 alert(info);
             } else {
-                alert('❌ Gagal: ' + (result && result.message ? result.message : 'Error tidak diketahui'));
+                alert('❌ Gagal: ' + (result ? result.message : 'Error'));
             }
             delete window[cb];
             if (script.parentNode) script.parentNode.removeChild(script);
         };
         
         script.onerror = function() {
-            self.log('ERROR', 'Check cloud connection failed');
-            alert('❌ Gagal terhubung ke GAS. Pastikan:\n1. URL benar\n2. GAS sudah di-deploy\n3. Access: Anyone');
+            alert('❌ Gagal terhubung');
             delete window[cb];
         };
         
-        script.src = this.gasUrl + '?action=ping&callback=' + cb + '&_t=' + Date.now();
+        script.src = this.gasUrl + '?action=ping&callback=' + cb;
         document.head.appendChild(script);
         
         setTimeout(function() {
@@ -1005,7 +948,7 @@ const backupModule = {
     },
 
     downloadJSON: function() {
-        var data = this.getAllData();
+        var data = this.getDataFromStorage();
         var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -1032,7 +975,21 @@ const backupModule = {
         reader.onload = function(e) {
             try {
                 var d = JSON.parse(e.target.result);
-                self.saveAllData(d);
+                
+                if (!d.products) d.products = [];
+                if (!d.categories) d.categories = [];
+                if (!d.transactions) d.transactions = [];
+                if (!d.cashTransactions) d.cashTransactions = [];
+                if (!d.debts) d.debts = [];
+                if (!d.settings) d.settings = {};
+                if (!d.kasir) d.kasir = {isOpen: false, openTime: null, closeTime: null, date: null};
+                
+                localStorage.setItem(self.STORAGE_KEY, JSON.stringify(d));
+                
+                if (typeof dataManager !== 'undefined' && dataManager) {
+                    dataManager.data = d;
+                    if (dataManager.save) dataManager.save();
+                }
                 
                 self.showToast('✅ Import berhasil!');
                 self.render();
