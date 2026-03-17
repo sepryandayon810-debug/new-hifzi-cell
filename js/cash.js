@@ -2,9 +2,70 @@ const cashModule = {
     currentDeleteTransaction: null,
     
     init() {
+        // ⬅️ PERBAIKAN: Inisialisasi currentCash jika undefined/null
+        this.ensureCashInitialized();
+        
         this.renderHTML();
         this.updateStats();
         this.renderTransactions();
+    },
+
+    // ⬅️ TAMBAH: Fungsi untuk memastikan currentCash selalu number
+    ensureCashInitialized() {
+        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
+            // Pastikan currentCash adalah number, bukan undefined/null/NaN
+            let currentCash = dataManager.data.settings.currentCash;
+            
+            // Jika undefined, null, atau bukan number, set ke 0
+            if (typeof currentCash !== 'number' || isNaN(currentCash)) {
+                console.log('[Cash] Initializing currentCash from invalid value:', currentCash);
+                
+                // Coba hitung dari transaksi yang ada
+                currentCash = this.calculateCashFromTransactions();
+                dataManager.data.settings.currentCash = currentCash;
+                dataManager.save();
+                
+                console.log('[Cash] currentCash initialized to:', currentCash);
+            }
+            
+            // Pastikan modalAwal juga terinisialisasi
+            if (typeof dataManager.data.settings.modalAwal !== 'number' || isNaN(dataManager.data.settings.modalAwal)) {
+                dataManager.data.settings.modalAwal = 0;
+            }
+        }
+    },
+
+    // ⬅️ TAMBAH: Hitung ulang kas dari semua transaksi
+    calculateCashFromTransactions() {
+        let cash = 0;
+        
+        if (typeof dataManager !== 'undefined' && dataManager.data) {
+            // Hitung dari cashTransactions
+            if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
+                dataManager.data.cashTransactions.forEach(t => {
+                    const amount = parseInt(t.amount) || 0;
+                    if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
+                        cash += amount;
+                    } else if (t.type === 'out') {
+                        cash -= amount;
+                    }
+                });
+            }
+            
+            // Hitung dari transaksi penjualan (yang profit masuk ke kas)
+            if (dataManager.data.transactions && Array.isArray(dataManager.data.transactions)) {
+                dataManager.data.transactions.forEach(t => {
+                    if (t.status !== 'deleted' && t.status !== 'voided') {
+                        // Jika transaksi tunai, total masuk ke kas
+                        if (t.paymentMethod === 'cash') {
+                            cash += parseInt(t.total) || 0;
+                        }
+                    }
+                });
+            }
+        }
+        
+        return cash;
     },
     
     renderHTML() {
@@ -64,6 +125,9 @@ const cashModule = {
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">Riwayat Transaksi Kas Hari Ini</span>
+                        <button class="btn btn-sm btn-secondary" onclick="cashModule.recalculateCash()" style="font-size: 12px; padding: 6px 12px;">
+                            🔄 Recalculate Kas
+                        </button>
                     </div>
                     <div class="transaction-list" id="cashTransactionList"></div>
                 </div>
@@ -79,18 +143,23 @@ const cashModule = {
         
         const income = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
         const expense = transactions
             .filter(t => t.type === 'out')
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        document.getElementById('todayIncome').textContent = 'Rp ' + utils.formatNumber(income);
-        document.getElementById('todayExpense').textContent = 'Rp ' + utils.formatNumber(expense);
+        const incomeEl = document.getElementById('todayIncome');
+        const expenseEl = document.getElementById('todayExpense');
+        
+        if (incomeEl) incomeEl.textContent = 'Rp ' + utils.formatNumber(income);
+        if (expenseEl) expenseEl.textContent = 'Rp ' + utils.formatNumber(expense);
     },
     
     renderTransactions() {
         const container = document.getElementById('cashTransactionList');
+        if (!container) return;
+        
         const today = new Date().toDateString();
         
         const transactions = dataManager.data.cashTransactions
@@ -113,7 +182,6 @@ const cashModule = {
             else if (t.type === 'topup') typeLabel = ' (Top Up)';
             else if (t.category === 'tarik_tunai') typeLabel = ' (Tarik Tunai)';
             
-            // Gunakan data-id untuk menyimpan ID transaksi
             html += `
                 <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee;">
                     <div class="transaction-info" style="flex: 1;">
@@ -136,28 +204,24 @@ const cashModule = {
         });
         
         container.innerHTML = html;
-        
-        // Attach event listeners setelah HTML di-render
         this.attachDeleteListeners();
     },
     
-    // Attach event listeners untuk tombol hapus
     attachDeleteListeners() {
         const deleteButtons = document.querySelectorAll('.btn-delete-cash');
-        console.log('Found delete buttons:', deleteButtons.length); // Debug
+        console.log('Found delete buttons:', deleteButtons.length);
         
         deleteButtons.forEach(btn => {
             btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const transactionId = parseInt(btn.getAttribute('data-transaction-id'));
-                console.log('Deleting transaction ID:', transactionId); // Debug
+                console.log('Deleting transaction ID:', transactionId);
                 this.deleteTransaction(transactionId);
             };
         });
     },
     
-    // Fungsi delete yang fix
     deleteTransaction(transactionId) {
         // Cari transaksi dengan pengecekan tipe data yang benar
         const t = dataManager.data.cashTransactions.find(tr => {
@@ -177,12 +241,17 @@ const cashModule = {
             return;
         }
         
+        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number sebelum operasi
+        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+        
         // Sesuaikan kas
         if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
-            dataManager.data.settings.currentCash -= t.amount;
+            currentCash -= parseInt(t.amount) || 0;
         } else {
-            dataManager.data.settings.currentCash += t.amount;
+            currentCash += parseInt(t.amount) || 0;
         }
+        
+        dataManager.data.settings.currentCash = currentCash;
         
         // Hapus transaksi dari array
         dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(
@@ -262,7 +331,10 @@ const cashModule = {
             return;
         }
         
-        if (type === 'out' && amount > dataManager.data.settings.currentCash) {
+        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
+        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+        
+        if (type === 'out' && amount > currentCash) {
             app.showToast('Kas tidak mencukupi!');
             return;
         }
@@ -277,9 +349,9 @@ const cashModule = {
         });
         
         if (type === 'in') {
-            dataManager.data.settings.currentCash += amount;
+            dataManager.data.settings.currentCash = currentCash + amount;
         } else {
-            dataManager.data.settings.currentCash -= amount;
+            dataManager.data.settings.currentCash = currentCash - amount;
         }
         
         dataManager.save();
@@ -334,8 +406,11 @@ const cashModule = {
             return;
         }
         
+        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
+        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+        
         dataManager.data.settings.modalAwal = amount;
-        dataManager.data.settings.currentCash += amount;
+        dataManager.data.settings.currentCash = currentCash + amount;
         
         dataManager.data.cashTransactions.push({
             id: Date.now(),
@@ -351,7 +426,7 @@ const cashModule = {
         this.closeModal('modalAwalModal');
         this.updateStats();
         this.renderTransactions();
-        app.showToast(`Modal Rp ${utils.formatNumber(amount)} tersimpan!`);
+        app.showToast(`Modal Rp ${utils.formatNumber(amount)} tersimpan! Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
     },
     
     openTopUp() {
@@ -434,7 +509,9 @@ const cashModule = {
         
         const total = nominal + admin;
         
-        dataManager.data.settings.currentCash += total;
+        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
+        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+        dataManager.data.settings.currentCash = currentCash + total;
         
         dataManager.data.cashTransactions.push({
             id: Date.now(),
@@ -540,12 +617,15 @@ const cashModule = {
             return;
         }
         
-        if (total > dataManager.data.settings.currentCash) {
+        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
+        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+        
+        if (total > currentCash) {
             app.showToast('Kas tidak mencukupi!');
             return;
         }
         
-        dataManager.data.settings.currentCash -= total;
+        dataManager.data.settings.currentCash = currentCash - total;
         
         dataManager.data.cashTransactions.push({
             id: Date.now(),
@@ -625,6 +705,25 @@ const cashModule = {
     },
     
     closeModal(id) {
-        document.getElementById(id)?.remove();
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.remove();
+        }
+    },
+
+    // ⬅️ TAMBAH: Fungsi untuk recalculate kas manual
+    recalculateCash() {
+        if (!confirm('🔄 Recalculate Kas?\n\nIni akan menghitung ulang kas berdasarkan semua transaksi yang tersimpan.\n\nLanjutkan?')) {
+            return;
+        }
+
+        const newCash = this.calculateCashFromTransactions();
+        dataManager.data.settings.currentCash = newCash;
+        dataManager.save();
+        
+        app.updateHeader();
+        this.updateStats();
+        
+        app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(newCash)}`);
     }
 };
