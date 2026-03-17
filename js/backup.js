@@ -1,4 +1,4 @@
-// backup.js - Versi 13d FIXED
+// backup.js - Versi 14 - FIXED CORS & Error Handling
 // PERBAIKAN: Reset cloud, upload kosong, struktur data lengkap
 
 const backupModule = {
@@ -46,7 +46,7 @@ const backupModule = {
     },
 
     init: function() {
-        this.log('INFO', 'Backup Module v13d-FIXED Initialized');
+        this.log('INFO', 'Backup Module v14 Initialized');
         this.gasUrl = localStorage.getItem(this.GAS_URL_KEY) || '';
         this.isAutoSyncEnabled = localStorage.getItem(this.AUTO_SYNC_KEY) === 'true';
         this.lastSyncTime = localStorage.getItem(this.LAST_SYNC_KEY) || null;
@@ -342,13 +342,15 @@ const backupModule = {
         var url = input.value.trim();
         
         if (!url || url.length < 20 || !url.includes('script.google.com')) {
-            alert('❌ URL tidak valid!');
+            alert('❌ URL tidak valid! Harus URL Google Apps Script Web App');
             return;
         }
         
         this.gasUrl = url;
         localStorage.setItem(this.GAS_URL_KEY, url);
-        this.log('INFO', 'GAS URL saved');
+        this.log('INFO', 'GAS URL saved: ' + url.substring(0, 50) + '...');
+        
+        // Test koneksi setelah simpan
         this.testConnection();
     },
 
@@ -374,7 +376,7 @@ const backupModule = {
         
         this.autoSyncInterval = setInterval(function() {
             self.performTwoWaySync();
-        }, 180000);
+        }, 180000); // 3 menit
         
         this.log('INFO', 'Auto Sync started (3 min interval)');
     },
@@ -433,15 +435,17 @@ const backupModule = {
         };
         
         script.onerror = function() {
+            self.log('ERROR', 'JSONP timestamp failed');
             callback(null);
             delete window[cb];
         };
         
-        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb;
+        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb + '&_t=' + Date.now();
         document.head.appendChild(script);
         
         setTimeout(function() {
             if (window[cb]) {
+                self.log('WARN', 'Timestamp request timeout');
                 callback(null);
                 delete window[cb];
                 if (script.parentNode) script.parentNode.removeChild(script);
@@ -450,7 +454,7 @@ const backupModule = {
     },
 
     // ============================================
-    // UPLOAD
+    // UPLOAD - DENGAN ERROR HANDLING LENGKAP
     // ============================================
     
     uploadData: function(silent, callback) {
@@ -458,14 +462,13 @@ const backupModule = {
         this.log('INFO', 'Upload started');
         
         if (!this.gasUrl) {
-            if (!silent) alert('❌ URL belum diisi!');
+            if (!silent) alert('❌ URL GAS belum diisi!');
             if (callback) callback(false);
             return;
         }
         
         var data = this.getDataFromStorage();
         
-        // KHUSUS: Izinkan upload meski kosong (untuk reset cloud via sync)
         if (!silent) this.showToast('⬆️ Mengupload...');
         
         var payload = {
@@ -475,20 +478,28 @@ const backupModule = {
             device: navigator.userAgent
         };
         
+        // Coba fetch dulu (modern browsers)
         fetch(this.gasUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            mode: 'cors', // Explicit CORS mode
+            headers: { 
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
             body: JSON.stringify(payload)
         })
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            self.log('INFO', 'Fetch response: ' + response.status);
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
             return response.json();
         })
         .then(function(result) {
             self.handleUploadSuccess(result, silent, callback);
         })
         .catch(function(error) {
-            self.log('ERROR', 'Fetch upload failed: ' + error.message);
+            self.log('WARN', 'Fetch failed, trying JSONP: ' + error.message);
+            // Fallback ke JSONP jika fetch gagal
             self.uploadViaJSONP(payload, silent, callback);
         });
     },
@@ -497,7 +508,9 @@ const backupModule = {
         var self = this;
         var jsonStr = JSON.stringify(payload);
         
+        // Jika data terlalu besar, pakai iframe
         if (jsonStr.length > 8000) {
+            this.log('INFO', 'Data too large for JSONP, using iframe');
             this.uploadViaIframe(payload, silent, callback);
             return;
         }
@@ -513,9 +526,10 @@ const backupModule = {
         };
         
         script.onerror = function() {
-            self.log('ERROR', 'JSONP upload error');
-            if (!silent) self.showToast('❌ Upload gagal');
+            self.log('ERROR', 'JSONP upload error - CORS atau network issue');
+            if (!silent) self.showToast('❌ Upload gagal - Cek console (F12)');
             delete window[callbackName];
+            // Coba iframe sebagai last resort
             self.uploadViaIframe(payload, silent, callback);
         };
         
@@ -525,7 +539,8 @@ const backupModule = {
         
         setTimeout(function() {
             if (window[callbackName]) {
-                if (!silent) self.showToast('❌ Timeout');
+                self.log('ERROR', 'JSONP upload timeout');
+                if (!silent) self.showToast('❌ Timeout - Coba lagi');
                 delete window[callbackName];
                 if (script.parentNode) script.parentNode.removeChild(script);
                 if (callback) callback(false);
@@ -567,9 +582,10 @@ const backupModule = {
                 var result = JSON.parse(text);
                 self.handleUploadSuccess(result, silent, callback);
             } catch(e) {
+                self.log('WARN', 'Iframe parse error, assuming success');
                 self.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(self.LAST_SYNC_KEY, self.lastSyncTime);
-                if (!silent) self.showToast('✅ Upload selesai');
+                if (!silent) self.showToast('✅ Upload selesai (iframe)');
                 self.render();
                 if (callback) callback(true);
             }
@@ -595,18 +611,21 @@ const backupModule = {
             }
             
             if (!silent) this.showToast(msg);
-            this.log('INFO', 'Upload success', result.counts);
+            this.log('INFO', 'Upload success', result);
             this.render();
             if (callback) callback(true);
         } else {
             this.log('ERROR', 'Upload failed', result);
-            if (!silent) this.showToast('❌ Upload gagal');
+            if (!silent) {
+                var errMsg = result && result.message ? result.message : 'Unknown error';
+                this.showToast('❌ Upload gagal: ' + errMsg);
+            }
             if (callback) callback(false);
         }
     },
 
     // ============================================
-    // DOWNLOAD
+    // DOWNLOAD - DENGAN ERROR HANDLING LENGKAP
     // ============================================
     
     downloadData: function(silent) {
@@ -617,18 +636,21 @@ const backupModule = {
         }
         
         if (!this.gasUrl) {
-            if (!silent) alert('❌ URL belum diisi!');
+            if (!silent) alert('❌ URL GAS belum diisi!');
             return;
         }
         
         if (!silent) this.showToast('⬇️ Mengunduh data...');
         this.log('INFO', 'Download started');
         
-        fetch(this.gasUrl + '?action=restore', {
+        // Coba fetch dulu
+        fetch(this.gasUrl + '?action=restore&_t=' + Date.now(), {
             method: 'GET',
+            mode: 'cors',
             headers: { 'Accept': 'application/json' }
         })
         .then(function(response) {
+            self.log('INFO', 'Download response: ' + response.status);
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
         })
@@ -637,6 +659,7 @@ const backupModule = {
         })
         .catch(function(error) {
             self.log('WARN', 'Fetch download failed: ' + error.message);
+            // Fallback ke JSONP
             self.downloadViaJSONP(silent);
         });
     },
@@ -658,8 +681,8 @@ const backupModule = {
         };
         
         script.onerror = function() {
-            self.log('ERROR', 'JSONP download failed');
-            if (!silent) self.showToast('❌ Gagal terhubung ke cloud');
+            self.log('ERROR', 'JSONP download failed - CORS error');
+            if (!silent) self.showToast('❌ Gagal terhubung - Cek URL GAS');
             cleanup();
         };
         
@@ -682,6 +705,7 @@ const backupModule = {
         if (result && result.success && result.data) {
             var d = result.data;
             
+            // Validasi struktur data
             if (!d.products) d.products = [];
             if (!d.categories) d.categories = [];
             if (!d.transactions) d.transactions = [];
@@ -722,7 +746,7 @@ const backupModule = {
         } else {
             this.log('ERROR', 'Download failed', result);
             if (!silent) {
-                var errMsg = result ? result.message : 'Tidak ada response';
+                var errMsg = result && result.message ? result.message : 'Tidak ada response';
                 this.showToast('❌ Download gagal: ' + errMsg);
             }
         }
@@ -771,7 +795,7 @@ const backupModule = {
         var self = this;
         
         if (!this.gasUrl) {
-            alert('❌ URL belum diisi!');
+            alert('❌ URL GAS belum diisi!');
             return;
         }
         
@@ -795,6 +819,7 @@ const backupModule = {
         
         fetch(this.gasUrl, {
             method: 'POST',
+            mode: 'cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         })
@@ -853,7 +878,7 @@ const backupModule = {
             this.render();
         } else {
             this.log('ERROR', 'Cloud reset failed', result);
-            this.showToast('❌ Gagal reset: ' + (result ? result.message : 'Error'));
+            this.showToast('❌ Gagal reset: ' + (result && result.message ? result.message : 'Error'));
         }
     },
 
@@ -895,6 +920,7 @@ const backupModule = {
                    '• Hutang: ' + data.debts.length + '\n' +
                    '• Kasir Open: ' + (data.kasir && data.kasir.isOpen ? 'Ya' : 'Tidak') + '\n\n' +
                    'Ukuran: ' + rawSize + '\n' +
+                   'GAS URL: ' + (this.gasUrl ? this.gasUrl.substring(0, 50) + '...' : 'Belum diisi') + '\n' +
                    'Last Sync: ' + (this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah');
         
         alert(info);
@@ -925,18 +951,19 @@ const backupModule = {
                 info += '\n• Sheets: ' + (result.sheets ? result.sheets.join(', ') : 'N/A');
                 alert(info);
             } else {
-                alert('❌ Gagal: ' + (result ? result.message : 'Error'));
+                alert('❌ Gagal: ' + (result && result.message ? result.message : 'Error tidak diketahui'));
             }
             delete window[cb];
             if (script.parentNode) script.parentNode.removeChild(script);
         };
         
         script.onerror = function() {
-            alert('❌ Gagal terhubung');
+            self.log('ERROR', 'Check cloud connection failed');
+            alert('❌ Gagal terhubung ke GAS. Pastikan:\n1. URL benar\n2. GAS sudah di-deploy\n3. Access: Anyone');
             delete window[cb];
         };
         
-        script.src = this.gasUrl + '?action=ping&callback=' + cb;
+        script.src = this.gasUrl + '?action=ping&callback=' + cb + '&_t=' + Date.now();
         document.head.appendChild(script);
         
         setTimeout(function() {
