@@ -1,29 +1,20 @@
 // Router System - DENGAN PROTEKSI KASIR TUTUP
 const router = {
     currentPage: null,
-
-    // Daftar menu yang BISA diakses saat kasir tutup
     allowedWhenClosed: ['backup'],
 
     navigate(page, element) {
-        // Cek status kasir
         const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
 
-        // Jika kasir tutup dan menu tidak diizinkan, blok akses
         if (!isKasirOpen && !this.allowedWhenClosed.includes(page)) {
-            // Tampilkan modal peringatan
             this.showKasirClosedModal();
             return;
         }
 
-        // Update nav tabs
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         if (element) element.classList.add('active');
 
-        // Hide cart bar by default
         document.getElementById('cartBar').style.display = 'none';
-
-        // Load specific module
         this.currentPage = page;
 
         switch(page) {
@@ -57,7 +48,6 @@ const router = {
         window.scrollTo(0, 0);
     },
 
-    // Modal peringatan kasir tutup
     showKasirClosedModal() {
         const modalHTML = `
             <div class="modal active" id="kasirClosedModal" style="display: flex; z-index: 3000;">
@@ -66,33 +56,22 @@ const router = {
                     <div class="modal-header" style="justify-content: center; margin-bottom: 15px;">
                         <span class="modal-title" style="font-size: 20px;">Kasir Sedang Tutup</span>
                     </div>
-
                     <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px;">
-                            ⚠️ Akses Ditolak
-                        </div>
+                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px;">⚠️ Akses Ditolak</div>
                         <div style="font-size: 14px; color: #666; line-height: 1.5;">
                             Menu ini tidak dapat diakses saat kasir tutup. 
                             Silakan buka kasir terlebih dahulu melalui menu Pengaturan.
                         </div>
                     </div>
-
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <button class="btn btn-secondary" onclick="router.closeKasirClosedModal()">
-                            Tutup
-                        </button>
-                        <button class="btn btn-primary" onclick="router.closeKasirClosedModal(); app.openSettings();" style="background: #4caf50;">
-                            🔓 Buka Kasir
-                        </button>
+                        <button class="btn btn-secondary" onclick="router.closeKasirClosedModal()">Tutup</button>
+                        <button class="btn btn-primary" onclick="router.closeKasirClosedModal(); app.openSettings();" style="background: #4caf50;">🔓 Buka Kasir</button>
                     </div>
                 </div>
             </div>
         `;
-
-        // Hapus modal lama jika ada
         const existingModal = document.getElementById('kasirClosedModal');
         if (existingModal) existingModal.remove();
-
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
@@ -112,24 +91,19 @@ const app = {
         this.updateHeader();
         this.updateKasirStatus();
 
-        // Load default page berdasarkan status kasir
         const isKasirOpen = this.data && this.data.kasir && this.data.kasir.isOpen;
 
         if (isKasirOpen) {
-            // Kasir buka - load POS seperti biasa
             const defaultTab = document.querySelector('.nav-tab');
             if (defaultTab) defaultTab.classList.add('active');
             posModule.init();
             document.getElementById('cartBar').style.display = 'flex';
         } else {
-            // Kasir tutup - tampilkan halaman khusus
             this.showKasirClosedPage();
-            // Tidak ada tab yang aktif
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         }
     },
 
-    // Tampilkan halaman kasir tutup
     showKasirClosedPage() {
         const container = document.getElementById('mainContent');
         if (!container) return;
@@ -143,21 +117,13 @@ const app = {
                     Anda tidak dapat melakukan transaksi atau mengakses menu lain.<br>
                     Silakan buka kasir untuk memulai shift kerja.
                 </p>
-
                 <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 16px; padding: 25px; max-width: 400px; margin: 0 auto;">
-                    <div style="font-size: 14px; color: #666; margin-bottom: 15px;">
-                        💡 Menu yang tersedia saat kasir tutup:
-                    </div>
+                    <div style="font-size: 14px; color: #666; margin-bottom: 15px;">💡 Menu yang tersedia saat kasir tutup:</div>
                     <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                        <div style="background: white; padding: 10px 15px; border-radius: 8px; font-size: 13px;">
-                            ⚙️ Pengaturan
-                        </div>
-                        <div style="background: white; padding: 10px 15px; border-radius: 8px; font-size: 13px;">
-                            ☁️ Backup
-                        </div>
+                        <div style="background: white; padding: 10px 15px; border-radius: 8px; font-size: 13px;">⚙️ Pengaturan</div>
+                        <div style="background: white; padding: 10px 15px; border-radius: 8px; font-size: 13px;">☁️ Backup</div>
                     </div>
                 </div>
-
                 <button onclick="app.openSettings()" 
                         style="margin-top: 30px; padding: 15px 40px; font-size: 16px; 
                                background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
@@ -170,6 +136,9 @@ const app = {
         `;
     },
 
+    // ==========================================
+    // UPDATE HEADER - DENGAN TOTAL TRANSAKSI & LABA
+    // ==========================================
     updateHeader() {
         document.getElementById('headerStoreName').textContent = this.data.settings.storeName;
         document.getElementById('headerStoreAddress').textContent = this.data.settings.address || 'Alamat Belum Diatur';
@@ -179,19 +148,33 @@ const app = {
         // Update profit
         const todayProfit = this.calculateTodayProfit();
         document.getElementById('headerProfit').textContent = 'Rp ' + utils.formatNumber(todayProfit);
+        
+        // BARU: Update total transaksi hari ini
+        const todayTransactions = this.calculateTodayTransactions();
+        document.getElementById('totalTransactions').textContent = todayTransactions + ' trx';
+    },
+
+    // BARU: Fungsi hitung total transaksi hari ini
+    calculateTodayTransactions() {
+        const today = new Date().toDateString();
+        return this.data.transactions
+            .filter(t => new Date(t.date).toDateString() === today && 
+                         t.status !== 'deleted' && 
+                         t.status !== 'voided')
+            .length;
     },
 
     calculateTodayProfit() {
         const today = new Date().toDateString();
         return this.data.transactions
-            .filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted' && t.status !== 'voided')
-            .reduce((sum, t) => sum + t.profit, 0);
+            .filter(t => new Date(t.date).toDateString() === today && 
+                         t.status !== 'deleted' && 
+                         t.status !== 'voided')
+            .reduce((sum, t) => sum + (t.profit || 0), 0);
     },
 
     updateKasirStatus() {
         const isOpen = this.data.kasir && this.data.kasir.isOpen;
-
-        // Update dot indicator
         const dot = document.getElementById('kasirStatusDot');
         const text = document.getElementById('kasirStatusText');
         const shiftStatus = document.getElementById('shiftStatus');
@@ -210,7 +193,6 @@ const app = {
         }
     },
 
-    // SETTINGS & KASIR MANAGEMENT - FIXED
     openSettings() {
         const isOpen = this.data.kasir && this.data.kasir.isOpen;
 
@@ -222,7 +204,6 @@ const app = {
                         <button class="close-btn" onclick="app.closeSettings()">×</button>
                     </div>
 
-                    <!-- Kasir Status Section -->
                     <div class="card" style="margin-bottom: 20px; background: ${isOpen ? '#e8f5e9' : '#ffebee'}; border: 2px solid ${isOpen ? 'var(--success)' : 'var(--danger)'};">
                         <div class="card-header" style="margin-bottom: 15px;">
                             <span class="card-title" style="font-size: 18px;">
@@ -231,9 +212,7 @@ const app = {
                         </div>
 
                         <div style="text-align: center; padding: 20px;">
-                            <div style="font-size: 48px; margin-bottom: 10px;">
-                                ${isOpen ? '🔓' : '🔒'}
-                            </div>
+                            <div style="font-size: 48px; margin-bottom: 10px;">${isOpen ? '🔓' : '🔒'}</div>
                             <div style="font-weight: 700; font-size: 16px; margin-bottom: 5px;">
                                 ${isOpen ? 'Siap melayani transaksi' : 'Silakan buka kasir untuk memulai'}
                             </div>
@@ -267,7 +246,6 @@ const app = {
                         </div>
                     </div>
 
-                    <!-- Store Settings -->
                     <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div class="card-header" style="margin-bottom: 15px;">
                             <span class="card-title">🏪 Pengaturan Toko</span>
@@ -295,7 +273,6 @@ const app = {
                         </div>
                     </div>
 
-                    <!-- Receipt Settings -->
                     <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div class="card-header" style="margin-bottom: 15px;">
                             <span class="card-title">🧾 Header Struk</span>
@@ -330,11 +307,9 @@ const app = {
 
         const today = new Date().toDateString();
 
-        // Reset for new day
         this.data.settings.currentCash = 0;
         this.data.settings.modalAwal = 0;
 
-        // Set kasir open
         this.data.kasir = {
             isOpen: true,
             openTime: new Date().toISOString(),
@@ -348,11 +323,9 @@ const app = {
         this.closeSettings();
         app.showToast('✅ Kasir dibuka! Selamat bekerja 💪');
 
-        // Refresh ke halaman POS
         posModule.init();
         document.getElementById('cartBar').style.display = 'flex';
 
-        // Update nav tab aktif ke POS
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         const posTab = document.querySelector('.nav-tab[onclick*=\'pos\']');
         if (posTab) posTab.classList.add('active');
@@ -366,7 +339,6 @@ const app = {
         this.data.kasir.isOpen = false;
         this.data.kasir.closeTime = new Date().toISOString();
 
-        // Save shift summary
         const today = new Date().toDateString();
         const todayTrans = this.data.transactions.filter(t => 
             new Date(t.date).toDateString() === today && t.status !== 'voided'
@@ -392,10 +364,7 @@ const app = {
         this.closeSettings();
         app.showToast('🔒 Kasir ditutup! Shift berakhir. 🏠');
 
-        // Tampilkan halaman kasir tutup
         this.showKasirClosedPage();
-
-        // Update nav tab - tidak ada yang aktif
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     },
 
