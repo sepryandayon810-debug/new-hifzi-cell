@@ -13,7 +13,8 @@
     <link rel="stylesheet" href="css/reports.css">
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
-    <link rel="stylesheet" href="css/debt.css">
+    <!-- PERBAIKAN: Path debt.css -->
+    <link rel="stylesheet" href="debt.css">
     
     <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
@@ -350,16 +351,16 @@
 
     <!-- Navigation -->
     <div class="nav-tabs" id="navTabs">
-        <button class="nav-tab active" onclick="router.navigate('pos', this)">🏪 Kasir</button>
-        <button class="nav-tab" onclick="router.navigate('products', this)">📦 Produk</button>
-        <button class="nav-tab" onclick="router.navigate('cash', this)">💵 Kas</button>
-        <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
-        <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
-        <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
-        <button class="nav-tab" onclick="router.navigate('debt', this)">💳 Hutang</button>
-        <!-- TELEGRAM PAKAI FUNGSI KHUSUS -->
-        <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
-        <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
+        <button class="nav-tab active" onclick="appRouter('pos', this)">🏪 Kasir</button>
+        <button class="nav-tab" onclick="appRouter('products', this)">📦 Produk</button>
+        <button class="nav-tab" onclick="appRouter('cash', this)">💵 Kas</button>
+        <button class="nav-tab" onclick="appRouter('reports', this)">📊 Laporan</button>
+        <button class="nav-tab" onclick="appRouter('transactions', this)">📝 Transaksi</button>
+        <button class="nav-tab" onclick="appRouter('receipt', this)">🧾 Struk</button>
+        <!-- PERBAIKAN: Gunakan onclick langsung ke fungsi debt -->
+        <button class="nav-tab" onclick="openDebtModule(this)">💳 Hutang</button>
+        <button class="nav-tab" onclick="appRouter('telegram', this)">📱 Telegram</button>
+        <button class="nav-tab" onclick="appRouter('backup', this)">☁️ Cloud</button>
     </div>
 
     <!-- Content Container -->
@@ -379,11 +380,14 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
-    <!-- TELEGRAM HELPER SCRIPT - PALING AWAL -->
+    <!-- ROUTER SCRIPT - PALING AWAL -->
     <script>
-        // Fungsi khusus untuk Telegram - dipanggil langsung dari onclick
-        function goToTelegram(element) {
-            console.log('[Telegram+Saldo] goToTelegram() called');
+        // ==========================================
+        // APP ROUTER - FUNGSI NAVIGASI UTAMA
+        // ==========================================
+        
+        function appRouter(page, element) {
+            console.log('[AppRouter] Navigating to:', page);
             
             // Update active tab
             document.querySelectorAll('.nav-tab').forEach(function(tab) {
@@ -393,7 +397,143 @@
                 element.classList.add('active');
             }
             
-            // Render Telegram
+            // Route ke module yang sesuai
+            switch(page) {
+                case 'pos':
+                    if (typeof posModule !== 'undefined' && posModule.render) {
+                        posModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('pos', element);
+                    }
+                    break;
+                    
+                case 'products':
+                    if (typeof productsModule !== 'undefined' && productsModule.render) {
+                        productsModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('products', element);
+                    }
+                    break;
+                    
+                case 'cash':
+                    if (typeof cashModule !== 'undefined' && cashModule.render) {
+                        cashModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('cash', element);
+                    }
+                    break;
+                    
+                case 'reports':
+                    if (typeof reportsModule !== 'undefined' && reportsModule.render) {
+                        reportsModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('reports', element);
+                    }
+                    break;
+                    
+                case 'transactions':
+                    if (typeof transactionsModule !== 'undefined' && transactionsModule.render) {
+                        transactionsModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('transactions', element);
+                    }
+                    break;
+                    
+                case 'receipt':
+                    if (typeof receiptModule !== 'undefined' && receiptModule.render) {
+                        receiptModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('receipt', element);
+                    }
+                    break;
+                    
+                case 'telegram':
+                    openTelegramModule(element);
+                    break;
+                    
+                case 'backup':
+                    if (typeof backupModule !== 'undefined' && backupModule.render) {
+                        backupModule.render();
+                    } else if (typeof router !== 'undefined') {
+                        router.navigate('backup', element);
+                    }
+                    break;
+                    
+                default:
+                    console.warn('[AppRouter] Unknown page:', page);
+                    if (typeof router !== 'undefined') {
+                        router.navigate(page, element);
+                    }
+            }
+        }
+        
+        // ==========================================
+        // DEBT MODULE - FUNGSI KHUSUS
+        // ==========================================
+        
+        function openDebtModule(element) {
+            console.log('[Debt] openDebtModule() called');
+            
+            // Update active tab
+            document.querySelectorAll('.nav-tab').forEach(function(tab) {
+                tab.classList.remove('active');
+            });
+            if (element) {
+                element.classList.add('active');
+            }
+            
+            // Render Debt Module
+            var container = document.getElementById('mainContent');
+            if (!container) {
+                console.error('[Debt] mainContent not found!');
+                return;
+            }
+            
+            // Cek apakah debtModule tersedia
+            if (typeof debtModule === 'undefined') {
+                console.error('[Debt] debtModule not loaded');
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;">' +
+                    '<h3>❌ Debt Module Error</h3>' +
+                    '<p>debtModule tidak ditemukan. Pastikan file debt.js sudah diload.</p>' +
+                    '<button onclick="location.reload()" style="padding:10px 20px;margin-top:10px;">Refresh Halaman</button>' +
+                    '</div>';
+                return;
+            }
+            
+            try {
+                // Init dan Render debt module
+                console.log('[Debt] Initializing...');
+                debtModule.init();
+                console.log('[Debt] Rendering...');
+                debtModule.render();
+                console.log('[Debt] Rendered successfully');
+            } catch (e) {
+                console.error('[Debt] Error:', e);
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;color:red;">' +
+                    '<h3>❌ Error</h3>' +
+                    '<p>' + e.message + '</p>' +
+                    '<pre style="text-align:left;background:#f5f5f5;padding:10px;margin-top:10px;font-size:12px;">' + e.stack + '</pre>' +
+                    '</div>';
+            }
+        }
+        
+        // ==========================================
+        // TELEGRAM MODULE - FUNGSI KHUSUS  
+        // ==========================================
+        
+        function openTelegramModule(element) {
+            console.log('[Telegram] openTelegramModule() called');
+            
+            // Update active tab
+            document.querySelectorAll('.nav-tab').forEach(function(tab) {
+                tab.classList.remove('active');
+            });
+            if (element) {
+                element.classList.add('active');
+            }
+            
             var container = document.getElementById('mainContent');
             if (!container) {
                 console.error('[Telegram] mainContent not found!');
@@ -412,13 +552,10 @@
             
             try {
                 TelegramModule.renderPage();
-                
-                // Check pending saldo setelah render
                 if (TelegramModule.SaldoModule) {
                     TelegramModule.SaldoModule.checkPending();
                 }
-                
-                console.log('[Telegram+Saldo] Rendered successfully');
+                console.log('[Telegram] Rendered successfully');
             } catch (e) {
                 console.error('[Telegram] Error:', e);
                 container.innerHTML = 
@@ -429,41 +566,46 @@
             }
         }
         
-        // Override router.navigate untuk intercept Telegram saja
-        (function() {
-            console.log('[Router] Setting up Telegram intercept...');
+        // ==========================================
+        // BACKWARD COMPATIBILITY
+        // ==========================================
+        
+        // Fungsi lama untuk kompatibilitas
+        function goToTelegram(element) {
+            openTelegramModule(element);
+        }
+        
+        function goToDebt(element) {
+            openDebtModule(element);
+        }
+        
+        // Override router.navigate jika ada
+        window.addEventListener('load', function() {
+            console.log('[Router] Setting up overrides...');
             
-            // Tunggu sampai router tersedia
-            var checkRouter = setInterval(function() {
-                if (window.router && window.router.navigate) {
-                    clearInterval(checkRouter);
+            if (window.router && window.router.navigate) {
+                var originalNavigate = window.router.navigate;
+                
+                window.router.navigate = function(page, element) {
+                    console.log('[Router] navigate called:', page);
                     
-                    // Simpan fungsi original
-                    var originalNavigate = window.router.navigate;
+                    if (page === 'telegram') {
+                        openTelegramModule(element);
+                        return;
+                    }
                     
-                    // Ganti dengan wrapper
-                    window.router.navigate = function(page, element) {
-                        console.log('[Router] navigate called:', page);
-                        
-                        // Kalau Telegram, panggil fungsi khusus
-                        if (page === 'telegram') {
-                            goToTelegram(element);
-                            return;
-                        }
-                        
-                        // Selain Telegram, panggil original
-                        return originalNavigate(page, element);
-                    };
+                    if (page === 'debt') {
+                        openDebtModule(element);
+                        return;
+                    }
                     
-                    console.log('[Router] Telegram intercept ready');
-                }
-            }, 100);
-            
-            // Timeout setelah 5 detik
-            setTimeout(function() {
-                clearInterval(checkRouter);
-            }, 5000);
-        })();
+                    // Untuk page lain, gunakan appRouter
+                    appRouter(page, element);
+                };
+                
+                console.log('[Router] Overrides ready');
+            }
+        });
     </script>
 
     <!-- Scripts -->
@@ -483,7 +625,8 @@
     <script src="telegram.js"></script>
     
     <script src="js/backup.js"></script>
-    <script src="js/debt.js"></script>
+    <!-- PERBAIKAN: Load debt.js SEBELUM app.js atau setelah tapi pastikan path benar -->
+    <script src="debt.js"></script>
     
     <!-- Verifikasi module -->
     <script>
@@ -501,6 +644,7 @@
         console.log('backupModule:', typeof backupModule);
         console.log('debtModule:', typeof debtModule);
         console.log('TelegramModule:', typeof TelegramModule);
+        console.log('==================');
     </script>
 </body>
 </html>
