@@ -1,115 +1,214 @@
 const dataManager = {
-    data: {
-        categories: [
-            { id: 'all', name: 'Semua', icon: '📦' },
-            { id: 'handphone', name: 'Handphone', icon: '📱' },
-            { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
-            { id: 'pulsa', name: 'Pulsa', icon: '💳' },
-            { id: 'servis', name: 'Servis', icon: '🔧' }
-        ],
-        products: [],
-        transactions: [],
-        cashTransactions: [],
-        lastSync: null,
-        settings: {
-            storeName: 'Hifzi Cell',
-            address: '',
-            taxRate: 0,
-            modalAwal: 0,
-            currentCash: 0,
-            receiptHeader: {
+    data: null,
+    STORAGE_KEY: 'hifzi_data',
+
+    initData() {
+        return {
+            settings: {
                 storeName: 'HIFZI CELL',
-                address: 'Alamat Belum Diatur',
+                address: '',
                 phone: '',
-                note: 'Terima kasih atas kunjungan Anda'
+                taxRate: 0,
+                currentCash: 0,
+                modalAwal: 0,
+                receiptHeader: {
+                    storeName: 'HIFZI CELL',
+                    address: '',
+                    phone: '',
+                    note: 'Terima kasih atas kunjungan Anda'
+                }
+            },
+            products: [],
+            transactions: [],
+            cashTransactions: [],
+            debts: [],
+            kasir: {
+                isOpen: false,
+                openTime: null,
+                closeTime: null
+            },
+            shiftHistory: []
+        };
+    },
+
+    load() {
+        try {
+            const stored = localStorage.getItem(this.STORAGE_KEY);
+            if (stored) {
+                this.data = JSON.parse(stored);
+                // Merge dengan default untuk field baru
+                const defaults = this.initData();
+                this.data = { ...defaults, ...this.data };
+            } else {
+                this.data = this.initData();
+                this.save();
             }
-        },
-        kasir: {
-            isOpen: false,
-            openTime: null,
-            closeTime: null,
-            date: null
+        } catch (e) {
+            console.error('Error loading data:', e);
+            this.data = this.initData();
         }
     },
-    
-    load() {
-        const saved = localStorage.getItem('hifzi_cell_data');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                
-                // Deep merge untuk memastikan struktur lengkap
-                this.data = this.deepMerge(this.data, parsed);
-                
-                // ⬅️ KRITIS: Pastikan settings.currentCash adalah NUMBER
-                this.data.settings.currentCash = this.parseNumber(this.data.settings.currentCash);
-                this.data.settings.modalAwal = this.parseNumber(this.data.settings.modalAwal);
-                
-                console.log('[DataManager] Loaded. Cash:', this.data.settings.currentCash, 'Modal:', this.data.settings.modalAwal);
-                
-            } catch (e) {
-                console.error('[DataManager] Load error:', e);
-            }
+
+    save() {
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
+            return true;
+        } catch (e) {
+            console.error('Error saving data:', e);
+            return false;
         }
+    },
+
+    getData() {
+        if (!this.data) this.load();
         return this.data;
     },
-    
-    // ⬅️ TAMBAH: Deep merge untuk nested objects
-    deepMerge(target, source) {
-        const output = Object.assign({}, target);
-        if (source && typeof source === 'object') {
-            Object.keys(source).forEach(key => {
-                if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-                    output[key] = this.deepMerge(target[key] || {}, source[key]);
-                } else {
-                    output[key] = source[key];
-                }
-            });
-        }
-        return output;
-    },
-    
-    // ⬅️ TAMBAH: Parse number dengan aman
-    parseNumber(value) {
-        if (typeof value === 'number' && !isNaN(value)) return value;
-        if (typeof value === 'string') {
-            const parsed = parseInt(value.replace(/\./g, '').replace(/,/g, ''));
-            return isNaN(parsed) ? 0 : parsed;
-        }
-        return 0;
-    },
-    
-    save() {
-        // ⬅️ KRITIS: Pastikan semua number valid sebelum save
-        if (this.data.settings) {
-            this.data.settings.currentCash = this.parseNumber(this.data.settings.currentCash);
-            this.data.settings.modalAwal = this.parseNumber(this.data.settings.modalAwal);
-        }
-        
-        localStorage.setItem('hifzi_cell_data', JSON.stringify(this.data));
-        console.log('[DataManager] Saved. Cash:', this.data.settings.currentCash);
-    },
-    
-    getProducts() { return this.data.products; },
-    getTransactions() { return this.data.transactions; },
-    getCategories() { return this.data.categories; },
-    getSettings() { return this.data.settings; },
-    
+
+    // Products
     addProduct(product) {
+        product.id = utils.generateId();
+        product.createdAt = new Date().toISOString();
         this.data.products.push(product);
         this.save();
+        return product;
     },
-    
+
     updateProduct(id, updates) {
-        const idx = this.data.products.findIndex(p => p.id === id);
-        if (idx !== -1) {
-            this.data.products[idx] = { ...this.data.products[idx], ...updates };
+        const index = this.data.products.findIndex(p => p.id === id);
+        if (index !== -1) {
+            this.data.products[index] = { ...this.data.products[index], ...updates };
             this.save();
+            return true;
         }
+        return false;
     },
-    
+
     deleteProduct(id) {
-        this.data.products = this.data.products.filter(p => p.id !== id);
+        const index = this.data.products.findIndex(p => p.id === id);
+        if (index !== -1) {
+            this.data.products.splice(index, 1);
+            this.save();
+            return true;
+        }
+        return false;
+    },
+
+    getProductById(id) {
+        return this.data.products.find(p => p.id === id);
+    },
+
+    getProductByBarcode(barcode) {
+        return this.data.products.find(p => p.barcode === barcode);
+    },
+
+    // Transactions
+    addTransaction(transaction) {
+        transaction.id = utils.generateId();
+        transaction.createdAt = new Date().toISOString();
+        this.data.transactions.push(transaction);
         this.save();
+        return transaction;
+    },
+
+    updateTransaction(id, updates) {
+        const index = this.data.transactions.findIndex(t => t.id === id);
+        if (index !== -1) {
+            this.data.transactions[index] = { ...this.data.transactions[index], ...updates };
+            this.save();
+            return true;
+        }
+        return false;
+    },
+
+    getTransactionById(id) {
+        return this.data.transactions.find(t => t.id === id);
+    },
+
+    // Cash Transactions
+    addCashTransaction(transaction) {
+        transaction.id = Date.now();
+        transaction.date = new Date().toISOString();
+        this.data.cashTransactions.push(transaction);
+        this.save();
+        return transaction;
+    },
+
+    deleteCashTransaction(id) {
+        const index = this.data.cashTransactions.findIndex(t => t.id === id);
+        if (index !== -1) {
+            const trans = this.data.cashTransactions[index];
+            this.data.cashTransactions.splice(index, 1);
+            this.save();
+            return trans;
+        }
+        return null;
+    },
+
+    // Debts
+    addDebt(debt) {
+        debt.id = utils.generateId();
+        debt.createdAt = new Date().toISOString();
+        debt.paid = 0;
+        debt.status = 'unpaid';
+        this.data.debts.push(debt);
+        this.save();
+        return debt;
+    },
+
+    updateDebt(id, updates) {
+        const index = this.data.debts.findIndex(d => d.id === id);
+        if (index !== -1) {
+            this.data.debts[index] = { ...this.data.debts[index], ...updates };
+            // Update status
+            const debt = this.data.debts[index];
+            if (debt.paid >= debt.amount) {
+                debt.status = 'paid';
+            } else if (debt.paid > 0) {
+                debt.status = 'partial';
+            }
+            this.save();
+            return true;
+        }
+        return false;
+    },
+
+    deleteDebt(id) {
+        const index = this.data.debts.findIndex(d => d.id === id);
+        if (index !== -1) {
+            this.data.debts.splice(index, 1);
+            this.save();
+            return true;
+        }
+        return false;
+    },
+
+    // Export/Import
+    exportData() {
+        return {
+            ...this.data,
+            exportedAt: new Date().toISOString()
+        };
+    },
+
+    importData(data) {
+        if (confirm('Import data akan MENIMPA semua data saat ini. Lanjutkan?')) {
+            this.data = { ...this.initData(), ...data };
+            this.save();
+            return true;
+        }
+        return false;
+    },
+
+    // Clear all data
+    clearAll() {
+        if (confirm('Yakin ingin menghapus SEMUA data? Tindakan ini tidak bisa dibatalkan!')) {
+            localStorage.removeItem(this.STORAGE_KEY);
+            this.data = this.initData();
+            return true;
+        }
+        return false;
     }
 };
+
+// Auto-load saat script dijalankan
+dataManager.load();
