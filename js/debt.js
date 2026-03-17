@@ -2,7 +2,7 @@
  * HIFZI CELL - Debt Module (Hutang/Piutang)
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
  * Mengelola daftar hutang dengan kontrol kas masuk/keluar
- * + Fitur Autocomplete Nama Pelanggan
+ * + Fitur Autocomplete Nama Pelanggan (Improved)
  */
 
 const debtModule = {
@@ -58,11 +58,8 @@ const debtModule = {
             this.debts = [];
         }
 
-        // Jika tidak ada data sama sekali, tambahkan dummy data untuk demo
-        if (this.debts.length === 0) {
-            this.debts = this.getDummyData();
-            this.saveDebts();
-        }
+        // TIDAK ADA DATA DUMMY - biarkan kosong jika belum ada data
+        // Data user akan muncul saat mereka mulai input
     },
 
     // Simpan data hutang ke DATABASE HIFZI APPS (dataManager)
@@ -90,53 +87,8 @@ const debtModule = {
         }
     },
 
-    // Data dummy untuk demo
-    getDummyData() {
-        return [
-            {
-                id: 'H001',
-                customerName: 'Budi Santoso',
-                customerPhone: '081234567890',
-                date: '2024-03-15',
-                dueDate: '2024-04-15',
-                items: [
-                    { name: 'iPhone 14 Pro', qty: 1, price: 15000000 },
-                    { name: 'Case iPhone', qty: 1, price: 150000 }
-                ],
-                total: 15150000,
-                paid: 5000000,
-                status: 'pending',
-                notes: 'DP 5 juta, sisanya bulan depan',
-                reduceCash: true,
-                payments: [{
-                    date: '2024-03-15T10:00:00.000Z',
-                    amount: 5000000,
-                    method: 'cash',
-                    note: 'DP/ Pembayaran awal',
-                    addToCash: true
-                }]
-            },
-            {
-                id: 'H002',
-                customerName: 'Ani Wijaya',
-                customerPhone: '082345678901',
-                date: '2024-03-12',
-                dueDate: '2024-04-12',
-                items: [
-                    { name: 'Xiaomi 14', qty: 1, price: 8000000 }
-                ],
-                total: 8000000,
-                paid: 0,
-                status: 'pending',
-                notes: 'Hutang tanpa DP',
-                reduceCash: false,
-                payments: []
-            }
-        ];
-    },
-
     // ============================================
-    // FITUR AUTOCOMPLETE NAMA PELANGGAN
+    // FITUR AUTOCOMPLETE NAMA PELANGGAN (IMPROVED)
     // ============================================
 
     getUniqueCustomers() {
@@ -429,7 +381,7 @@ const debtModule = {
                                 <div class="debt-customer-name">${group.customerName}</div>
                                 <div class="debt-customer-meta">
                                     ${statusBadge}
-                                    <span class="debt-meta-item">📱 ${group.customerPhone}</span>
+                                    <span class="debt-meta-item">📱 ${group.customerPhone || '-'}</span>
                                     <span class="debt-meta-item">📝 ${group.count} transaksi</span>
                                 </div>
                             </div>
@@ -441,7 +393,7 @@ const debtModule = {
                         <div class="debt-group-actions" onclick="event.stopPropagation()">
                             ${!group.allPaid ? `
                                 <button class="debt-action-btn whatsapp" onclick="debtModule.sendWhatsApp('${group.customerPhone}', '${group.customerName}', ${remaining})" 
-                                        title="Kirim WA">💬</button>
+                                        title="Kirim WA" ${!group.customerPhone ? 'disabled style="opacity:0.5"' : ''}>💬</button>
                                 <button class="debt-action-btn pay" onclick="debtModule.payAll('${group.customerName}')" 
                                         title="Bayar Semua">💰</button>
                             ` : `
@@ -524,7 +476,7 @@ const debtModule = {
     },
 
     // ============================================
-    // MODAL TAMBAH HUTANG BARU - DENGAN AUTOCOMPLETE
+    // MODAL TAMBAH HUTANG BARU - DENGAN AUTOCOMPLETE YANG LEBIH BAIK
     // ============================================
 
     openAddDebtModal() {
@@ -549,27 +501,19 @@ const debtModule = {
                         <input type="text" 
                                class="debt-form-input" 
                                id="addCustomerName" 
-                               placeholder="Ketik nama atau pilih dari daftar..."
+                               placeholder="Ketik nama pelanggan..."
                                autocomplete="off"
                                oninput="debtModule.handleNameInput(this.value)"
-                               onfocus="debtModule.showCustomerList()">
+                               onblur="setTimeout(() => debtModule.hideCustomerList(), 200)">
 
                         <div id="customerList" class="customer-autocomplete-list" style="display: none;">
-                            ${customers.length > 0 ? `
-                                <div class="customer-list-header">📋 Pelanggan yang pernah input:</div>
-                                ${customers.map(c => `
-                                    <div class="customer-list-item" onclick="debtModule.selectCustomer('${c.name}', '${c.phone}')">
-                                        <div class="customer-list-name">${c.name}</div>
-                                        <div class="customer-list-phone">📱 ${c.phone}</div>
-                                    </div>
-                                `).join('')}
-                            ` : `<div class="customer-list-empty">Belum ada data pelanggan</div>`}
+                            <!-- List akan diisi saat user mengetik -->
                         </div>
                     </div>
 
                     <div class="debt-form-group">
-                        <label class="debt-form-label">No. Telepon *</label>
-                        <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="0812-3456-7890">
+                        <label class="debt-form-label">No. Telepon</label>
+                        <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional - 0812-3456-7890">
                     </div>
 
                     <div class="debt-section-title">📦 Produk yang Dihutangkan</div>
@@ -735,45 +679,51 @@ const debtModule = {
         if (list) list.style.display = 'none';
     },
 
+    // Hanya tampilkan suggestion saat user mengetik (minimal 2 karakter)
     handleNameInput(value) {
         const list = document.getElementById('customerList');
         if (!list) return;
 
-        const customers = this.getUniqueCustomers();
-        const filtered = customers.filter(c => c.name.toLowerCase().includes(value.toLowerCase()));
-
-        if (value === '' || filtered.length === 0) {
-            list.innerHTML = customers.length > 0 ? `
-                <div class="customer-list-header">📋 Pelanggan yang pernah input:</div>
-                ${customers.map(c => `
-                    <div class="customer-list-item" onclick="debtModule.selectCustomer('${c.name}', '${c.phone}')">
-                        <div class="customer-list-name">${c.name}</div>
-                        <div class="customer-list-phone">📱 ${c.phone}</div>
-                    </div>
-                `).join('')}
-            ` : `<div class="customer-list-empty">Belum ada data pelanggan</div>`;
-        } else {
-            list.innerHTML = `
-                <div class="customer-list-header">🔍 Hasil pencarian:</div>
-                ${filtered.map(c => {
-                    const regex = new RegExp(`(${value})`, 'gi');
-                    const highlightedName = c.name.replace(regex, '<span class="customer-highlight">$1</span>');
-                    return `
-                        <div class="customer-list-item" onclick="debtModule.selectCustomer('${c.name}', '${c.phone}')">
-                            <div class="customer-list-name">${highlightedName}</div>
-                            <div class="customer-list-phone">📱 ${c.phone}</div>
-                        </div>
-                    `;
-                }).join('')}
-            `;
+        // Minimal 2 karakter untuk menampilkan suggestion
+        if (value.length < 2) {
+            list.style.display = 'none';
+            return;
         }
+
+        const customers = this.getUniqueCustomers();
+        const searchLower = value.toLowerCase();
+        const filtered = customers.filter(c => 
+            c.name.toLowerCase().includes(searchLower)
+        );
+
+        if (filtered.length === 0) {
+            list.style.display = 'none';
+            return;
+        }
+
+        // Tampilkan hasil pencarian
+        list.innerHTML = `
+            <div class="customer-list-header">🔍 Pelanggan ditemukan:</div>
+            ${filtered.map(c => {
+                const regex = new RegExp(`(${value})`, 'gi');
+                const highlightedName = c.name.replace(regex, '<span class="customer-highlight">$1</span>');
+                return `
+                    <div class="customer-list-item" onclick="debtModule.selectCustomer('${c.name}', '${c.phone || ''}')">
+                        <div class="customer-list-name">${highlightedName}</div>
+                        ${c.phone ? `<div class="customer-list-phone">📱 ${c.phone}</div>` : ''}
+                    </div>
+                `;
+            }).join('')}
+        `;
 
         list.style.display = 'block';
     },
 
     selectCustomer(name, phone) {
         document.getElementById('addCustomerName').value = name;
-        document.getElementById('addCustomerPhone').value = phone;
+        if (phone) {
+            document.getElementById('addCustomerPhone').value = phone;
+        }
         this.hideCustomerList();
     },
 
@@ -864,8 +814,9 @@ const debtModule = {
         const notes = document.getElementById('addNotes').value.trim();
         const reduceCash = document.querySelector('input[name="reduceCash"]:checked').value === 'yes';
 
-        if (!customerName || !customerPhone || !dueDate) {
-            this.showToast('Nama dan tanggal jatuh tempo wajib diisi!', 'error');
+        // Validasi: Nama wajib, telepon opsional, dueDate wajib
+        if (!customerName || !dueDate) {
+            this.showToast('Nama pelanggan dan tanggal jatuh tempo wajib diisi!', 'error');
             return;
         }
 
@@ -906,7 +857,7 @@ const debtModule = {
         const newDebt = {
             id: this.generateId(),
             customerName,
-            customerPhone,
+            customerPhone: customerPhone || '', // Bisa kosong
             date: new Date().toISOString().split('T')[0],
             dueDate,
             items,
@@ -1032,10 +983,9 @@ const debtModule = {
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) return;
 
-        const isDummyData = ['H001', 'H002'].includes(debtId);
         const remaining = debt.total - debt.paid;
 
-        if (debt.reduceCash && remaining > 0 && !isDummyData && typeof dataManager !== 'undefined') {
+        if (debt.reduceCash && remaining > 0 && typeof dataManager !== 'undefined') {
             if (!dataManager.data.settings) {
                 dataManager.data.settings = {};
             }
@@ -1108,7 +1058,7 @@ const debtModule = {
 
                     <div class="debt-form-group">
                         <label class="debt-form-label">No. Telepon</label>
-                        <input type="text" class="debt-form-input" value="${debt.customerPhone}" readonly>
+                        <input type="text" class="debt-form-input" value="${debt.customerPhone || '-'}" readonly>
                     </div>
 
                     <div class="debt-form-group">
@@ -1452,6 +1402,10 @@ const debtModule = {
     },
 
     sendWhatsApp(phone, name, amount) {
+        if (!phone) {
+            this.showToast('Nomor telepon tidak tersedia!', 'error');
+            return;
+        }
         const message = `Halo ${name},%0A%0AIni adalah pengingat pembayaran hutang Anda sebesar ${this.formatRupiah(amount)} di Hifzi Cell.%0A%0AMohon segera melakukan pembayaran. Terima kasih.%0A%0A_Hifzi Cell_`;
         let formattedPhone = phone.replace(/^0/, '62').replace(/[^0-9]/g, '');
         window.open(`https://wa.me/${formattedPhone}?text=${message}`, '_blank');
@@ -1583,7 +1537,7 @@ const debtModule = {
         const data = this.debts.map(d => ({
             'ID': d.id,
             'Nama Pelanggan': d.customerName,
-            'No Telepon': d.customerPhone,
+            'No Telepon': d.customerPhone || '-',
             'Tanggal': d.date,
             'Jatuh Tempo': d.dueDate,
             'Total': d.total,
