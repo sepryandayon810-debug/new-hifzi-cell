@@ -179,7 +179,7 @@ function jsonResponse(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
 }`;
-    
+
     // ==========================================
     // INIT
     // ==========================================
@@ -938,6 +938,17 @@ function jsonResponse(data) {
             `;
         }
         
+        // TAMBAHAN: Tombol Hapus untuk SEMUA item
+        const deleteButton = `
+            <button class="tg-btn-small tg-btn-delete" onclick="TelegramModule.deleteTopup('${t.id}')" 
+                    style="background: #9e9e9e; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 4px;"
+                    onmouseover="this.style.background='#757575'"
+                    onmouseout="this.style.background='#9e9e9e'"
+                    title="Hapus dari daftar ini (tidak menghapus data di Sheet)">
+                🗑️ Hapus
+            </button>
+        `;
+        
         return `
             <div class="tg-item ${statusClass}" data-id="${t.id}">
                 <div class="tg-item-main">
@@ -955,7 +966,7 @@ function jsonResponse(data) {
                     </div>
                 </div>
                 <div class="tg-item-status">${statusText}</div>
-                <div class="tg-item-actions">${actions}</div>
+                <div class="tg-item-actions">${actions}${deleteButton}</div>
             </div>
         `;
     }
@@ -1259,6 +1270,33 @@ function jsonResponse(data) {
                 saveData();
                 showToast('❌ Topup ditolak!');
                 renderPage();
+            }
+        },
+        
+        // TAMBAHAN: Fungsi hapus item
+        deleteTopup: function(id) {
+            const t = topups.find(x => x.id === id);
+            if (!t) return;
+            
+            const confirmMsg = `🗑️ HAPUS DATA INI?\n\n` +
+                `Jumlah: ${formatMoney(t.amount)}\n` +
+                `Pengirim: ${t.sender}\n` +
+                `Metode: ${t.method}\n` +
+                `Tanggal: ${new Date(t.timestamp).toLocaleDateString('id-ID')}\n\n` +
+                `⚠️ Catatan:\n` +
+                `• Data ini hanya dihapus dari tampilan HTML\n` +
+                `• Data di Google Sheet TIDAK terhapus\n` +
+                `• Data bisa muncul lagi jika di-sync ulang`;
+            
+            if (confirm(confirmMsg)) {
+                // Hapus dari array
+                const index = topups.findIndex(x => x.id === id);
+                if (index > -1) {
+                    topups.splice(index, 1);
+                    saveData();
+                    showToast('🗑️ Data dihapus dari daftar');
+                    renderPage();
+                }
             }
         },
         
