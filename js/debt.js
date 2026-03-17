@@ -12,12 +12,13 @@ const debtModule = {
     expandedGroups: new Set(),
     showPaidDebts: false,
     itemCount: 1,
+    isInitialized: false,
 
     // Inisialisasi modul - terhubung ke dataManager
     init() {
         console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
         this.loadDebts();
-        this.render();
+        this.isInitialized = true;
     },
 
     // ============================================
@@ -238,6 +239,11 @@ const debtModule = {
 
     // Render main view
     render() {
+        // Pastikan sudah diinisialisasi
+        if (!this.isInitialized) {
+            this.init();
+        }
+
         const container = document.getElementById('mainContent');
         if (!container) {
             console.error('mainContent not found');
