@@ -1,1495 +1,1590 @@
-/**
- * HIFZI CELL - Debt Module (Hutang/Piutang)
- * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
- * + Sidebar Autocomplete Nama Pelanggan (Kanan)
- * + Tambah Nama Manual ke List
- */
-
-const debtModule = {
-    debts: [],
-    currentFilter: 'all',
-    searchQuery: '',
-    expandedGroups: new Set(),
-    showPaidDebts: false,
-    itemCount: 1,
-    isInitialized: false,
-    customCustomerNames: [], // Nama manual yang ditambahkan user
-
-    init() {
-        console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
-        this.loadDebts();
-        this.loadCustomNames(); // Load nama custom
-        this.isInitialized = true;
-        this.render(); // ✅ TAMBAHAN: render setelah init
-    },
-
-    loadDebts() {
-        if (typeof dataManager !== 'undefined' && dataManager.data) {
-            if (!dataManager.data.debts) {
-                dataManager.data.debts = [];
-            }
-            this.debts = dataManager.data.debts;
-
-            const oldData = localStorage.getItem('hifzi_debts');
-            if (oldData) {
-                try {
-                    const oldDebts = JSON.parse(oldData);
-                    if (Array.isArray(oldDebts) && oldDebts.length > 0) {
-                        this.debts = [...this.debts, ...oldDebts];
-                        dataManager.data.debts = this.debts;
-                        dataManager.save();
-                        localStorage.removeItem('hifzi_debts');
-                        console.log('✅ Data hutang lama berhasil dimigrasi');
-                    }
-                } catch(e) {
-                    console.log('Tidak ada data lama yang perlu dimigrasi');
-                }
-            }
-        } else {
-            console.warn('dataManager belum tersedia, menggunakan array kosong sementara');
-            this.debts = [];
-        }
-    },
-
-    // Load nama custom dari localStorage
-    loadCustomNames() {
-        const saved = localStorage.getItem('hifzi_custom_customers');
-        if (saved) {
-            try {
-                this.customCustomerNames = JSON.parse(saved);
-            } catch(e) {
-                this.customCustomerNames = [];
-            }
-        }
-    },
-
-    // Simpan nama custom ke localStorage
-    saveCustomNames() {
-        localStorage.setItem('hifzi_custom_customers', JSON.stringify(this.customCustomerNames));
-    },
-
-    // Tambah nama custom baru
-    addCustomCustomerName(name, phone = '') {
-        if (!name.trim()) return;
-        
-        // Cek apakah sudah ada
-        const exists = this.customCustomerNames.find(c => 
-            c.name.toLowerCase() === name.trim().toLowerCase()
-        );
-        
-        if (!exists) {
-            this.customCustomerNames.push({
-                name: name.trim(),
-                phone: phone,
-                addedAt: new Date().toISOString()
-            });
-            this.saveCustomNames();
-        }
-    },
-
-    // Hapus nama custom
-    removeCustomCustomerName(name) {
-        this.customCustomerNames = this.customCustomerNames.filter(c => 
-            c.name !== name
-        );
-        this.saveCustomNames();
-        this.renderCustomerSidebar(); // Refresh sidebar
-    },
-
-    saveDebts() {
-        if (typeof dataManager !== 'undefined' && dataManager.data) {
-            dataManager.data.debts = this.debts;
-            if (dataManager.save) {
-                dataManager.save();
-                console.log('💾 Data hutang tersimpan ke DATABASE HIFZI APPS');
-            }
-        }
-    },
-
-    reload() {
-        console.log('[Debt] Reloading module...');
-        this.isInitialized = false;
-        this.expandedGroups.clear();
-        this.init();
-        this.render(); // ✅ TAMBAHAN: render setelah reload
-    },
-
-    // ==========================================
-    // AMBIL SEMUA NAMA PELANGGAN (DEBT + CUSTOM)
-    // ==========================================
-    getAllCustomerNames() {
-        // Ambil dari data hutang yang sudah ada
-        const debtCustomers = {};
-        this.debts.forEach(debt => {
-            if (!debtCustomers[debt.customerName]) {
-                debtCustomers[debt.customerName] = {
-                    name: debt.customerName,
-                    phone: debt.customerPhone || '',
-                    source: 'debt',
-                    lastTransaction: debt.date
-                };
-            }
-        });
-
-        // Ambil dari nama custom
-        this.customCustomerNames.forEach(cust => {
-            if (!debtCustomers[cust.name]) {
-                debtCustomers[cust.name] = {
-                    name: cust.name,
-                    phone: cust.phone || '',
-                    source: 'custom',
-                    addedAt: cust.addedAt
-                };
-            }
-        });
-
-        return Object.values(debtCustomers).sort((a, b) => a.name.localeCompare(b.name));
-    },
-
-    // Filter untuk search di sidebar
-    filterCustomers(query) {
-        const all = this.getAllCustomerNames();
-        if (!query) return all;
-        
-        const lowerQuery = query.toLowerCase();
-        return all.filter(c => c.name.toLowerCase().includes(lowerQuery));
-    },
-
-    // Pilih customer dari sidebar
-    selectCustomerFromSidebar(name, phone) {
-        const nameInput = document.getElementById('addCustomerName');
-        const phoneInput = document.getElementById('addCustomerPhone');
-        
-        if (nameInput) nameInput.value = name;
-        if (phoneInput && phone) phoneInput.value = phone;
-        
-        // Highlight yang dipilih
-        document.querySelectorAll('.debt-sidebar-item').forEach(item => {
-            item.classList.remove('selected');
-        });
-        
-        const selectedItem = document.querySelector(`[data-customer-name="${name.replace(/"/g, '&quot;')}"]`);
-        if (selectedItem) selectedItem.classList.add('selected');
-    },
-
-    toggleShowPaid() {
-        this.showPaidDebts = !this.showPaidDebts;
-        this.render();
-    },
-
-    setFilter(filter) {
-        this.currentFilter = filter;
-        this.render();
-    },
-
-    handleSearch(query) {
-        this.searchQuery = query.toLowerCase();
-        this.render();
-    },
-
-    generateId() {
-        const maxId = this.debts.reduce((max, d) => {
-            const num = parseInt(d.id.replace('H', ''));
-            return num > max ? num : max;
-        }, 0);
-        return `H${String(maxId + 1).padStart(3, '0')}`;
-    },
-
-    getCurrentCash() {
-        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
-            return dataManager.data.settings.currentCash || 0;
-        }
-        return 0;
-    },
-
-    updateCashDisplay() {
-        if (typeof app !== 'undefined' && app.updateHeader) {
-            app.updateHeader();
-        }
-    },
-
-    getGroupedDebts() {
-        let filtered = this.debts.filter(debt => {
-            if (this.searchQuery) {
-                const searchLower = this.searchQuery.toLowerCase();
-                const matchSearch = (
-                    debt.customerName.toLowerCase().includes(searchLower) ||
-                    (debt.customerPhone && debt.customerPhone.includes(this.searchQuery)) ||
-                    debt.id.toLowerCase().includes(searchLower)
-                );
-                if (!matchSearch) return false;
-            }
-
-            if (!this.showPaidDebts && debt.status === 'paid') {
-                return false;
-            }
-
-            if (this.currentFilter !== 'all' && debt.status !== this.currentFilter) {
-                return false;
-            }
-
-            return true;
-        });
-
-        const grouped = {};
-        filtered.forEach(debt => {
-            if (!grouped[debt.customerName]) {
-                grouped[debt.customerName] = {
-                    customerName: debt.customerName,
-                    customerPhone: debt.customerPhone,
-                    debts: [],
-                    totalDebt: 0,
-                    totalPaid: 0,
-                    totalRemaining: 0,
-                    count: 0,
-                    hasOverdue: false,
-                    allPaid: true,
-                    hasPaid: false
-                };
-            }
-
-            const group = grouped[debt.customerName];
-            group.debts.push(debt);
-            group.totalDebt += debt.total;
-            group.totalPaid += debt.paid;
-            group.count++;
-
-            if (debt.status === 'overdue') {
-                group.hasOverdue = true;
-            }
-            if (debt.status === 'paid') {
-                group.hasPaid = true;
-            }
-            if (debt.status !== 'paid') {
-                group.allPaid = false;
-            }
-        });
-
-        Object.values(grouped).forEach(group => {
-            group.totalRemaining = group.totalDebt - group.totalPaid;
-        });
-
-        return Object.values(grouped).sort((a, b) => {
-            if (a.allPaid !== b.allPaid) return a.allPaid ? 1 : -1;
-            return b.totalRemaining - a.totalRemaining;
-        });
-    },
-
-    getSummary() {
-        const allDebts = this.debts;
-        const totalDebt = allDebts.reduce((sum, d) => sum + d.total, 0);
-        const totalPaid = allDebts.reduce((sum, d) => sum + d.paid, 0);
-        const totalRemaining = totalDebt - totalPaid;
-
-        const activeDebts = allDebts.filter(d => d.status !== 'paid');
-        const activeDebtTotal = activeDebts.reduce((sum, d) => sum + d.total, 0);
-        const activePaidTotal = activeDebts.reduce((sum, d) => sum + d.paid, 0);
-        const activeRemaining = activeDebtTotal - activePaidTotal;
-
-        const overdueCount = activeDebts.filter(d => d.status === 'overdue').length;
-        const paidCount = allDebts.filter(d => d.status === 'paid').length;
-        const customerCount = new Set(activeDebts.map(d => d.customerName)).size;
-        
-        let totalTransactions = 0;
-        let totalProfit = 0;
-        
-        if (typeof dataManager !== 'undefined' && dataManager.data) {
-            if (dataManager.data.transactions) {
-                totalTransactions = dataManager.data.transactions.length;
-                totalProfit = dataManager.data.transactions.reduce((sum, t) => {
-                    if (t.items && Array.isArray(t.items)) {
-                        const transactionProfit = t.items.reduce((itemSum, item) => {
-                            const profit = (item.price - (item.cost || 0)) * item.qty;
-                            return itemSum + profit;
-                        }, 0);
-                        return sum + transactionProfit;
-                    }
-                    return sum;
-                }, 0);
-            }
-        }
-
-        return { 
-            totalDebt, 
-            totalPaid, 
-            totalRemaining, 
-            activeRemaining,
-            overdueCount, 
-            paidCount,
-            customerCount,
-            totalTransactions,
-            totalProfit
-        };
-    },
-
-    toggleGroup(customerName) {
-        if (this.expandedGroups.has(customerName)) {
-            this.expandedGroups.delete(customerName);
-        } else {
-            this.expandedGroups.add(customerName);
-        }
-        this.renderGroups();
-    },
-
-    render() {
-        if (!this.isInitialized) {
-            this.init();
-        }
-
-        const container = document.getElementById('mainContent');
-        if (!container) {
-            console.error('mainContent not found');
-            return;
-        }
-
-        const summary = this.getSummary();
-        const groupedDebts = this.getGroupedDebts();
-
-        container.innerHTML = `
-            <div class="debt-container">
-                <div class="debt-summary-header">
-                    <div class="debt-summary-main-card">
-                        <div class="debt-summary-label">Total Piutang Aktif</div>
-                        <div class="debt-summary-amount">${this.formatRupiah(summary.activeRemaining)}</div>
-                        <div class="debt-summary-detail">
-                            <span>👥 ${summary.customerCount} pelanggan aktif</span>
-                        </div>
-                    </div>
-                    
-                    <div class="debt-summary-sub-cards">
-                        <div class="debt-summary-sub-card success">
-                            <div class="debt-summary-sub-label">Sudah Dibayar</div>
-                            <div class="debt-summary-sub-amount">${this.formatRupiah(summary.totalPaid)}</div>
-                            <div class="debt-summary-sub-detail">${summary.paidCount} lunas</div>
-                        </div>
-                        
-                        <div class="debt-summary-sub-card warning">
-                            <div class="debt-summary-sub-label">Sisa Piutang</div>
-                            <div class="debt-summary-sub-amount">${this.formatRupiah(summary.totalRemaining)}</div>
-                            <div class="debt-summary-sub-detail">${summary.overdueCount} overdue</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="debt-stats-bar">
-                    <div class="debt-stat-item">
-                        <span class="debt-stat-icon">📝</span>
-                        <div class="debt-stat-info">
-                            <span class="debt-stat-label">Total Transaksi</span>
-                            <span class="debt-stat-value">${summary.totalTransactions}</span>
-                        </div>
-                    </div>
-                    <div class="debt-stat-divider"></div>
-                    <div class="debt-stat-item">
-                        <span class="debt-stat-icon">📈</span>
-                        <div class="debt-stat-info">
-                            <span class="debt-stat-label">Total Laba</span>
-                            <span class="debt-stat-value profit">${this.formatRupiah(summary.totalProfit)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="debt-controls-header">
-                    <div class="debt-controls">
-                        <div class="debt-search">
-                            <span class="debt-search-icon">🔍</span>
-                            <input type="text" id="debtSearch" placeholder="Cari nama, no HP, atau kode..." 
-                                   value="${this.searchQuery}" oninput="debtModule.handleSearch(this.value)">
-                        </div>
-                        <div class="debt-filter">
-                            <button class="debt-filter-btn ${this.currentFilter === 'all' ? 'active' : ''}" 
-                                    onclick="debtModule.setFilter('all')">Semua</button>
-                            <button class="debt-filter-btn ${this.currentFilter === 'pending' ? 'active' : ''}" 
-                                    onclick="debtModule.setFilter('pending')">Pending</button>
-                            <button class="debt-filter-btn ${this.currentFilter === 'overdue' ? 'active' : ''}" 
-                                    onclick="debtModule.setFilter('overdue')">Overdue</button>
-                            <button class="debt-filter-btn ${this.currentFilter === 'paid' ? 'active' : ''}" 
-                                    onclick="debtModule.setFilter('paid')">Lunas</button>
-                        </div>
-                    </div>
-
-                    <button class="debt-add-btn" onclick="debtModule.openAddDebtModal()">
-                        <span>➕</span>
-                        <span>Tambah Hutang</span>
-                    </button>
-                </div>
-
-                <div class="debt-toggle-paid">
-                    <label class="debt-toggle-switch">
-                        <input type="checkbox" ${this.showPaidDebts ? 'checked' : ''} 
-                               onchange="debtModule.toggleShowPaid()">
-                        <span class="debt-toggle-slider"></span>
-                        <span class="debt-toggle-label">
-                            ${this.showPaidDebts ? '🔓 Sembunyikan hutang lunas' : '🔒 Tampilkan hutang lunas'}
-                        </span>
-                    </label>
-                    <span class="debt-toggle-hint">
-                        ${!this.showPaidDebts ? `( ${summary.paidCount} hutang lunas disembunyikan )` : ''}
-                    </span>
-                </div>
-
-                <div class="debt-groups" id="debtGroups">
-                    ${this.renderGroupsHTML(groupedDebts)}
-                </div>
-
-                ${groupedDebts.length === 0 ? `
-                    <div class="debt-empty">
-                        <div class="debt-empty-icon">📋</div>
-                        <div class="debt-empty-title">Tidak ada data hutang</div>
-                        <div class="debt-empty-text">
-                            ${!this.showPaidDebts && summary.paidCount > 0 
-                                ? 'Semua hutang sudah lunas. Aktifkan toggle di atas untuk melihat riwayat.' 
-                                : 'Belum ada catatan hutang yang sesuai dengan filter'}
-                        </div>
-                        <button class="debt-add-btn-empty" onclick="debtModule.openAddDebtModal()">
-                            <span>➕</span> Tambah Hutang Baru
-                        </button>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    },
-
-    formatRupiah(amount) {
-        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    },
-
-    formatDate(dateStr) {
-        if (!dateStr) return '-';
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-    },
-
-    renderGroupsHTML(groupedDebts) {
-        if (groupedDebts.length === 0) return '';
-
-        return groupedDebts.map(group => {
-            const isExpanded = this.expandedGroups.has(group.customerName);
-            const remaining = group.totalRemaining;
-            const avatarLetter = group.customerName.charAt(0).toUpperCase();
-
-            let avatarClass = '';
-            if (group.allPaid) avatarClass = 'paid';
-            else if (group.hasOverdue) avatarClass = 'overdue';
-
-            let statusBadge = '';
-            if (group.allPaid) {
-                statusBadge = '<span class="debt-badge paid">✓ Lunas</span>';
-            } else if (group.hasOverdue) {
-                statusBadge = '<span class="debt-badge overdue">⚠ Overdue</span>';
-            } else {
-                statusBadge = '<span class="debt-badge pending">⏳ Pending</span>';
-            }
-
-            let amountClass = '';
-            if (group.allPaid) amountClass = 'paid';
-            else if (group.hasOverdue) amountClass = 'overdue';
-
-            if (group.allPaid && !this.showPaidDebts) return '';
-
-            return `
-                <div class="debt-group ${isExpanded ? 'expanded' : ''} ${group.allPaid ? 'all-paid' : ''}" data-customer="${group.customerName}">
-                    <div class="debt-group-header" onclick="debtModule.toggleGroup('${group.customerName}')">
-                        <div class="debt-group-info">
-                            <div class="debt-avatar ${avatarClass}">${avatarLetter}</div>
-                            <div class="debt-group-title">
-                                <div class="debt-customer-name">${group.customerName}</div>
-                                <div class="debt-customer-meta">
-                                    ${statusBadge}
-                                    <span class="debt-meta-item">📱 ${group.customerPhone || '-'}</span>
-                                    <span class="debt-meta-item">📝 ${group.count} transaksi</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="debt-group-amount">
-                            <div class="debt-total-label">${group.allPaid ? 'Total' : 'Sisa Hutang'}</div>
-                            <div class="debt-total-value ${amountClass}">${this.formatRupiah(remaining)}</div>
-                        </div>
-                        <div class="debt-group-actions" onclick="event.stopPropagation()">
-                            ${!group.allPaid ? `
-                                <button class="debt-action-btn whatsapp" onclick="debtModule.sendWhatsApp('${group.customerPhone}', '${group.customerName}', ${remaining})" 
-                                        title="Kirim WA" ${!group.customerPhone ? 'disabled style="opacity:0.5"' : ''}>💬</button>
-                                <button class="debt-action-btn pay" onclick="debtModule.payAll('${group.customerName}')" 
-                                        title="Bayar Semua">💰</button>
-                            ` : `
-                                <button class="debt-action-btn view" onclick="debtModule.viewPaidHistory('${group.customerName}')" 
-                                        title="Lihat Riwayat">📋</button>
-                            `}
-                            <button class="debt-toggle">${isExpanded ? '▲' : '▼'}</button>
-                        </div>
-                    </div>
-
-                    <div class="debt-items" style="${isExpanded ? 'display: block;' : 'display: none;'}">
-                        ${group.debts.map(debt => this.renderDebtItem(debt)).join('')}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    },
-
-    renderGroups() {
-        const container = document.getElementById('debtGroups');
-        if (!container) return;
-
-        const groupedDebts = this.getGroupedDebts();
-        container.innerHTML = this.renderGroupsHTML(groupedDebts);
-    },
-
-    renderDebtItem(debt) {
-        const remaining = debt.total - debt.paid;
-        const isPaid = debt.status === 'paid';
-        const isOverdue = debt.status === 'overdue';
-
-        const productSummary = debt.items.map(i => `${i.name} x${i.qty}`).join(', ');
-
-        if (isPaid && !this.showPaidDebts) return '';
-
-        const cashIndicator = debt.reduceCash 
-            ? '<span class="debt-cash-indicator reduce">📉 Kurangi Kas</span>' 
-            : '<span class="debt-cash-indicator normal">📋 Tidak Kurangi Kas</span>';
-
-        return `
-            <div class="debt-item ${isPaid ? 'paid-item' : ''}" data-debt-id="${debt.id}">
-                <div class="debt-item-info">
-                    <div class="debt-item-header">
-                        <span class="debt-item-id">#${debt.id}</span>
-                        ${isPaid ? '<span class="debt-item-status-badge paid">✓ LUNAS</span>' : ''}
-                        ${isOverdue ? '<span class="debt-item-status-badge overdue">⚠ OVERDUE</span>' : ''}
-                    </div>
-                    <div class="debt-item-cash-status">
-                        ${cashIndicator}
-                    </div>
-                    <div class="debt-item-date">
-                        <span>📅 ${this.formatDate(debt.date)}</span>
-                        ${isPaid 
-                            ? `<span>✅ Lunas: ${this.formatDate(debt.paidDate)}</span>`
-                            : `<span>⏰ Jatuh tempo: ${this.formatDate(debt.dueDate)}</span>`
-                        }
-                    </div>
-                    <div class="debt-item-products">${productSummary}</div>
-                </div>
-                <div class="debt-item-amount">
-                    <div class="debt-item-total">${this.formatRupiah(debt.total)}</div>
-                    ${debt.paid > 0 && !isPaid ? `
-                        <div class="debt-item-paid">Dibayar: ${this.formatRupiah(debt.paid)}</div>
-                    ` : ''}
-                    ${!isPaid ? `
-                        <div class="debt-item-remaining">Sisa: ${this.formatRupiah(remaining)}</div>
-                    ` : ''}
-                </div>
-                <div class="debt-item-actions">
-                    <button class="debt-item-btn detail" onclick="debtModule.viewDetail('${debt.id}')">Detail</button>
-                    ${!isPaid ? `
-                        <button class="debt-item-btn pay" onclick="debtModule.openPaymentModal('${debt.id}')">Bayar</button>
-                    ` : ''}
-                    <button class="debt-item-btn delete" onclick="debtModule.confirmDelete('${debt.id}')" title="Hapus">🗑️</button>
-                </div>
-            </div>
-        `;
-    },
-
-    // ==========================================
-    // MODAL TAMBAH HUTANG + SIDEBAR CUSTOMER
-    // ==========================================
-    openAddDebtModal() {
-        this.itemCount = 1;
-        const currentCash = this.getCurrentCash();
-
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'addDebtModal';
-        modal.innerHTML = `
-            <div class="debt-modal debt-modal-with-sidebar">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">➕ Tambah Hutang Baru</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
-                </div>
-                
-                <div class="debt-modal-content">
-                    <!-- SIDEBAR KANAN: DAFTAR PELANGGAN -->
-                    <div class="debt-customer-sidebar">
-                        <div class="debt-sidebar-header">
-                            <span class="debt-sidebar-title">👥 Daftar Pelanggan</span>
-                            <button class="debt-sidebar-add-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
-                                ➕
-                            </button>
-                        </div>
-                        
-                        <div class="debt-sidebar-search">
-                            <input type="text" 
-                                   id="sidebarCustomerSearch" 
-                                   placeholder="Cari pelanggan..." 
-                                   oninput="debtModule.renderCustomerSidebar()">
-                        </div>
-                        
-                        <div class="debt-sidebar-list" id="customerSidebarList">
-                            <!-- Diisi oleh renderCustomerSidebar() -->
-                        </div>
-                        
-                        <div class="debt-sidebar-footer">
-                            <small>Klik nama untuk mengisi otomatis</small>
-                        </div>
-                    </div>
-
-                    <!-- FORM UTAMA -->
-                    <div class="debt-modal-body">
-                        <div class="debt-section-title">👤 Informasi Pelanggan</div>
-                        
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">Nama Pelanggan *</label>
-                            <input type="text" 
-                                   class="debt-form-input" 
-                                   id="addCustomerName" 
-                                   placeholder="Ketik nama pelanggan atau pilih dari daftar kanan..."
-                                   autocomplete="off"
-                                   oninput="debtModule.syncSidebarSearch(this.value)">
-                        </div>
-
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">No. Telepon</label>
-                            <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional">
-                        </div>
-
-                        <div class="debt-section-title">📦 Produk yang Dihutangkan</div>
-                        <div id="addDebtItems">
-                            <div class="debt-item-input">
-                                <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName0">
-                                <div class="debt-item-row">
-                                    <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
-                                    <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
-                                </div>
-                            </div>
-                        </div>
-                        <button class="debt-add-item-btn" onclick="debtModule.addItemField()">
-                            <span>➕</span> Tambah Produk
-                        </button>
-
-                        <div class="debt-total-section">
-                            <div class="debt-total-row">
-                                <span>Total Hutang:</span>
-                                <span id="addDebtTotal" class="debt-total-amount">${this.formatRupiah(0)}</span>
-                            </div>
-                        </div>
-
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">DP / Pembayaran Awal</label>
-                            <input type="number" class="debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
-                        </div>
-
-                        <!-- PILIHAN KAS -->
-                        <div class="debt-cash-option">
-                            <div class="debt-cash-option-title">💰 Pengaruh ke Kas?</div>
-                            <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                            <div class="debt-cash-toggle">
-                                <label class="debt-cash-radio">
-                                    <input type="radio" name="reduceCash" value="yes" checked>
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
-                                        <strong>Ya, Kurangi Kas</strong>
-                                        <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
-                                    </span>
-                                </label>
-                                <label class="debt-cash-radio">
-                                    <input type="radio" name="reduceCash" value="no">
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
-                                        <strong>Tidak, Jangan Kurangi Kas</strong>
-                                        <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
-                                    </span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">Tanggal Jatuh Tempo *</label>
-                            <input type="date" class="debt-form-input" id="addDueDate">
-                        </div>
-
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">Catatan</label>
-                            <textarea class="debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.saveNewDebt()">Simpan Hutang</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        
-        // Render sidebar setelah modal muncul
-        setTimeout(() => {
-            modal.classList.add('active');
-            this.renderCustomerSidebar();
-            
-            // Set default due date
-            const today = new Date();
-            today.setDate(today.getDate() + 30);
-            const dueDateInput = document.getElementById('addDueDate');
-            if (dueDateInput) dueDateInput.value = today.toISOString().split('T')[0];
-        }, 10);
-    },
-
-    // Render sidebar daftar pelanggan
-    renderCustomerSidebar() {
-        const sidebarList = document.getElementById('customerSidebarList');
-        const searchInput = document.getElementById('sidebarCustomerSearch');
-        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
-        
-        if (!sidebarList) return;
-
-        const customers = this.filterCustomers(searchQuery);
-        
-        if (customers.length === 0) {
-            sidebarList.innerHTML = `
-                <div class="debt-sidebar-empty">
-                    <span>📭</span>
-                    <p>Belum ada pelanggan</p>
-                    <small>Klik ➕ untuk tambah nama</small>
-                </div>
-            `;
-            return;
-        }
-
-        sidebarList.innerHTML = customers.map(cust => {
-            const isCustom = cust.source === 'custom';
-            const hasDebt = cust.source === 'debt';
-            
-            return `
-                <div class="debt-sidebar-item ${isCustom ? 'custom' : ''}" 
-                     data-customer-name="${cust.name.replace(/"/g, '&quot;')}"
-                     onclick="debtModule.selectCustomerFromSidebar('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
-                    <div class="debt-sidebar-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
-                    <div class="debt-sidebar-item-info">
-                        <div class="debt-sidebar-item-name">${cust.name}</div>
-                        <div class="debt-sidebar-item-meta">
-                            ${cust.phone ? `<span>📱 ${cust.phone}</span>` : ''}
-                            ${isCustom ? '<span class="debt-sidebar-badge custom">Manual</span>' : ''}
-                            ${hasDebt ? '<span class="debt-sidebar-badge debt">Pernah Hutang</span>' : ''}
-                        </div>
-                    </div>
-                    ${isCustom ? `
-                        <button class="debt-sidebar-item-delete" 
-                                onclick="event.stopPropagation(); debtModule.removeCustomCustomerName('${cust.name.replace(/'/g, "\\'")}')" 
-                                title="Hapus dari daftar">✕</button>
-                    ` : ''}
-                </div>
-            `;
-        }).join('');
-    },
-
-    // Sinkronkan search sidebar dengan input nama
-    syncSidebarSearch(value) {
-        const sidebarSearch = document.getElementById('sidebarCustomerSearch');
-        if (sidebarSearch) {
-            sidebarSearch.value = value;
-            this.renderCustomerSidebar();
-        }
-    },
-
-    // Buka modal tambah nama pelanggan manual
-    openAddCustomerNameModal() {
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'addCustomerNameModal';
-        modal.style.zIndex = '2000'; // Lebih tinggi dari modal utama
-        modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 400px;">
-                <div class="debt-modal-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                    <div class="debt-modal-title">➕ Tambah Nama Pelanggan</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeAddCustomerNameModal()">✕</button>
-                </div>
-                <div class="debt-modal-body">
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Nama Pelanggan *</label>
-                        <input type="text" 
-                               class="debt-form-input" 
-                               id="newCustomerName" 
-                               placeholder="Masukkan nama pelanggan..."
-                               onkeypress="if(event.key==='Enter') debtModule.saveNewCustomerName()">
-                    </div>
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">No. Telepon (Opsional)</label>
-                        <input type="text" 
-                               class="debt-form-input" 
-                               id="newCustomerPhone" 
-                               placeholder="08xxxxxxxxxx"
-                               onkeypress="if(event.key==='Enter') debtModule.saveNewCustomerName()">
-                    </div>
-                </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeAddCustomerNameModal()">Batal</button>
-                    <button class="debt-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;" onclick="debtModule.saveNewCustomerName()">Simpan</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        setTimeout(() => {
-            modal.classList.add('active');
-            document.getElementById('newCustomerName')?.focus();
-        }, 10);
-    },
-
-    closeAddCustomerNameModal() {
-        const modal = document.getElementById('addCustomerNameModal');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => modal.remove(), 300);
-        }
-    },
-
-    saveNewCustomerName() {
-        const nameInput = document.getElementById('newCustomerName');
-        const phoneInput = document.getElementById('newCustomerPhone');
-        
-        const name = nameInput?.value.trim();
-        const phone = phoneInput?.value.trim() || '';
-        
-        if (!name) {
-            this.showToast('Nama pelanggan wajib diisi!', 'error');
-            return;
-        }
-
-        // Cek apakah sudah ada
-        const allCustomers = this.getAllCustomerNames();
-        const exists = allCustomers.find(c => c.name.toLowerCase() === name.toLowerCase());
-        
-        if (exists) {
-            this.showToast('Nama pelanggan sudah ada!', 'error');
-            return;
-        }
-
-        this.addCustomCustomerName(name, phone);
-        this.closeAddCustomerNameModal();
-        
-        // Refresh sidebar
-        this.renderCustomerSidebar();
-        
-        // Auto select nama yang baru ditambahkan
-        this.selectCustomerFromSidebar(name, phone);
-        
-        this.showToast(`Nama "${name}" ditambahkan ke daftar`, 'success');
-    },
-
-    addItemField() {
-        const container = document.getElementById('addDebtItems');
-        const index = this.itemCount++;
-        const div = document.createElement('div');
-        div.className = 'debt-item-input';
-        div.innerHTML = `
-            <div class="debt-item-header-row">
-                <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName${index}">
-                <button class="debt-remove-item" onclick="this.closest('.debt-item-input').remove(); debtModule.calculateTotal();">✕</button>
-            </div>
-            <div class="debt-item-row">
-                <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty${index}" value="1" min="1" onchange="debtModule.calculateTotal()">
-                <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice${index}" onchange="debtModule.calculateTotal()">
-            </div>
-        `;
-        container.appendChild(div);
-    },
-
-    calculateTotal() {
-        let total = 0;
-        for (let i = 0; i < this.itemCount; i++) {
-            const qty = parseInt(document.getElementById(`itemQty${i}`)?.value) || 0;
-            const price = parseInt(document.getElementById(`itemPrice${i}`)?.value) || 0;
-            total += qty * price;
-        }
-        document.getElementById('addDebtTotal').textContent = this.formatRupiah(total);
-        return total;
-    },
-
-    saveNewDebt() {
-        const customerName = document.getElementById('addCustomerName').value.trim();
-        const customerPhone = document.getElementById('addCustomerPhone').value.trim();
-        const dueDate = document.getElementById('addDueDate').value;
-        const dp = parseInt(document.getElementById('addDP').value) || 0;
-        const notes = document.getElementById('addNotes').value.trim();
-        const reduceCash = document.querySelector('input[name="reduceCash"]:checked')?.value === 'yes';
-
-        if (!customerName || !dueDate) {
-            this.showToast('Nama pelanggan dan tanggal jatuh tempo wajib diisi!', 'error');
-            return;
-        }
-
-        // Tambahkan ke custom names jika belum ada
-        const allCustomers = this.getAllCustomerNames();
-        const exists = allCustomers.find(c => c.name.toLowerCase() === customerName.toLowerCase());
-        if (!exists) {
-            this.addCustomCustomerName(customerName, customerPhone);
-        }
-
-        const items = [];
-        let total = 0;
-        for (let i = 0; i < this.itemCount; i++) {
-            const name = document.getElementById(`itemName${i}`)?.value.trim();
-            const qty = parseInt(document.getElementById(`itemQty${i}`)?.value) || 0;
-            const price = parseInt(document.getElementById(`itemPrice${i}`)?.value) || 0;
-
-            if (name && qty > 0 && price > 0) {
-                items.push({ name, qty, price });
-                total += qty * price;
-            }
-        }
-
-        if (items.length === 0) {
-            this.showToast('Minimal satu produk harus diisi!', 'error');
-            return;
-        }
-
-        if (dp > total) {
-            this.showToast('DP tidak boleh lebih besar dari total!', 'error');
-            return;
-        }
-
-        // Cek kas jika mau mengurangi
-        if (reduceCash) {
-            const currentCash = this.getCurrentCash();
-            const cashNeeded = total - dp;
-            if (currentCash < cashNeeded) {
-                if (!confirm(`⚠️ Peringatan!\n\nKas saat ini: ${this.formatRupiah(currentCash)}\nYang dibutuhkan: ${this.formatRupiah(cashNeeded)}\n\nKas akan menjadi MINUS. Lanjutkan?`)) {
-                    return;
-                }
-            }
-        }
-
-        const newDebt = {
-            id: this.generateId(),
-            customerName,
-            customerPhone: customerPhone || '',
-            date: new Date().toISOString().split('T')[0],
-            dueDate,
-            items,
-            total,
-            paid: dp,
-            status: dp >= total ? 'paid' : 'pending',
-            paidDate: dp >= total ? new Date().toISOString().split('T')[0] : null,
-            notes,
-            reduceCash,
-            payments: dp > 0 ? [{
-                date: new Date().toISOString(),
-                amount: dp,
-                method: 'cash',
-                note: 'DP/ Pembayaran awal',
-                addToCash: false
-            }] : []
-        };
-
-        // Proses pengurangan kas
-        if (reduceCash && typeof dataManager !== 'undefined') {
-            if (!dataManager.data.settings) dataManager.data.settings = {};
-            
-            const cashChange = -(total - dp);
-            dataManager.data.settings.currentCash += cashChange;
-            dataManager.save();
-            this.updateCashDisplay();
-
-            // Simpan transaksi kas
-            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
-            dataManager.data.cashTransactions.push({
-                id: Date.now(),
-                date: new Date().toISOString(),
-                type: 'out',
-                category: 'debt_create',
-                description: `Hutang baru ${customerName} (${newDebt.id})`,
-                amount: total - dp,
-                balance: dataManager.data.settings.currentCash
-            });
-            dataManager.save();
-        }
-
-        this.debts.push(newDebt);
-        this.saveDebts();
-        this.closeModal();
-        this.render();
-        
-        const cashMsg = reduceCash ? ' (Kas berkurang)' : ' (Tidak kurangi kas)';
-        this.showToast(`Hutang ${customerName} tersimpan${cashMsg}`, 'success');
-        this.itemCount = 1;
-    },
-
-    // ==========================================
-    // HAPUS HUTANG + PILIHAN KEMBALIKAN KE KAS
-    // ==========================================
-    confirmDelete(debtId) {
-        const debt = this.debts.find(d => d.id === debtId);
-        if (!debt) return;
-
-        const remaining = debt.total - debt.paid;
-        const showCashOption = remaining > 0 && debt.reduceCash;
-
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'deleteModal';
-        modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 450px;">
-                <div class="debt-modal-header" style="background: #fee2e2;">
-                    <div class="debt-modal-title" style="color: #dc2626;">⚠️ Hapus Hutang</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
-                </div>
-                <div class="debt-modal-body">
-                    <div style="text-align: center; padding: 20px 0;">
-                        <div style="font-size: 64px; margin-bottom: 16px;">🗑️</div>
-                        <p style="font-size: 16px; color: #1e293b; margin-bottom: 8px;">
-                            Yakin ingin menghapus hutang ini?
-                        </p>
-                        <p style="font-size: 14px; color: #64748b; line-height: 1.6;">
-                            <strong>#${debt.id}</strong> - ${debt.customerName}<br>
-                            Total: ${this.formatRupiah(debt.total)}<br>
-                            Sisa: ${this.formatRupiah(remaining)}
-                        </p>
-                    </div>
-
-                    ${showCashOption ? `
-                        <div class="debt-cash-option" style="margin-top: 16px; background: #fef3c7; border-color: #fbbf24;">
-                            <div class="debt-cash-option-title">💰 Kembalikan ke Kas?</div>
-                            <div class="debt-cash-current">Sisa hutang: <strong>${this.formatRupiah(remaining)}</strong></div>
-                            <div class="debt-cash-toggle">
-                                <label class="debt-cash-radio">
-                                    <input type="radio" name="returnCash" value="yes" checked>
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
-                                        <strong>Ya, Kembalikan ke Kas</strong>
-                                        <small>Kas bertambah ${this.formatRupiah(remaining)}</small>
-                                    </span>
-                                </label>
-                                <label class="debt-cash-radio">
-                                    <input type="radio" name="returnCash" value="no">
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
-                                        <strong>Tidak, Hanya Hapus Data</strong>
-                                        <small>Kas tidak berubah (untuk trial/test)</small>
-                                    </span>
-                                </label>
-                            </div>
-                        </div>
-                    ` : `
-                        <div style="background: #f3f4f6; padding: 12px; border-radius: 8px; margin-top: 16px; text-align: center; color: #6b7280; font-size: 13px;">
-                            Hutang ini tidak mengurangi kas saat dibuat
-                        </div>
-                    `}
-                </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn" style="background: #dc2626; color: white;" onclick="debtModule.deleteDebt('${debtId}')">Ya, Hapus</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
-    },
-
-    deleteDebt(debtId) {
-        const debt = this.debts.find(d => d.id === debtId);
-        if (!debt) return;
-
-        const remaining = debt.total - debt.paid;
-        const returnCash = document.querySelector('input[name="returnCash"]:checked')?.value === 'yes';
-
-        if (returnCash && remaining > 0 && debt.reduceCash && typeof dataManager !== 'undefined') {
-            if (!dataManager.data.settings) dataManager.data.settings = {};
-            
-            dataManager.data.settings.currentCash += remaining;
-            dataManager.save();
-            this.updateCashDisplay();
-
-            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
-            dataManager.data.cashTransactions.push({
-                id: Date.now(),
-                date: new Date().toISOString(),
-                type: 'in',
-                category: 'debt_delete',
-                description: `Hapus hutang ${debt.customerName} (${debt.id})`,
-                amount: remaining,
-                balance: dataManager.data.settings.currentCash
-            });
-            dataManager.save();
-        }
-
-        const index = this.debts.findIndex(d => d.id === debtId);
-        if (index > -1) {
-            this.debts.splice(index, 1);
-            this.saveDebts();
-        }
-
-        this.closeModal();
-        this.render();
-        
-        const msg = (returnCash && remaining > 0 && debt.reduceCash) 
-            ? `Hutang dihapus & kas dikembalikan ${this.formatRupiah(remaining)}` 
-            : 'Hutang berhasil dihapus';
-        this.showToast(msg, 'success');
-    },
-
-    // ==========================================
-    // PEMBAYARAN + PILIHAN TAMBAH KE KAS
-    // ==========================================
-    openPaymentModal(debtId) {
-        const debt = this.debts.find(d => d.id === debtId);
-        if (!debt) return;
-
-        const remaining = debt.total - debt.paid;
-        const currentCash = this.getCurrentCash();
-
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'paymentModal';
-        modal.innerHTML = `
-            <div class="debt-modal">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">💰 Pembayaran Hutang</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
-                </div>
-                <div class="debt-modal-body">
-                    <div class="debt-amount-display">
-                        <div class="debt-amount-label">Sisa Hutang</div>
-                        <div class="debt-amount-value">${this.formatRupiah(remaining)}</div>
-                    </div>
-
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Nama Pelanggan</label>
-                        <input type="text" class="debt-form-input" value="${debt.customerName}" readonly>
-                    </div>
-
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Jumlah Pembayaran</label>
-                        <input type="number" class="debt-form-input" id="paymentAmount" value="${remaining}" max="${remaining}" min="1">
-                    </div>
-
-                    <div class="debt-cash-option">
-                        <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
-                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                        <div class="debt-cash-toggle">
-                            <label class="debt-cash-radio">
-                                <input type="radio" name="addToCash" value="yes" checked>
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
-                                    <strong>Ya, Tambah ke Kas</strong>
-                                    <small>Uang masuk ke laci/kas toko</small>
-                                </span>
-                            </label>
-                            <label class="debt-cash-radio">
-                                <input type="radio" name="addToCash" value="no">
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
-                                    <strong>Tidak, Hanya Catat</strong>
-                                    <small>Uang tidak masuk kas (sudah masuk sebelumnya/dll)</small>
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Catatan (Opsional)</label>
-                        <input type="text" class="debt-form-input" id="paymentNote" placeholder="Tambahkan catatan...">
-                    </div>
-                </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayment('${debtId}')">Konfirmasi Pembayaran</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
-    },
-
-    processPayment(debtId) {
-        const amount = parseInt(document.getElementById('paymentAmount').value) || 0;
-        const note = document.getElementById('paymentNote').value;
-        const addToCash = document.querySelector('input[name="addToCash"]:checked')?.value === 'yes';
-
-        const debt = this.debts.find(d => d.id === debtId);
-        if (!debt) return;
-
-        const remaining = debt.total - debt.paid;
-        if (amount <= 0 || amount > remaining) {
-            this.showToast('Jumlah pembayaran tidak valid!', 'error');
-            return;
-        }
-
-        debt.paid += amount;
-        const isFullyPaid = debt.paid >= debt.total;
-
-        if (isFullyPaid) {
-            debt.status = 'paid';
-            debt.paidDate = new Date().toISOString().split('T')[0];
-        }
-
-        if (!debt.payments) debt.payments = [];
-        debt.payments.push({
-            date: new Date().toISOString(),
-            amount: amount,
-            note: note,
-            addToCash: addToCash
-        });
-
-        if (addToCash && typeof dataManager !== 'undefined') {
-            if (!dataManager.data.settings) dataManager.data.settings = {};
-            
-            dataManager.data.settings.currentCash += amount;
-            dataManager.save();
-            this.updateCashDisplay();
-
-            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
-            dataManager.data.cashTransactions.push({
-                id: Date.now(),
-                date: new Date().toISOString(),
-                type: 'in',
-                category: 'debt_payment',
-                description: `Pembayaran hutang ${debt.customerName} (${debt.id})`,
-                amount: amount,
-                balance: dataManager.data.settings.currentCash
-            });
-            dataManager.save();
-        }
-
-        this.saveDebts();
-        this.closeModal();
-        this.render();
-
-        const cashMsg = addToCash ? ' (tambah ke kas)' : ' (tidak tambah kas)';
-        const lunasMsg = isFullyPaid ? ' - LUNAS!' : '';
-        this.showToast(`Pembayaran ${this.formatRupiah(amount)} berhasil${cashMsg}${lunasMsg}`, 'success');
-    },
-
-    payAll(customerName) {
-        const customerDebts = this.debts.filter(d => 
-            d.customerName === customerName && d.status !== 'paid'
-        );
-
-        const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
-        const currentCash = this.getCurrentCash();
-
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'payAllModal';
-        modal.innerHTML = `
-            <div class="debt-modal">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">💰 Bayar Semua Hutang</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
-                </div>
-                <div class="debt-modal-body">
-                    <div class="debt-amount-display">
-                        <div class="debt-amount-label">Total Hutang ${customerName}</div>
-                        <div class="debt-amount-value">${this.formatRupiah(totalRemaining)}</div>
-                    </div>
-
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Jumlah Transaksi</label>
-                        <input type="text" class="debt-form-input" value="${customerDebts.length} transaksi" readonly>
-                    </div>
-
-                    <div class="debt-cash-option">
-                        <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
-                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                        <div class="debt-cash-toggle">
-                            <label class="debt-cash-radio">
-                                <input type="radio" name="payAllAddToCash" value="yes" checked>
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
-                                    <strong>Ya, Tambah ke Kas</strong>
-                                    <small>Kas bertambah ${this.formatRupiah(totalRemaining)}</small>
-                                </span>
-                            </label>
-                            <label class="debt-cash-radio">
-                                <input type="radio" name="payAllAddToCash" value="no">
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
-                                    <strong>Tidak, Hanya Catat</strong>
-                                    <small>Kas tidak berubah</small>
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayAll('${customerName}')">Bayar Semua</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
-    },
-
-    processPayAll(customerName) {
-        const customerDebts = this.debts.filter(d => 
-            d.customerName === customerName && d.status !== 'paid'
-        );
-
-        const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
-        const addToCash = document.querySelector('input[name="payAllAddToCash"]:checked')?.value === 'yes';
-
-        customerDebts.forEach(debt => {
-            const remaining = debt.total - debt.paid;
-            debt.paid = debt.total;
-            debt.status = 'paid';
-            debt.paidDate = new Date().toISOString().split('T')[0];
-
-            if (!debt.payments) debt.payments = [];
-            debt.payments.push({
-                date: new Date().toISOString(),
-                amount: remaining,
-                method: 'cash',
-                note: 'Pelunasan semua hutang',
-                addToCash: addToCash
-            });
-        });
-
-        if (addToCash && typeof dataManager !== 'undefined') {
-            if (!dataManager.data.settings) dataManager.data.settings = {};
-            
-            dataManager.data.settings.currentCash += totalRemaining;
-            dataManager.save();
-            this.updateCashDisplay();
-
-            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
-            dataManager.data.cashTransactions.push({
-                id: Date.now(),
-                date: new Date().toISOString(),
-                type: 'in',
-                category: 'debt_payment',
-                description: `Pelunasan semua hutang ${customerName}`,
-                amount: totalRemaining,
-                balance: dataManager.data.settings.currentCash
-            });
-            dataManager.save();
-        }
-
-        this.saveDebts();
-        this.closeModal();
-        this.render();
-
-        const cashMsg = addToCash ? ' (tambah ke kas)' : ' (tidak tambah kas)';
-        this.showToast(`Semua hutang ${customerName} dilunaskan${cashMsg}!`, 'success');
-    },
-
-    viewPaidHistory(customerName) {
-        const customerDebts = this.debts.filter(d => 
-            d.customerName === customerName && d.status === 'paid'
-        );
-
-        const totalPaid = customerDebts.reduce((sum, d) => sum + d.total, 0);
-
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'paidHistoryModal';
-        modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 600px;">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">📋 Riwayat Lunas - ${customerName}</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
-                </div>
-                <div class="debt-modal-body">
-                    <div class="debt-amount-display success">
-                        <div class="debt-amount-label">Total Sudah Dibayar</div>
-                        <div class="debt-amount-value">${this.formatRupiah(totalPaid)}</div>
-                    </div>
-                    <div class="debt-history-list">
-                        ${customerDebts.map(debt => `
-                            <div class="debt-history-item">
-                                <div class="debt-history-header">
-                                    <span class="debt-history-id">#${debt.id}</span>
-                                    <span class="debt-history-date">Lunas: ${this.formatDate(debt.paidDate)}</span>
-                                </div>
-                                <div class="debt-history-products">${debt.items.map(i => i.name).join(', ')}</div>
-                                <div class="debt-history-amount">${this.formatRupiah(debt.total)}</div>
-                                ${debt.reduceCash ? '<span class="debt-reduce-badge">📉 Kurangi Kas</span>' : ''}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
-    },
-
-    viewDetail(debtId) {
-        const debt = this.debts.find(d => d.id === debtId);
-        if (!debt) return;
-        
-        const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
-        modal.id = 'detailModal';
-        modal.innerHTML = `
-            <div class="debt-modal">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">Detail Hutang #${debt.id}</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
-                </div>
-                <div class="debt-modal-body">
-                    <div class="debt-cash-info ${debt.reduceCash ? 'reduce' : 'normal'}">
-                        ${debt.reduceCash ? '📉 Hutang ini mengurangi kas' : '📋 Hutang ini tidak mengurangi kas'}
-                    </div>
-                    <div class="debt-form-group">
-                        <label>Pelanggan: <strong>${debt.customerName}</strong></label>
-                    </div>
-                    <div class="debt-form-group">
-                        <label>Total: <strong>${this.formatRupiah(debt.total)}</strong></label>
-                    </div>
-                    <div class="debt-form-group">
-                        <label>Dibayar: <strong style="color: #059669;">${this.formatRupiah(debt.paid)}</strong></label>
-                    </div>
-                    <div class="debt-form-group">
-                        <label>Sisa: <strong style="color: ${debt.total - debt.paid > 0 ? '#dc2626' : '#059669'};">${this.formatRupiah(debt.total - debt.paid)}</strong></label>
-                    </div>
-                    ${debt.notes ? `
-                        <div class="debt-form-group">
-                            <label>Catatan: ${debt.notes}</label>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
-                    ${debt.status !== 'paid' ? `
-                        <button class="debt-btn debt-btn-primary" onclick="debtModule.closeModal(); setTimeout(() => debtModule.openPaymentModal('${debt.id}'), 300)">Bayar</button>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
-    },
-
-    sendWhatsApp(phone, name, amount) {
-        if (!phone) {
-            this.showToast('Nomor telepon tidak tersedia!', 'error');
-            return;
-        }
-        const message = `Halo ${name}, ini pengingat pembayaran hutang Anda sebesar ${this.formatRupiah(amount)} di Hifzi Cell. Mohon segera melakukan pembayaran. Terima kasih.`;
-        let formattedPhone = phone.replace(/^0/, '62').replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
-    },
-
-    closeModal() {
-        const modal = document.querySelector('.debt-modal-overlay.active');
-        if (modal) {
-            modal.classList.remove('active');
-            setTimeout(() => modal.remove(), 300);
-        }
-    },
-
-    showToast(message, type = 'success') {
-        if (typeof app !== 'undefined' && app.showToast) {
-            app.showToast(message, type);
-        } else {
-            alert(message);
-        }
+/* ============================================
+   HIFZI CELL - DEBT MODULE STYLES (LENGKAP)
+   + SIDEBAR CUSTOMER STYLES
+   ============================================ */
+
+.debt-container {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   SUMMARY HEADER
+   ============================================ */
+.debt-summary-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .debt-summary-header {
+        grid-template-columns: 1fr;
     }
-};
+}
+
+.debt-summary-main-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.debt-summary-label {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debt-summary-amount {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.debt-summary-detail {
+    font-size: 13px;
+    opacity: 0.85;
+}
+
+.debt-summary-sub-cards {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 12px;
+}
+
+.debt-summary-sub-card {
+    padding: 16px 20px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.debt-summary-sub-card.success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    color: white;
+}
+
+.debt-summary-sub-card.warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.debt-summary-sub-label {
+    font-size: 12px;
+    opacity: 0.9;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debt-summary-sub-amount {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.debt-summary-sub-detail {
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+/* ============================================
+   STATS BAR
+   ============================================ */
+.debt-stats-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    background: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid #e2e8f0;
+}
+
+.debt-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.debt-stat-icon {
+    font-size: 24px;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    border-radius: 12px;
+}
+
+.debt-stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.debt-stat-label {
+    font-size: 12px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debt-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.debt-stat-value.profit {
+    color: #059669;
+}
+
+.debt-stat-divider {
+    width: 1px;
+    height: 40px;
+    background: #e2e8f0;
+}
+
+@media (max-width: 640px) {
+    .debt-stats-bar {
+        flex-direction: column;
+        gap: 16px;
+    }
+    
+    .debt-stat-divider {
+        width: 100%;
+        height: 1px;
+    }
+}
+
+/* ============================================
+   CONTROLS & FILTERS
+   ============================================ */
+.debt-controls-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.debt-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    min-width: 280px;
+}
+
+.debt-search {
+    position: relative;
+    width: 100%;
+}
+
+.debt-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+}
+
+.debt-search input {
+    width: 100%;
+    padding: 12px 12px 12px 40px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.debt-search input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.debt-filter {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.debt-filter-btn {
+    padding: 8px 16px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #64748b;
+}
+
+.debt-filter-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.debt-filter-btn.active {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.debt-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.debt-add-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.debt-add-btn-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 16px;
+}
+
+/* ============================================
+   TOGGLE SHOW PAID
+   ============================================ */
+.debt-toggle-paid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: #f8fafc;
+    border-radius: 10px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.debt-toggle-switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.debt-toggle-switch input {
+    display: none;
+}
+
+.debt-toggle-slider {
+    width: 44px;
+    height: 24px;
+    background: #cbd5e1;
+    border-radius: 12px;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.debt-toggle-slider::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: all 0.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.debt-toggle-switch input:checked + .debt-toggle-slider {
+    background: #667eea;
+}
+
+.debt-toggle-switch input:checked + .debt-toggle-slider::after {
+    left: 22px;
+}
+
+.debt-toggle-label {
+    font-size: 14px;
+    color: #475569;
+    font-weight: 500;
+}
+
+.debt-toggle-hint {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+/* ============================================
+   DEBT GROUPS
+   ============================================ */
+.debt-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.debt-group {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+    transition: all 0.2s;
+}
+
+.debt-group:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.debt-group.expanded {
+    border-color: #667eea;
+}
+
+.debt-group.all-paid {
+    opacity: 0.7;
+}
+
+.debt-group-header {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    cursor: pointer;
+    gap: 12px;
+    background: white;
+}
+
+.debt-group-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.debt-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.debt-avatar.paid {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.debt-avatar.overdue {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.debt-group-title {
+    flex: 1;
+}
+
+.debt-customer-name {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
+.debt-customer-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.debt-meta-item {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.debt-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.debt-badge.paid {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.debt-badge.overdue {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.debt-badge.pending {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.debt-group-amount {
+    text-align: right;
+    margin-right: 12px;
+}
+
+.debt-total-label {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+}
+
+.debt-total-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.debt-total-value.paid {
+    color: #059669;
+}
+
+.debt-total-value.overdue {
+    color: #dc2626;
+}
+
+.debt-group-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.debt-action-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.debt-action-btn.whatsapp {
+    background: #d1fae5;
+}
+
+.debt-action-btn.whatsapp:hover:not(:disabled) {
+    background: #059669;
+    color: white;
+}
+
+.debt-action-btn.pay {
+    background: #dbeafe;
+}
+
+.debt-action-btn.pay:hover {
+    background: #2563eb;
+    color: white;
+}
+
+.debt-action-btn.view {
+    background: #f3e8ff;
+}
+
+.debt-action-btn.view:hover {
+    background: #9333ea;
+    color: white;
+}
+
+.debt-toggle {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #f1f5f9;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #64748b;
+}
+
+/* ============================================
+   DEBT ITEMS (EXPANDED)
+   ============================================ */
+.debt-items {
+    display: none;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.debt-item {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 16px;
+}
+
+.debt-item:last-child {
+    border-bottom: none;
+}
+
+.debt-item.paid-item {
+    opacity: 0.7;
+    background: #f0fdf4;
+}
+
+.debt-item-info {
+    flex: 1;
+}
+
+.debt-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.debt-item-id {
+    font-weight: 600;
+    color: #667eea;
+    font-size: 13px;
+}
+
+.debt-item-status-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.debt-item-status-badge.paid {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.debt-item-status-badge.overdue {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* CASH INDICATOR DI LIST ITEM */
+.debt-item-cash-status {
+    margin-bottom: 6px;
+}
+
+.debt-cash-indicator {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.debt-cash-indicator.reduce {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.debt-cash-indicator.normal {
+    background: #e0e7ff;
+    color: #4338ca;
+    border: 1px solid #c7d2fe;
+}
+
+.debt-item-date {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.debt-item-products {
+    font-size: 13px;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+
+.debt-item-amount {
+    text-align: right;
+    min-width: 120px;
+}
+
+.debt-item-total {
+    font-weight: 700;
+    color: #1e293b;
+    font-size: 15px;
+}
+
+.debt-item-paid {
+    font-size: 12px;
+    color: #059669;
+    margin-top: 2px;
+}
+
+.debt-item-remaining {
+    font-size: 12px;
+    color: #dc2626;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.debt-item-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.debt-item-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.debt-item-btn.detail {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.debt-item-btn.detail:hover {
+    background: #e2e8f0;
+}
+
+.debt-item-btn.pay {
+    background: #667eea;
+    color: white;
+}
+
+.debt-item-btn.pay:hover {
+    background: #5568d3;
+}
+
+.debt-item-btn.delete {
+    background: #fee2e2;
+    color: #dc2626;
+    padding: 8px 10px;
+}
+
+.debt-item-btn.delete:hover {
+    background: #fecaca;
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+.debt-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #64748b;
+}
+
+.debt-empty-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.debt-empty-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.debt-empty-text {
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+/* ============================================
+   MODAL STYLES
+   ============================================ */
+.debt-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s;
+    padding: 20px;
+}
+
+.debt-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.debt-modal {
+    background: white;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.9);
+    transition: all 0.3s;
+}
+
+.debt-modal-overlay.active .debt-modal {
+    transform: scale(1);
+}
+
+/* Modal dengan sidebar */
+.debt-modal-with-sidebar {
+    max-width: 900px;
+    flex-direction: column;
+}
+
+.debt-modal-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.debt-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    flex-shrink: 0;
+}
+
+.debt-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.debt-modal-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(255,255,255,0.2);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.debt-modal-close:hover {
+    background: rgba(255,255,255,0.3);
+}
+
+.debt-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.debt-modal-footer {
+    display: flex;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+
+/* ============================================
+   SIDEBAR CUSTOMER STYLES
+   ============================================ */
+.debt-customer-sidebar {
+    width: 280px;
+    background: #f8fafc;
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.debt-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: white;
+}
+
+.debt-sidebar-title {
+    font-weight: 700;
+    color: #1e293b;
+    font-size: 14px;
+}
+
+.debt-sidebar-add-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.debt-sidebar-add-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+.debt-sidebar-search {
+    padding: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.debt-sidebar-search input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.debt-sidebar-search input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.debt-sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.debt-sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 4px;
+    position: relative;
+}
+
+.debt-sidebar-item:hover {
+    background: #e0e7ff;
+}
+
+.debt-sidebar-item.selected {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.debt-sidebar-item.custom {
+    border-left: 3px solid #10b981;
+}
+
+.debt-sidebar-item-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.debt-sidebar-item.selected .debt-sidebar-item-avatar {
+    background: rgba(255,255,255,0.2);
+}
+
+.debt-sidebar-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.debt-sidebar-item-name {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.debt-sidebar-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.debt-sidebar-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.debt-sidebar-badge.custom {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.debt-sidebar-badge.debt {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.debt-sidebar-item.selected .debt-sidebar-badge {
+    background: rgba(255,255,255,0.2);
+    color: white;
+}
+
+.debt-sidebar-item-delete {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.2s;
+}
+
+.debt-sidebar-item:hover .debt-sidebar-item-delete {
+    opacity: 1;
+}
+
+.debt-sidebar-item-delete:hover {
+    background: #dc2626;
+    color: white;
+}
+
+.debt-sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 11px;
+    background: white;
+}
+
+.debt-sidebar-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #94a3b8;
+    text-align: center;
+}
+
+.debt-sidebar-empty span {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.debt-sidebar-empty p {
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+/* Responsive untuk modal dengan sidebar */
+@media (max-width: 768px) {
+    .debt-modal-with-sidebar {
+        max-width: 100%;
+        max-height: 95vh;
+    }
+    
+    .debt-modal-content {
+        flex-direction: column;
+    }
+    
+    .debt-customer-sidebar {
+        width: 100%;
+        max-height: 200px;
+        border-right: none;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .debt-sidebar-list {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 8px;
+        padding: 12px;
+    }
+    
+    .debt-sidebar-item {
+        flex-shrink: 0;
+        min-width: 150px;
+        margin-bottom: 0;
+    }
+    
+    .debt-sidebar-item-delete {
+        opacity: 1;
+    }
+}
+
+/* ============================================
+   FORM STYLES
+   ============================================ */
+.debt-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 20px 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.debt-section-title:first-child {
+    margin-top: 0;
+}
+
+.debt-form-group {
+    margin-bottom: 16px;
+}
+
+.debt-form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 6px;
+}
+
+.debt-form-input,
+.debt-form-select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.debt-form-input:focus,
+.debt-form-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.debt-item-input {
+    background: #f8fafc;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.debt-item-header-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.debt-item-row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 8px;
+}
+
+.debt-remove-item {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.debt-add-item-btn {
+    width: 100%;
+    padding: 12px;
+    border: 2px dashed #cbd5e1;
+    background: white;
+    border-radius: 8px;
+    color: #64748b;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    transition: all 0.2s;
+}
+
+.debt-add-item-btn:hover {
+    border-color: #667eea;
+    color: #667eea;
+    background: #f5f3ff;
+}
+
+.debt-total-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+}
+
+.debt-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.debt-total-amount {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.debt-amount-display {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.debt-amount-display.success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.debt-amount-label {
+    font-size: 12px;
+    opacity: 0.9;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debt-amount-value {
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.debt-btn {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.debt-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.debt-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.debt-btn-secondary {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.debt-btn-secondary:hover {
+    background: #e2e8f0;
+}
+
+/* ============================================
+   CASH OPTION - PILIHAN KAS
+   ============================================ */
+.debt-cash-option {
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.debt-cash-option-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.debt-cash-current {
+    background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+    border-left: 4px solid #667eea;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #1e293b;
+}
+
+.debt-cash-current strong {
+    color: #667eea;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.debt-cash-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.debt-cash-radio {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.debt-cash-radio:hover {
+    border-color: #667eea;
+    background: #f5f3ff;
+}
+
+.debt-cash-radio input {
+    display: none;
+}
+
+.debt-cash-radio-box {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #cbd5e1;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+    margin-top: 2px;
+}
+
+.debt-cash-radio-icon {
+    font-size: 12px;
+    color: white;
+    opacity: 0;
+    transform: scale(0);
+    transition: all 0.3s ease;
+}
+
+.debt-cash-radio input:checked + .debt-cash-radio-box {
+    background: #667eea;
+    border-color: #667eea;
+}
+
+.debt-cash-radio input:checked + .debt-cash-radio-box .debt-cash-radio-icon {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.debt-cash-radio-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+
+.debt-cash-radio-label strong {
+    font-size: 14px;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.debt-cash-radio-label small {
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.debt-cash-radio input:checked ~ .debt-cash-radio-label strong {
+    color: #667eea;
+}
+
+/* Warning state untuk cash option */
+.debt-cash-option.warning {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+
+.debt-cash-option.warning .debt-cash-option-title {
+    color: #dc2626;
+}
+
+.debt-cash-option.warning .debt-cash-current {
+    background: #fee2e2;
+    border-left-color: #dc2626;
+}
+
+.debt-cash-option.warning .debt-cash-current strong {
+    color: #dc2626;
+}
+
+/* ============================================
+   CASH INFO DI MODAL DETAIL
+   ============================================ */
+.debt-cash-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.debt-cash-info.reduce {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.debt-cash-info.normal {
+    background: #f0fdf4;
+    color: #059669;
+    border: 1px solid #bbf7d0;
+}
+
+/* ============================================
+   REDUCE BADGE DI RIWAYAT
+   ============================================ */
+.debt-reduce-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #fee2e2;
+    color: #dc2626;
+    margin-top: 8px;
+    border: 1px solid #fecaca;
+}
+
+/* ============================================
+   PAYMENT HISTORY
+   ============================================ */
+.debt-payment-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: #f0fdf4;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border-left: 3px solid #059669;
+}
+
+.debt-payment-info {
+    flex: 1;
+}
+
+.debt-payment-date {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.debt-payment-method {
+    font-size: 11px;
+    color: #059669;
+}
+
+.debt-payment-amount {
+    font-weight: 700;
+    color: #059669;
+}
+
+.debt-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.debt-history-item {
+    background: #f8fafc;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.debt-history-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.debt-history-amount {
+    font-weight: 700;
+    color: #1e293b;
+    font-size: 16px;
+}
+
+/* ============================================
+   DELETE MODAL SPECIAL
+   ============================================ */
+#deleteModal .debt-modal-header {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+#deleteModal .debt-cash-option {
+    background: #fffbeb;
+    border-color: #fbbf24;
+}
+
+#deleteModal .debt-cash-option-title {
+    color: #d97706;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 640px) {
+    .debt-container {
+        padding: 12px;
+    }
+    
+    .debt-summary-amount {
+        font-size: 28px;
+    }
+    
+    .debt-summary-sub-amount {
+        font-size: 20px;
+    }
+    
+    .debt-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .debt-item-amount {
+        text-align: left;
+        width: 100%;
+        display: flex;
+        gap: 16px;
+    }
+    
+    .debt-item-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    
+    .debt-group-header {
+        flex-wrap: wrap;
+    }
+    
+    .debt-group-amount {
+        order: 3;
+        width: 100%;
+        text-align: left;
+        margin-top: 8px;
+        margin-right: 0;
+    }
+    
+    .debt-modal {
+        max-width: 100%;
+        max-height: 95vh;
+        margin: 10px;
+    }
+    
+    .debt-modal-body {
+        padding: 16px;
+    }
+}
