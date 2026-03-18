@@ -42,7 +42,8 @@ const dataManager = {
             openTime: null,
             closeTime: null,
             date: null,
-            currentUser: null
+            currentUser: null,
+            lastCheckDate: null // Tambahan untuk tracking auto-close
         }
     },
     
@@ -70,13 +71,17 @@ const dataManager = {
                 openTime: null,
                 closeTime: null,
                 date: null,
-                currentUser: null
+                currentUser: null,
+                lastCheckDate: null
             };
         }
 
         // Pastikan settings.phone dan settings.tax ada (untuk kompatibilitas dengan settings baru)
         if (!this.data.settings.phone) this.data.settings.phone = '';
         if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
+
+        // ========== AUTO-CLOSE JAM 12 MALAM ==========
+        this.checkAutoCloseMidnight();
         
         // Init users jika belum ada
         let users = JSON.parse(localStorage.getItem(this.USERS_KEY));
@@ -87,6 +92,50 @@ const dataManager = {
         
         this.save();
         return this.data;
+    },
+
+    // ========== AUTO-CLOSE JAM 12 MALAM ==========
+    checkAutoCloseMidnight() {
+        const now = new Date();
+        const today = now.toDateString();
+        const currentHour = now.getHours();
+        
+        // Cek apakah sudah lewat jam 12 malam (00:00 - 05:00 dianggap hari baru)
+        const isAfterMidnight = currentHour >= 0 && currentHour < 5;
+        
+        // Cek apakah kasir masih buka dari hari sebelumnya
+        if (this.data.kasir.isOpen && this.data.kasir.date) {
+            const kasirDate = new Date(this.data.kasir.date).toDateString();
+            
+            // Jika tanggal berbeda (hari baru) dan sudah lewat tengah malam
+            if (kasirDate !== today) {
+                console.log('[AutoClose] Kasir otomatis ditutup karena sudah lewat jam 12 malam');
+                
+                // Simpan shift history sebelum tutup
+                this.saveShiftHistory();
+                
+                // Tutup kasir
+                this.data.kasir.isOpen = false;
+                this.data.kasir.closeTime = new Date().toISOString();
+                this.data.kasir.currentUser = null;
+                this.data.kasir.date = null;
+                
+                // Reset modal untuk hari baru
+                this.data.settings.modalAwal = 0;
+                
+                // Simpan last check date
+                this.data.kasir.lastCheckDate = today;
+                
+                this.save();
+                
+                return true; // Sudah di-auto-close
+            }
+        }
+        
+        // Update last check date
+        this.data.kasir.lastCheckDate = today;
+        
+        return false; // Tidak ada auto-close
     },
 
     save() {
@@ -202,14 +251,12 @@ const dataManager = {
         return user;
     },
 
-    // ========== FUNGSI UPDATE USER (BARU) ==========
     updateUser(userId, updateData) {
         const users = this.getUsers();
         const userIndex = users.findIndex(u => u.id === userId);
         
         if (userIndex === -1) return false;
         
-        // Update fields yang diizinkan
         if (updateData.name) users[userIndex].name = updateData.name;
         if (updateData.username) users[userIndex].username = updateData.username;
         if (updateData.role) users[userIndex].role = updateData.role;
@@ -218,7 +265,6 @@ const dataManager = {
         this.saveUsers(users);
         return true;
     },
-    // ========== END UPDATE USER ==========
 
     deleteUser(userId) {
         let users = this.getUsers();
@@ -247,13 +293,11 @@ const dataManager = {
     },
 
     logout() {
+        // SIMPAN DATA SEBELUM LOGOUT - jangan reset apa-apa!
+        this.save();
+        
+        // Hapus session saja, jangan tutup kasir atau reset data
         localStorage.removeItem(this.CURRENT_USER_KEY);
-        // Tutup kasir jika sedang buka
-        if (this.data.kasir && this.data.kasir.isOpen) {
-            this.data.kasir.isOpen = false;
-            this.data.kasir.closeTime = new Date().toISOString();
-            this.save();
-        }
     },
 
     getCurrentUser() {
@@ -265,22 +309,25 @@ const dataManager = {
         return this.getCurrentUser() !== null;
     },
 
-    // ========== KASIR MANAGEMENT ==========
+    // ========== KASIR MANAGEMENT - PERBAIKAN ==========
     
     checkKasirStatusForUser(userId) {
         const today = new Date().toDateString();
         const kasir = this.data.kasir;
+        
+        // Cek auto-close dulu
+        this.checkAutoCloseMidnight();
         
         // Kasir tutup
         if (!kasir.isOpen) {
             return { canOpen: true, shouldReset: true, reason: 'closed' };
         }
         
-        // Kasir sudah buka dengan user yang sama
+        // Kasir sudah buka - cek user dan tanggal
         if (kasir.currentUser === userId) {
-            // Cek apakah hari yang sama
+            // User sama, cek tanggal
             if (kasir.date === today) {
-                // Hari sama, user sama -> LANJUTKAN (tidak reset)
+                // Hari sama, user sama -> LANJUTKAN
                 return { 
                     canOpen: false, 
                     shouldReset: false, 
@@ -288,7 +335,7 @@ const dataManager = {
                     message: 'Kasir sudah buka dengan akun Anda. Lanjutkan shift.'
                 };
             } else {
-                // Hari beda, user sama -> RESET (hari baru)
+                // Hari beda (seharusnya sudah di-auto-close, tapi jaga-jaga)
                 return { 
                     canOpen: true, 
                     shouldReset: true, 
@@ -325,14 +372,13 @@ const dataManager = {
         
         // Jika hari baru atau kasir tutup
         if (status.shouldReset || forceReset) {
-            // SIMPAN DATA SHIFT SEBELUMNYA KE HISTORY SEBELUM RESET
+            // Simpan shift history sebelumnya jika ada
             if (this.data.kasir.date && this.data.kasir.date !== today) {
                 this.saveShiftHistory();
             }
             
-            // Reset modal dan cash untuk hari baru
+            // Reset hanya modalAwal, currentCash tetap 0 untuk hari baru
             this.data.settings.modalAwal = 0;
-            this.data.settings.currentCash = 0;
         }
         
         // Buka kasir
@@ -342,7 +388,8 @@ const dataManager = {
             closeTime: null,
             date: today,
             currentUser: userId,
-            lastLoginTime: new Date().toISOString()
+            lastLoginTime: new Date().toISOString(),
+            lastCheckDate: today
         };
         
         this.save();
@@ -353,7 +400,6 @@ const dataManager = {
         };
     },
 
-    // ========== PERBAIKAN: Simpan shift history sebelum tutup/reset ==========
     saveShiftHistory() {
         if (!this.data.shiftHistory) this.data.shiftHistory = [];
         
@@ -374,15 +420,14 @@ const dataManager = {
             cashEnd: this.data.settings.currentCash
         };
 
-        // Cek apakah sudah ada entry untuk tanggal ini
         const existingIndex = this.data.shiftHistory.findIndex(s => s.date === kasirDate);
         if (existingIndex !== -1) {
-            // Update existing
             this.data.shiftHistory[existingIndex] = shiftSummary;
         } else {
-            // Tambah baru
             this.data.shiftHistory.push(shiftSummary);
         }
+        
+        this.save();
     },
 
     closeKasir() {
@@ -390,12 +435,10 @@ const dataManager = {
             return { success: false, message: 'Kasir sudah tutup!' };
         }
 
-        const today = new Date().toDateString();
-        
-        // SIMPAN SHIFT HISTORY TERLEBIH DAHULU (jangan hapus data transaksi!)
+        // Simpan shift history
         this.saveShiftHistory();
 
-        // Update status kasir saja, TIDAK menghapus data transaksi
+        // Update status kasir saja, TIDAK menghapus data
         this.data.kasir.isOpen = false;
         this.data.kasir.closeTime = new Date().toISOString();
         this.data.kasir.currentUser = null;
