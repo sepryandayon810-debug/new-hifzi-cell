@@ -1,4 +1,6 @@
-/* Reports Module Styles - FULL */
+/* ============================================
+   REPORTS MODULE STYLES - FULL
+   ============================================ */
 
 /* Profit Card */
 .profit-card {
@@ -110,81 +112,100 @@
     border-color: var(--primary);
 }
 
-/* Chart Card Collapsible Styles */
+/* ============================================
+   CHART COLLAPSIBLE STYLES - BARU
+   ============================================ */
+
 .chart-card {
     overflow: hidden;
 }
 
 .chart-header {
-    cursor: pointer;
-    user-select: none;
-    transition: background-color 0.3s ease;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0;
-    flex-wrap: wrap;
-    gap: 10px;
+    padding: 15px 20px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.3s ease;
+    border-radius: 12px;
+    margin: -10px -20px;
 }
 
 .chart-header:hover {
     background-color: #f8f9fa;
-    border-radius: 12px;
-    margin: -10px;
-    padding: 10px;
 }
 
-.chart-toggle-btn {
+.chart-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chart-icon {
+    font-size: 20px;
+}
+
+.chart-title-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: #333;
+}
+
+.chart-toggle-wrapper {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
-    border: 2px solid #e0e0e0;
-    background: white;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
     border-radius: 20px;
+    color: white;
     font-size: 12px;
     font-weight: 600;
-    cursor: pointer;
     transition: all 0.3s ease;
 }
 
-.chart-toggle-btn:hover {
-    border-color: var(--primary);
-    color: var(--primary);
+.chart-header:hover .chart-toggle-wrapper {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-.toggle-arrow {
-    display: inline-block;
-    transition: transform 0.3s ease;
-    font-size: 10px;
-}
-
-.toggle-text {
+.chart-toggle-text {
     white-space: nowrap;
 }
 
-.chart-wrapper {
+.chart-arrow {
+    font-size: 10px;
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+
+/* Chart Content */
+.chart-content {
     overflow: hidden;
-    transform-origin: top;
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+}
+
+.chart-content.show {
+    max-height: 500px;
+    opacity: 1;
+    transform: translateY(0);
     margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #f0f0f0;
 }
 
-/* Chart Container */
-.chart-container {
-    position: relative;
-    height: 320px;
-    padding: 15px;
-    margin-top: 10px;
-}
-
-.chart-toggle {
+/* Chart Type Toggle */
+.chart-type-toggle {
     display: flex;
     gap: 8px;
-    margin-bottom: 10px;
-    padding: 0 15px;
+    margin-bottom: 15px;
 }
 
-.toggle-btn {
+.type-btn {
     padding: 6px 14px;
     border: 2px solid #e0e0e0;
     background: white;
@@ -198,46 +219,29 @@
     gap: 4px;
 }
 
-.toggle-btn:hover {
+.type-btn:hover {
     border-color: var(--primary);
     transform: translateY(-1px);
 }
 
-.toggle-btn.active {
+.type-btn.active {
     background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
     color: white;
     border-color: transparent;
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-/* Animations */
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-        max-height: 0;
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-        max-height: 500px;
-    }
+/* Chart Container */
+.chart-container {
+    position: relative;
+    height: 320px;
+    padding: 10px;
 }
 
-@keyframes slideUp {
-    from {
-        opacity: 1;
-        transform: translateY(0);
-        max-height: 500px;
-    }
-    to {
-        opacity: 0;
-        transform: translateY(-10px);
-        max-height: 0;
-    }
-}
+/* ============================================
+   STATS GRID
+   ============================================ */
 
-/* Stats Grid */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -292,7 +296,10 @@
     color: #333;
 }
 
-/* Table */
+/* ============================================
+   TABLE STYLES
+   ============================================ */
+
 .table-container {
     overflow-x: auto;
     margin-top: 15px;
@@ -358,7 +365,10 @@ tr:active {
     background: #e9ecef;
 }
 
-/* Card Header */
+/* ============================================
+   CARD & BUTTON STYLES
+   ============================================ */
+
 .card-header {
     display: flex;
     justify-content: space-between;
@@ -377,7 +387,6 @@ tr:active {
     gap: 8px;
 }
 
-/* Export Button */
 .btn-sm {
     padding: 8px 16px;
     border-radius: 20px;
@@ -402,7 +411,10 @@ tr:active {
     box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
-/* Responsive */
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
 @media (max-width: 480px) {
     .profit-amount {
         font-size: 28px;
@@ -417,18 +429,22 @@ tr:active {
         padding: 5px 10px;
     }
     
+    .chart-header {
+        padding: 12px 15px;
+    }
+    
+    .chart-title-text {
+        font-size: 14px;
+    }
+    
+    .chart-toggle-wrapper {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+    
     .chart-container {
         height: 250px;
-        padding: 10px;
-    }
-    
-    .chart-toggle {
-        padding: 0 10px;
-    }
-    
-    .chart-toggle-btn {
-        padding: 6px 12px;
-        font-size: 11px;
+        padding: 5px;
     }
     
     .filter-btn {
