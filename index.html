@@ -120,6 +120,10 @@
             display: none;
         }
         
+        .login-error.show {
+            display: block;
+        }
+        
         .login-info {
             margin-top: 20px;
             padding-top: 20px;
@@ -137,6 +141,7 @@
             padding: 8px 15px;
             border-radius: 20px;
             font-size: 13px;
+            margin-right: 10px;
         }
         
         .user-avatar {
@@ -258,6 +263,10 @@
         @media (max-width: 768px) {
             .ocr-preview-container {
                 grid-template-columns: 1fr;
+            }
+            
+            .user-info-header {
+                display: none; /* Sembunyikan di mobile untuk hemat space */
             }
         }
         
@@ -504,13 +513,67 @@
             box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
         }
         
-        /* Hide main app before login */
+        /* App Container States */
         #appContainer {
             display: none;
         }
         
-        #appContainer.logged-in {
+        #appContainer.active {
             display: block;
+        }
+        
+        /* Loading Overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        .loading-overlay.active {
+            display: flex;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-text {
+            margin-top: 15px;
+            color: #666;
+        }
+        
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #333;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 14px;
+            z-index: 10000;
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
         }
     </style>
 </head>
@@ -522,20 +585,20 @@
             <div class="login-title" id="loginStoreName">Hifzi Cell</div>
             <div class="login-subtitle">Sistem Kasir Pintar</div>
             
-            <form id="loginForm" onsubmit="app.doLogin(); return false;">
+            <form id="loginForm" onsubmit="return false;">
                 <div class="login-form-group">
                     <label>👤 Username</label>
-                    <input type="text" id="loginUsername" class="login-input" placeholder="Masukkan username" required>
+                    <input type="text" id="loginUsername" class="login-input" placeholder="Masukkan username" autocomplete="username">
                 </div>
                 
                 <div class="login-form-group">
                     <label>🔒 Password</label>
-                    <input type="password" id="loginPassword" class="login-input" placeholder="Masukkan password" required>
+                    <input type="password" id="loginPassword" class="login-input" placeholder="Masukkan password" autocomplete="current-password">
                 </div>
                 
                 <div id="loginError" class="login-error"></div>
                 
-                <button type="submit" class="login-btn">🔓 Login</button>
+                <button type="button" class="login-btn" onclick="app.doLogin()">🔓 Login</button>
             </form>
             
             <div class="login-info">
@@ -577,12 +640,11 @@
                         <button class="logout-btn" onclick="app.logout()">Logout</button>
                     </div>
                     
-                    <div class="sync-status" id="syncStatus" onclick="backupModule.manualSync()">
+                    <div class="sync-status" id="syncStatus" onclick="if(typeof backupModule !== 'undefined') backupModule.manualSync()">
                         <span>☁️</span>
                         <span id="syncText">Ready</span>
                     </div>
-                    <button class="icon-btn" onclick="app.openSettings()" title="Pengaturan" 
-                            style="cursor: pointer; z-index: 1001;">
+                    <button class="icon-btn" onclick="if(typeof app !== 'undefined') app.openSettings()" title="Pengaturan" style="cursor: pointer;">
                         ⚙️
                     </button>
                 </div>
@@ -615,16 +677,16 @@
 
         <!-- Navigation -->
         <div class="nav-tabs" id="navTabs">
-            <button class="nav-tab" onclick="router.navigate('pos', this)">🏪 Kasir</button>
-            <button class="nav-tab" onclick="router.navigate('products', this)">📦 Produk</button>
-            <button class="nav-tab" onclick="router.navigate('cash', this)">💵 Kas</button>
-            <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
-            <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
-            <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('pos', this)">🏪 Kasir</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('products', this)">📦 Produk</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('cash', this)">💵 Kas</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('reports', this)">📊 Laporan</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('transactions', this)">📝 Transaksi</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('receipt', this)">🧾 Struk</button>
             <button class="nav-tab" onclick="openDebtModule(this)">💳 Hutang</button>
-            <button class="nav-tab" onclick="router.navigate('users', this)">👥 User</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('users', this)">👥 User</button>
             <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
-            <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
+            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('backup', this)">☁️ Cloud</button>
         </div>
 
         <!-- Content Container -->
@@ -636,7 +698,7 @@
                 <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
                 <div class="cart-total" id="cartTotal">Rp 0</div>
             </div>
-            <button class="btn-checkout" onclick="posModule.openCheckout()" id="checkoutBtn">
+            <button class="btn-checkout" onclick="if(typeof posModule !== 'undefined') posModule.openCheckout()" id="checkoutBtn">
                 Bayar →
             </button>
         </div>
@@ -645,57 +707,43 @@
         <div class="toast" id="toast"></div>
     </div>
 
-    <!-- PERBAIKAN: Script helper untuk Debt dan Telegram -->
+    <!-- Script helper untuk Debt dan Telegram -->
     <script>
-        // ==========================================
-        // FUNGSI DEBT MODULE - Langsung render
-        // ==========================================
+        // Fungsi Debt Module
         function openDebtModule(element) {
             console.log('[Debt] Opening debt module...');
             
-            // Update active tab
             document.querySelectorAll('.nav-tab').forEach(function(tab) {
                 tab.classList.remove('active');
             });
             if (element) element.classList.add('active');
             
-            // Cek container
             var container = document.getElementById('mainContent');
             if (!container) {
                 console.error('[Debt] mainContent not found!');
                 return;
             }
             
-            // Cek debtModule
             if (typeof debtModule === 'undefined') {
-                console.error('[Debt] debtModule not loaded!');
                 container.innerHTML = 
                     '<div style="padding:40px;text-align:center;">' +
                     '<h3>❌ Error</h3>' +
-                    '<p>Module Hutang tidak ditemukan.<br>Refresh halaman atau cek console.</p>' +
+                    '<p>Module Hutang tidak ditemukan.<br>Silakan refresh halaman.</p>' +
                     '</div>';
                 return;
             }
             
-            // Render debt module langsung
             try {
-                console.log('[Debt] Rendering...');
                 debtModule.init();
-                debtModule.render();
-                console.log('[Debt] Rendered successfully');
             } catch (e) {
                 console.error('[Debt] Error:', e);
                 container.innerHTML = 
                     '<div style="padding:40px;text-align:center;color:red;">' +
-                    '<h3>❌ Error</h3>' +
-                    '<p>' + e.message + '</p>' +
-                    '</div>';
+                    '<h3>❌ Error</h3><p>' + e.message + '</p></div>';
             }
         }
         
-        // ==========================================
-        // FUNGSI TELEGRAM MODULE
-        // ==========================================
+        // Fungsi Telegram Module
         function goToTelegram(element) {
             console.log('[Telegram] goToTelegram() called');
             
@@ -705,17 +753,13 @@
             if (element) element.classList.add('active');
             
             var container = document.getElementById('mainContent');
-            if (!container) {
-                console.error('[Telegram] mainContent not found!');
-                return;
-            }
+            if (!container) return;
             
             if (typeof TelegramModule === 'undefined') {
                 container.innerHTML = 
                     '<div style="padding:40px;text-align:center;">' +
                     '<h3>❌ Telegram Module Error</h3>' +
-                    '<p>TelegramModule tidak ditemukan.</p>' +
-                    '</div>';
+                    '<p>TelegramModule tidak ditemukan.</p></div>';
                 return;
             }
             
@@ -726,48 +770,8 @@
                 }
             } catch (e) {
                 console.error('[Telegram] Error:', e);
-                container.innerHTML = 
-                    '<div style="padding:40px;text-align:center;color:red;">' +
-                    '<h3>❌ Error</h3><p>' + e.message + '</p></div>';
             }
         }
-        
-        // ==========================================
-        // OVERRIDE ROUTER untuk intercept debt
-        // ==========================================
-        (function() {
-            console.log('[Router] Setting up intercepts...');
-            
-            var checkRouter = setInterval(function() {
-                if (window.router && window.router.navigate) {
-                    clearInterval(checkRouter);
-                    
-                    var originalNavigate = window.router.navigate;
-                    
-                    window.router.navigate = function(page, element) {
-                        console.log('[Router] navigate called:', page);
-                        
-                        if (page === 'debt') {
-                            openDebtModule(element);
-                            return;
-                        }
-                        
-                        if (page === 'telegram') {
-                            goToTelegram(element);
-                            return;
-                        }
-                        
-                        return originalNavigate(page, element);
-                    };
-                    
-                    console.log('[Router] Intercepts ready');
-                }
-            }, 100);
-            
-            setTimeout(function() {
-                clearInterval(checkRouter);
-            }, 5000);
-        })();
     </script>
 
     <!-- Scripts -->
@@ -792,16 +796,6 @@
         console.log('dataManager:', typeof dataManager);
         console.log('app:', typeof app);
         console.log('router:', typeof router);
-        console.log('posModule:', typeof posModule);
-        console.log('productsModule:', typeof productsModule);
-        console.log('cashModule:', typeof cashModule);
-        console.log('reportsModule:', typeof reportsModule);
-        console.log('transactionsModule:', typeof transactionsModule);
-        console.log('receiptModule:', typeof receiptModule);
-        console.log('backupModule:', typeof backupModule);
-        console.log('debtModule:', typeof debtModule);
-        console.log('TelegramModule:', typeof TelegramModule);
-        console.log('usersModule:', typeof usersModule);
     </script>
 </body>
 </html>
