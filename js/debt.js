@@ -3,6 +3,7 @@
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
  * + Modal Pilih Pelanggan (Muncul saat klik ikon profil)
  * + Modal Tambah Nama Pelanggan Baru
+ * + Fitur Hapus Nama dari List
  */
 
 const debtModule = {
@@ -84,11 +85,16 @@ const debtModule = {
     },
 
     removeCustomCustomerName(name) {
+        if (!confirm(`Yakin ingin menghapus "${name}" dari daftar pelanggan?\n\nCatatan: Nama yang sudah pernah berhutang tidak bisa dihapus.`)) {
+            return;
+        }
+        
         this.customCustomerNames = this.customCustomerNames.filter(c => 
             c.name !== name
         );
         this.saveCustomNames();
         this.renderCustomerList();
+        this.showToast(`Nama "${name}" dihapus dari daftar`, 'success');
     },
 
     saveDebts() {
@@ -756,17 +762,25 @@ const debtModule = {
             const hasDebt = cust.source === 'debt';
             
             return `
-                <div class="hifzi-debt-customer-list-item" 
-                     onclick="debtModule.selectCustomerFromList('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
-                    <div class="hifzi-debt-list-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
-                    <div class="hifzi-debt-list-item-info">
+                <div class="hifzi-debt-customer-list-item" data-customer-name="${cust.name.replace(/"/g, '&quot;')}">
+                    <div class="hifzi-debt-list-item-avatar" onclick="debtModule.selectCustomerFromList('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">${cust.name.charAt(0).toUpperCase()}</div>
+                    <div class="hifzi-debt-list-item-info" onclick="debtModule.selectCustomerFromList('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
                         <div class="hifzi-debt-list-item-name">${cust.name}</div>
                         <div class="hifzi-debt-list-item-meta">
                             ${cust.phone ? `<span>📱 ${cust.phone}</span>` : '<span>📱 -</span>'}
                         </div>
                     </div>
-                    <div class="hifzi-debt-list-item-badge ${isCustom ? 'hifzi-custom' : 'hifzi-debt'}">
-                        ${isCustom ? 'Baru' : 'Pernah Hutang'}
+                    <div class="hifzi-debt-list-item-actions">
+                        <span class="hifzi-debt-list-item-badge ${isCustom ? 'hifzi-custom' : 'hifzi-debt'}">
+                            ${isCustom ? 'Baru' : 'Pernah Hutang'}
+                        </span>
+                        ${isCustom ? `
+                            <button class="hifzi-debt-list-item-delete" onclick="event.stopPropagation(); debtModule.removeCustomCustomerName('${cust.name.replace(/'/g, "\\'")}')" title="Hapus dari daftar">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                </svg>
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
             `;
