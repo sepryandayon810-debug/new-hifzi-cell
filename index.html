@@ -13,7 +13,10 @@
     <link rel="stylesheet" href="css/reports.css">
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
+    <!-- ✅ PERBAIKAN: Path debt.css diperbaiki -->
     <link rel="stylesheet" href="debt.css">
+    
+    <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
     
     <!-- External Libraries -->
@@ -21,792 +24,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style>
-        :root {
-            --primary: #667eea;
-            --primary-dark: #764ba2;
-            --success: #00b894;
-            --danger: #ff4757;
-            --warning: #fdcb6e;
-            --info: #3498db;
-            --dark: #2d3436;
-            --light: #f5f6fa;
-            --white: #ffffff;
-            --shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--light);
-            color: var(--dark);
-            overflow-x: hidden;
-            padding-bottom: 100px;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        /* Loading Overlay */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255,255,255,0.9);
-            z-index: 4000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-        }
-
-        .loading-overlay.active {
-            display: flex;
-        }
-
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #f0f0f0;
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            margin-top: 15px;
-            font-weight: 600;
-            color: #666;
-        }
-
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-            padding: 20px;
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            box-shadow: var(--shadow);
-        }
-
-        .header-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 15px;
-        }
-
-        .header h1 {
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        #headerStoreAddress {
-            font-size: 12px;
-            opacity: 0.9;
-            margin-top: 2px;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .sync-status {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 11px;
-            background: rgba(255,255,255,0.2);
-            padding: 5px 10px;
-            border-radius: 15px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .sync-status:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        .icon-btn {
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            font-size: 20px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .icon-btn:active {
-            transform: scale(0.9);
-            background: rgba(255,255,255,0.3);
-        }
-
-        /* ==========================================
-           CASH CARD - DENGAN TOTAL TRX & LABA BESAR
-           ========================================== */
-        .cash-card {
-            background: rgba(255,255,255,0.15);
-            border-radius: 15px;
-            padding: 15px;
-            backdrop-filter: blur(10px);
-        }
-
-        .cash-label {
-            font-size: 12px;
-            opacity: 0.9;
-            margin-bottom: 5px;
-        }
-
-        .cash-amount {
-            font-size: 28px;
-            font-weight: 700;
-        }
-
-        /* BARU: Total Transaksi Row */
-        .cash-transaction-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(255, 255, 255, 0.15);
-            padding: 10px 15px;
-            border-radius: 10px;
-            margin: 12px 0;
-            backdrop-filter: blur(5px);
-        }
-
-        .trx-icon {
-            font-size: 20px;
-        }
-
-        .trx-info {
-            display: flex;
-            flex-direction: column;
-            line-height: 1.2;
-        }
-
-        .trx-label {
-            font-size: 11px;
-            opacity: 0.9;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .trx-value {
-            font-size: 18px;
-            font-weight: 700;
-        }
-
-        .cash-detail {
-            display: flex;
-            gap: 20px;
-            margin-top: 10px;
-            font-size: 12px;
-            flex-wrap: wrap;
-        }
-
-        .cash-detail-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        /* MODIFIKASI: Laba dengan highlight */
-        .cash-detail-item.profit-highlight {
-            background: rgba(255, 215, 0, 0.25);
-            padding: 8px 12px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 215, 0, 0.4);
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .cash-detail-item.profit-highlight b {
-            color: #ffd700;
-            font-size: 15px;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-        }
-
-        /* Kasir Indicator */
-        .kasir-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 8px;
-        }
-
-        .kasir-indicator.open {
-            background: #e8f5e9;
-            color: var(--success);
-        }
-
-        .kasir-indicator.closed {
-            background: #ffebee;
-            color: var(--danger);
-        }
-
-        .kasir-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        .kasir-indicator.open .kasir-dot {
-            background: var(--success);
-        }
-
-        .kasir-indicator.closed .kasir-dot {
-            background: var(--danger);
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        /* Navigation */
-        .nav-tabs {
-            display: flex;
-            background: white;
-            padding: 5px;
-            margin: 15px;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            overflow-x: auto;
-            gap: 5px;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-        }
-
-        .nav-tabs::-webkit-scrollbar {
-            display: none;
-        }
-
-        .nav-tab {
-            flex: 1;
-            min-width: 80px;
-            padding: 12px 8px;
-            border: none;
-            background: transparent;
-            border-radius: 10px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #666;
-            cursor: pointer;
-            white-space: nowrap;
-            text-align: center;
-            transition: all 0.3s;
-        }
-
-        .nav-tab.active {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-        }
-
-        /* Content */
-        .content-section {
-            display: none;
-            padding: 0 15px;
-            animation: fadeIn 0.3s;
-        }
-
-        .content-section.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Cards */
-        .card {
-            background: white;
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .card-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: var(--dark);
-        }
-
-        /* Buttons */
-        .btn {
-            flex: 1;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn:active {
-            transform: scale(0.98);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-        }
-
-        .btn-secondary {
-            background: #f0f0f0;
-            color: #333;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning);
-            color: var(--dark);
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-sm {
-            padding: 10px 16px;
-            border: none;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        /* Forms */
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 14px;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            font-size: 16px;
-            font-family: inherit;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        /* Modals */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 2000;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .modal.active {
-            display: flex;
-            opacity: 1;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 20px;
-            padding: 25px;
-            width: 100%;
-            max-width: 400px;
-            max-height: 90vh;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            animation: slideUp 0.3s;
-        }
-
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .modal-title {
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        .close-btn {
-            width: 40px;
-            height: 40px;
-            border: none;
-            background: #f0f0f0;
-            border-radius: 50%;
-            font-size: 24px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-footer {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-
-        /* Cart Bar */
-        .cart-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: white;
-            padding: 15px 20px;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 999;
-        }
-
-        .cart-info {
-            flex: 1;
-        }
-
-        .cart-label {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .cart-total {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary);
-        }
-
-        .btn-checkout {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-            border: none;
-            padding: 16px 30px;
-            border-radius: 25px;
-            font-weight: 700;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        .btn-checkout:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            top: 100px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-100px);
-            background: var(--dark);
-            color: white;
-            padding: 14px 28px;
-            border-radius: 30px;
-            font-weight: 600;
-            opacity: 0;
-            transition: all 0.3s;
-            z-index: 3000;
-            pointer-events: none;
-        }
-
-        .toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #999;
-        }
-
-        .empty-icon {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-
-        .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            margin: 0 auto 10px;
-        }
-
-        .stat-icon.sales { background: #e3f2fd; }
-        .stat-icon.profit { background: #e8f5e9; }
-        .stat-icon.expense { background: #ffebee; }
-        .stat-icon.items { background: #fff3e0; }
-
-        .stat-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        .stat-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--dark);
-        }
-
-        /* Transaction List */
-        .transaction-list {
-            max-height: 400px;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .transaction-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px;
-            border-bottom: 1px solid #f0f0f0;
-            cursor: pointer;
-        }
-
-        .transaction-item:active {
-            background: #f5f5f5;
-        }
-
-        .transaction-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .transaction-title {
-            font-weight: 600;
-            font-size: 14px;
-            margin-bottom: 3px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .transaction-meta {
-            font-size: 12px;
-            color: #999;
-        }
-
-        .transaction-amount {
-            font-weight: 700;
-            font-size: 16px;
-            text-align: right;
-            min-width: 100px;
-        }
-
-        .transaction-amount.income {
-            color: var(--success);
-        }
-
-        .transaction-amount.expense {
-            color: var(--danger);
-        }
-
-        /* Info Box */
-        .info-box {
-            background: #e3f2fd;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-left: 4px solid var(--info);
-        }
-
-        .info-box.warning {
-            background: #fff8e1;
-            border-left-color: #f57c00;
-        }
-
-        .info-box.danger {
-            background: #ffebee;
-            border-left-color: var(--danger);
-        }
-
-        .info-box.success {
-            background: #e8f5e9;
-            border-left-color: var(--success);
-        }
-
-        .info-title {
-            font-weight: 700;
-            margin-bottom: 5px;
-            color: #1565c0;
-            font-size: 14px;
-        }
-
-        .info-box.warning .info-title { color: #e65100; }
-        .info-box.danger .info-title { color: var(--danger); }
-        .info-box.success .info-title { color: var(--success); }
-
-        .info-text {
-            font-size: 13px;
-            color: #666;
-            line-height: 1.5;
-        }
-
-        /* Calculation Box */
-        .calculation-box {
-            background: #f5f5f5;
-            border-radius: 12px;
-            padding: 15px;
-            margin: 15px 0;
-        }
-
-        .calc-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px dashed #ddd;
-        }
-
-        .calc-row:last-child {
-            border-bottom: none;
-            font-weight: 700;
-            font-size: 16px;
-        }
-
-        /* Kasir Actions */
-        .kasir-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .kasir-btn {
-            padding: 20px;
-            border: none;
-            border-radius: 16px;
-            font-weight: 700;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .kasir-btn.open {
-            background: linear-gradient(135deg, var(--success) 0%, #00a884 100%);
-            color: white;
-        }
-
-        .kasir-btn.close {
-            background: linear-gradient(135deg, var(--danger) 0%, #ff6b6b 100%);
-            color: white;
-        }
-
-        .kasir-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
         /* OCR Styles */
         .ocr-upload-area {
             border: 3px dashed #ccc;
@@ -823,20 +40,261 @@
             border-color: var(--primary);
             background: #f0f8ff;
         }
+        
+        .ocr-preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .ocr-preview-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .ocr-image-preview {
+            width: 100%;
+            border-radius: 12px;
+            border: 2px solid #eee;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        
+        .ocr-parsed-data {
+            background: #f0f8ff;
+            border: 1px solid #4a90e2;
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .ocr-data-row {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .ocr-data-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .ocr-data-label {
+            color: #666;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        
+        .ocr-data-value {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .ocr-bank-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .ocr-bank-bri { background: #0056b3; color: white; }
+        .ocr-bank-bni { background: #ff6600; color: white; }
+        .ocr-bank-bca { background: #0066cc; color: white; }
+        .ocr-bank-mandiri { background: #ffd700; color: #333; }
+        .ocr-bank-bsi { background: #009900; color: white; }
+        .ocr-bank-dana { background: #008ceb; color: white; }
+        .ocr-bank-gopay { background: #00aed6; color: white; }
+        .ocr-bank-ovo { background: #4c3494; color: white; }
+        .ocr-bank-linkaja { background: #e31e24; color: white; }
+        .ocr-bank-shopeepay { background: #ee4d2d; color: white; }
+        
+        .ocr-confidence-bar {
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        
+        .ocr-confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444 0%, #ffaa00 50%, #00c851 100%);
+            transition: width 0.5s ease;
+        }
+        
+        .ocr-loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .ocr-spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .ocr-action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .ocr-action-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .ocr-amount-box {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .ocr-amount-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .ocr-amount-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        
+        .ocr-warning {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .ocr-success {
+            margin-top: 10px;
+            padding: 10px;
+            background: #d4edda;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .ocr-filled {
+            background-color: #e8f5e9 !important;
+            border-color: #4caf50 !important;
+            transition: all 0.3s;
+        }
+        
+        .info-box {
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+        
+        .info-box.info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .info-box.warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        
+        .info-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .info-text {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+        }
+        
+        .receipt-type-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #f5f5f5;
+            padding: 5px;
+            border-radius: 12px;
+        }
+        
+        .receipt-type-tab {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .receipt-type-tab.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
 
-        /* Responsive */
-        @media (max-width: 380px) {
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-            
-            .kasir-actions {
-                grid-template-columns: 1fr;
-            }
+        /* Saldo Module Additional Styles */
+        .tg-saldo-section {
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tg-btn-saldo:hover {
+            background: #2196f3 !important;
+            color: white !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        }
+
+        .tg-btn-saldo:active {
+            transform: translateY(0);
+        }
+
+        #saldoNominal:focus {
+            outline: none;
+            border-color: #4caf50 !important;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
         }
     </style>
 </head>
@@ -871,20 +329,9 @@
             </div>
         </div>
         
-        <!-- CASH CARD - DENGAN TOTAL TRX & LABA BESAR -->
         <div class="cash-card">
             <div class="cash-label">Kas di Tangan</div>
             <div class="cash-amount" id="currentCash">Rp 0</div>
-            
-            <!-- BARU: Total Transaksi Hari Ini -->
-            <div class="cash-transaction-row">
-                <span class="trx-icon">🛒</span>
-                <div class="trx-info">
-                    <span class="trx-label">Total Transaksi Hari Ini</span>
-                    <span class="trx-value" id="totalTransactions">0 trx</span>
-                </div>
-            </div>
-            
             <div class="cash-detail">
                 <div class="cash-detail-item">
                     <span>💰</span>
@@ -894,8 +341,7 @@
                     <span>📊</span>
                     <span>Shift: <b id="shiftStatus">Tutup</b></span>
                 </div>
-                <!-- MODIFIKASI: Laba dengan highlight -->
-                <div class="cash-detail-item profit-highlight">
+                <div class="cash-detail-item">
                     <span>📈</span>
                     <span>Laba: <b id="headerProfit">Rp 0</b></span>
                 </div>
@@ -912,6 +358,7 @@
         <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
         <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
         <button class="nav-tab" onclick="router.navigate('debt', this)">💳 Hutang</button>
+        <!-- TELEGRAM PAKAI FUNGSI KHUSUS -->
         <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
         <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
     </div>
@@ -933,6 +380,143 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
+    <!-- TELEGRAM HELPER SCRIPT - PALING AWAL -->
+    <script>
+        // Fungsi khusus untuk Telegram - dipanggil langsung dari onclick
+        function goToTelegram(element) {
+            console.log('[Telegram+Saldo] goToTelegram() called');
+            
+            // Update active tab
+            document.querySelectorAll('.nav-tab').forEach(function(tab) {
+                tab.classList.remove('active');
+            });
+            if (element) {
+                element.classList.add('active');
+            }
+            
+            // Render Telegram
+            var container = document.getElementById('mainContent');
+            if (!container) {
+                console.error('[Telegram] mainContent not found!');
+                return;
+            }
+            
+            if (typeof TelegramModule === 'undefined') {
+                console.error('[Telegram] TelegramModule not loaded');
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;">' +
+                    '<h3>❌ Telegram Module Error</h3>' +
+                    '<p>TelegramModule tidak ditemukan. Refresh halaman.</p>' +
+                    '</div>';
+                return;
+            }
+            
+            try {
+                TelegramModule.renderPage();
+                
+                // Check pending saldo setelah render
+                if (TelegramModule.SaldoModule) {
+                    TelegramModule.SaldoModule.checkPending();
+                }
+                
+                console.log('[Telegram+Saldo] Rendered successfully');
+            } catch (e) {
+                console.error('[Telegram] Error:', e);
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;color:red;">' +
+                    '<h3>❌ Error</h3>' +
+                    '<p>' + e.message + '</p>' +
+                    '</div>';
+            }
+        }
+        
+        // ✅ PERBAIKAN: Fungsi khusus untuk Debt Module
+        function goToDebt(element) {
+            console.log('[Debt] goToDebt() called');
+            
+            // Update active tab
+            document.querySelectorAll('.nav-tab').forEach(function(tab) {
+                tab.classList.remove('active');
+            });
+            if (element) {
+                element.classList.add('active');
+            }
+            
+            // Render Debt Module
+            var container = document.getElementById('mainContent');
+            if (!container) {
+                console.error('[Debt] mainContent not found!');
+                return;
+            }
+            
+            if (typeof debtModule === 'undefined') {
+                console.error('[Debt] debtModule not loaded');
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;">' +
+                    '<h3>❌ Debt Module Error</h3>' +
+                    '<p>debtModule tidak ditemukan. Refresh halaman.</p>' +
+                    '</div>';
+                return;
+            }
+            
+            try {
+                // Init dan Render debt module
+                debtModule.init();
+                debtModule.render();
+                console.log('[Debt] Rendered successfully');
+            } catch (e) {
+                console.error('[Debt] Error:', e);
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;color:red;">' +
+                    '<h3>❌ Error</h3>' +
+                    '<p>' + e.message + '</p>' +
+                    '</div>';
+            }
+        }
+        
+        // Override router.navigate untuk intercept Telegram dan Debt
+        (function() {
+            console.log('[Router] Setting up intercepts...');
+            
+            // Tunggu sampai router tersedia
+            var checkRouter = setInterval(function() {
+                if (window.router && window.router.navigate) {
+                    clearInterval(checkRouter);
+                    
+                    // Simpan fungsi original
+                    var originalNavigate = window.router.navigate;
+                    
+                    // Ganti dengan wrapper
+                    window.router.navigate = function(page, element) {
+                        console.log('[Router] navigate called:', page);
+                        
+                        // Kalau Telegram, panggil fungsi khusus
+                        if (page === 'telegram') {
+                            goToTelegram(element);
+                            return;
+                        }
+                        
+                        // ✅ PERBAIKAN: Handler untuk Debt
+                        if (page === 'debt') {
+                            goToDebt(element);
+                            return;
+                        }
+                        
+                        // Selain Telegram dan Debt, panggil original
+                        return originalNavigate(page, element);
+                    };
+                    
+                    console.log('[Router] All intercepts ready (Telegram + Debt)');
+                }
+            }, 100);
+            
+            // Timeout setelah 5 detik
+            setTimeout(function() {
+                clearInterval(checkRouter);
+            }, 5000);
+        })();
+    </script>
+
     <!-- Scripts -->
     <script src="js/utils.js"></script>
     <script src="js/data.js"></script>
@@ -942,9 +526,33 @@
     <script src="js/cash.js"></script>
     <script src="js/reports.js"></script>
     <script src="js/transactions.js"></script>
+    
+    <!-- Receipt Module with OCR -->
     <script src="js/receipt.js"></script>
+    
+    <!-- Telegram Module - Standalone dengan Saldo -->
     <script src="telegram.js"></script>
+    
     <script src="js/backup.js"></script>
+    <!-- ✅ PERBAIKAN: Path debt.js diperbaiki -->
     <script src="debt.js"></script>
+    
+    <!-- Verifikasi module -->
+    <script>
+        console.log('=== CEK MODULE ===');
+        console.log('utils:', typeof utils);
+        console.log('dataManager:', typeof dataManager);
+        console.log('app:', typeof app);
+        console.log('router:', typeof router);
+        console.log('posModule:', typeof posModule);
+        console.log('productsModule:', typeof productsModule);
+        console.log('cashModule:', typeof cashModule);
+        console.log('reportsModule:', typeof reportsModule);
+        console.log('transactionsModule:', typeof transactionsModule);
+        console.log('receiptModule:', typeof receiptModule);
+        console.log('backupModule:', typeof backupModule);
+        console.log('debtModule:', typeof debtModule);
+        console.log('TelegramModule:', typeof TelegramModule);
+    </script>
 </body>
 </html>
