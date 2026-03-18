@@ -9,11 +9,12 @@
 }
 
 .profit-label {
-    font-size: 14px;
+    font-size: 16px; /* Dibesarkan dari 14px agar sama dengan "Kas di Tangan" */
     opacity: 0.9;
     margin-bottom: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    font-weight: 600; /* Ditambahkan agar lebih tebal */
 }
 
 .profit-amount {
@@ -319,6 +320,11 @@ tr:active {
     
     .profit-details {
         gap: 10px;
+    }
+    
+    .profit-item {
+        font-size: 12px;
+        padding: 5px 10px;
     }
     
     .chart-container {
