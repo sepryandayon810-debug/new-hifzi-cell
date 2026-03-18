@@ -1,6 +1,6 @@
 const dataManager = {
     // Key untuk localStorage
-    STORAGE_KEY: 'hifzi_cell_data',
+    STORAGE_KEY: 'hifzi_data',
     USERS_KEY: 'hifzi_users',
     CURRENT_USER_KEY: 'hifzi_current_user',
     
@@ -24,6 +24,8 @@ const dataManager = {
         settings: {
             storeName: 'Hifzi Cell',
             address: '',
+            phone: '',
+            tax: 0,
             taxRate: 0,
             modalAwal: 0,
             currentCash: 0,
@@ -71,6 +73,10 @@ const dataManager = {
                 currentUser: null
             };
         }
+
+        // Pastikan settings.phone dan settings.tax ada (untuk kompatibilitas dengan settings baru)
+        if (!this.data.settings.phone) this.data.settings.phone = '';
+        if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
         
         // Init users jika belum ada
         let users = JSON.parse(localStorage.getItem(this.USERS_KEY));
@@ -85,6 +91,11 @@ const dataManager = {
 
     save() {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
+    },
+
+    // Alias untuk kompatibilitas dengan app.js
+    saveData() {
+        this.save();
     },
 
     // Helper untuk merge object deeply
@@ -190,6 +201,24 @@ const dataManager = {
         this.saveUsers(users);
         return user;
     },
+
+    // ========== FUNGSI UPDATE USER (BARU) ==========
+    updateUser(userId, updateData) {
+        const users = this.getUsers();
+        const userIndex = users.findIndex(u => u.id === userId);
+        
+        if (userIndex === -1) return false;
+        
+        // Update fields yang diizinkan
+        if (updateData.name) users[userIndex].name = updateData.name;
+        if (updateData.username) users[userIndex].username = updateData.username;
+        if (updateData.role) users[userIndex].role = updateData.role;
+        if (updateData.password) users[userIndex].password = updateData.password;
+        
+        this.saveUsers(users);
+        return true;
+    },
+    // ========== END UPDATE USER ==========
 
     deleteUser(userId) {
         let users = this.getUsers();
@@ -374,4 +403,6 @@ const dataManager = {
 };
 
 // Inisialisasi otomatis saat load
-dataManager.init();
+if (typeof dataManager !== 'undefined') {
+    dataManager.init();
+}
