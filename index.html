@@ -13,8 +13,8 @@
     <link rel="stylesheet" href="css/reports.css">
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
-    <!-- PERBAIKAN: Path debt.css -->
-    <link rel="stylesheet" href="debt.css">
+    <!-- PERBAIKAN: Path debt.css di folder css/ -->
+    <link rel="stylesheet" href="css/debt.css">
     
     <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
@@ -357,8 +357,8 @@
         <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
         <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
         <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
-        <button class="nav-tab" onclick="router.navigate('debt', this)">💳 Hutang</button>
-        <!-- TELEGRAM PAKAI FUNGSI KHUSUS -->
+        <!-- PERBAIKAN: Gunakan onclick langsung ke fungsi debt -->
+        <button class="nav-tab" onclick="openDebtModule(this)">💳 Hutang</button>
         <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
         <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
     </div>
@@ -380,89 +380,44 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
-    <!-- TELEGRAM & DEBT HELPER SCRIPT - PALING AWAL -->
+    <!-- PERBAIKAN: Script helper untuk Debt dan Telegram -->
     <script>
-        // Fungsi khusus untuk Telegram - dipanggil langsung dari onclick
-        function goToTelegram(element) {
-            console.log('[Telegram+Saldo] goToTelegram() called');
+        // ==========================================
+        // FUNGSI DEBT MODULE - Langsung render
+        // ==========================================
+        function openDebtModule(element) {
+            console.log('[Debt] Opening debt module...');
             
             // Update active tab
             document.querySelectorAll('.nav-tab').forEach(function(tab) {
                 tab.classList.remove('active');
             });
-            if (element) {
-                element.classList.add('active');
-            }
+            if (element) element.classList.add('active');
             
-            // Render Telegram
-            var container = document.getElementById('mainContent');
-            if (!container) {
-                console.error('[Telegram] mainContent not found!');
-                return;
-            }
-            
-            if (typeof TelegramModule === 'undefined') {
-                console.error('[Telegram] TelegramModule not loaded');
-                container.innerHTML = 
-                    '<div style="padding:40px;text-align:center;">' +
-                    '<h3>❌ Telegram Module Error</h3>' +
-                    '<p>TelegramModule tidak ditemukan. Refresh halaman.</p>' +
-                    '</div>';
-                return;
-            }
-            
-            try {
-                TelegramModule.renderPage();
-                
-                // Check pending saldo setelah render
-                if (TelegramModule.SaldoModule) {
-                    TelegramModule.SaldoModule.checkPending();
-                }
-                
-                console.log('[Telegram+Saldo] Rendered successfully');
-            } catch (e) {
-                console.error('[Telegram] Error:', e);
-                container.innerHTML = 
-                    '<div style="padding:40px;text-align:center;color:red;">' +
-                    '<h3>❌ Error</h3>' +
-                    '<p>' + e.message + '</p>' +
-                    '</div>';
-            }
-        }
-        
-        // PERBAIKAN: Fungsi khusus untuk Debt Module dengan reload
-        function goToDebt(element) {
-            console.log('[Debt] goToDebt() called');
-            
-            // Update active tab
-            document.querySelectorAll('.nav-tab').forEach(function(tab) {
-                tab.classList.remove('active');
-            });
-            if (element) {
-                element.classList.add('active');
-            }
-            
-            // Render Debt Module
+            // Cek container
             var container = document.getElementById('mainContent');
             if (!container) {
                 console.error('[Debt] mainContent not found!');
                 return;
             }
             
+            // Cek debtModule
             if (typeof debtModule === 'undefined') {
-                console.error('[Debt] debtModule not loaded');
+                console.error('[Debt] debtModule not loaded!');
                 container.innerHTML = 
                     '<div style="padding:40px;text-align:center;">' +
-                    '<h3>❌ Debt Module Error</h3>' +
-                    '<p>debtModule tidak ditemukan. Refresh halaman.</p>' +
+                    '<h3>❌ Error</h3>' +
+                    '<p>Module Hutang tidak ditemukan.<br>Refresh halaman atau cek console.</p>' +
                     '</div>';
                 return;
             }
             
+            // Render debt module langsung
             try {
-                // PERBAIKAN: Panggil reload() untuk force re-initialize
-                debtModule.reload();
-                console.log('[Debt] Reloaded successfully');
+                console.log('[Debt] Rendering...');
+                debtModule.init();
+                debtModule.render();
+                console.log('[Debt] Rendered successfully');
             } catch (e) {
                 console.error('[Debt] Error:', e);
                 container.innerHTML = 
@@ -473,43 +428,77 @@
             }
         }
         
-        // Override router.navigate untuk intercept Telegram dan Debt
+        // ==========================================
+        // FUNGSI TELEGRAM MODULE
+        // ==========================================
+        function goToTelegram(element) {
+            console.log('[Telegram] goToTelegram() called');
+            
+            document.querySelectorAll('.nav-tab').forEach(function(tab) {
+                tab.classList.remove('active');
+            });
+            if (element) element.classList.add('active');
+            
+            var container = document.getElementById('mainContent');
+            if (!container) {
+                console.error('[Telegram] mainContent not found!');
+                return;
+            }
+            
+            if (typeof TelegramModule === 'undefined') {
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;">' +
+                    '<h3>❌ Telegram Module Error</h3>' +
+                    '<p>TelegramModule tidak ditemukan.</p>' +
+                    '</div>';
+                return;
+            }
+            
+            try {
+                TelegramModule.renderPage();
+                if (TelegramModule.SaldoModule) {
+                    TelegramModule.SaldoModule.checkPending();
+                }
+            } catch (e) {
+                console.error('[Telegram] Error:', e);
+                container.innerHTML = 
+                    '<div style="padding:40px;text-align:center;color:red;">' +
+                    '<h3>❌ Error</h3><p>' + e.message + '</p></div>';
+            }
+        }
+        
+        // ==========================================
+        // OVERRIDE ROUTER untuk intercept debt
+        // ==========================================
         (function() {
             console.log('[Router] Setting up intercepts...');
             
-            // Tunggu sampai router tersedia
             var checkRouter = setInterval(function() {
                 if (window.router && window.router.navigate) {
                     clearInterval(checkRouter);
                     
-                    // Simpan fungsi original
                     var originalNavigate = window.router.navigate;
                     
-                    // Ganti dengan wrapper
                     window.router.navigate = function(page, element) {
                         console.log('[Router] navigate called:', page);
                         
-                        // Kalau Telegram, panggil fungsi khusus
+                        if (page === 'debt') {
+                            openDebtModule(element);
+                            return;
+                        }
+                        
                         if (page === 'telegram') {
                             goToTelegram(element);
                             return;
                         }
                         
-                        // PERBAIKAN: Handler untuk Debt
-                        if (page === 'debt') {
-                            goToDebt(element);
-                            return;
-                        }
-                        
-                        // Selain Telegram dan Debt, panggil original
                         return originalNavigate(page, element);
                     };
                     
-                    console.log('[Router] All intercepts ready (Telegram + Debt)');
+                    console.log('[Router] Intercepts ready');
                 }
             }, 100);
             
-            // Timeout setelah 5 detik
             setTimeout(function() {
                 clearInterval(checkRouter);
             }, 5000);
@@ -525,16 +514,11 @@
     <script src="js/cash.js"></script>
     <script src="js/reports.js"></script>
     <script src="js/transactions.js"></script>
-    
-    <!-- Receipt Module with OCR -->
     <script src="js/receipt.js"></script>
-    
-    <!-- Telegram Module - Standalone dengan Saldo -->
     <script src="telegram.js"></script>
-    
     <script src="js/backup.js"></script>
-    <!-- PERBAIKAN: Path debt.js -->
-    <script src="debt.js"></script>
+    <!-- PERBAIKAN: Path debt.js di folder js/ -->
+    <script src="js/debt.js"></script>
     
     <!-- Verifikasi module -->
     <script>
