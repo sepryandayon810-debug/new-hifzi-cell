@@ -1,6 +1,5 @@
 // ============================================
 // HIFZI CELL - COMPLETE SYSTEM
-// Gabungan: dataManager + backupModule + router + app
 // ============================================
 
 // ============================================
@@ -117,7 +116,7 @@ const dataManager = {
     save() {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
         
-        // Trigger auto-sync jika backupModule aktif
+        // Trigger auto-sync jika backupModule sudah ada dan aktif
         if (typeof backupModule !== 'undefined' && backupModule.isAutoSyncEnabled) {
             if (backupModule.currentProvider === 'firebase' && backupModule.currentUser) {
                 backupModule.uploadDataFirebase(true);
@@ -890,8 +889,6 @@ const backupModule = {
             });
     },
 
-    // ========== VERIFIKASI DATA FIREBASE ==========
-    
     verifyUploadFirebase: function() {
         if (!this.database || !this.currentUser) {
             this.showToast('❌ Belum login ke Firebase');
@@ -1881,7 +1878,7 @@ const backupModule = {
 
     formatRupiah: function(amount) {
         if (!amount && amount !== 0) return 'Rp 0';
-        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     },
 
     showToast: function(msg) {
@@ -1891,7 +1888,12 @@ const backupModule = {
             t.classList.add('show'); 
             setTimeout(() => { t.classList.remove('show'); }, 4000); 
         } else {
-            alert(msg);
+            // Fallback jika toast tidak ada
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;';
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
         }
     }
 };
@@ -1904,6 +1906,12 @@ const router = {
     allowedWhenClosed: ['backup', 'users'],
 
     navigate(page, element) {
+        // PERBAIKAN: Cek apakah app sudah terinisialisasi dan punya data
+        if (typeof app === 'undefined' || !app.data) {
+            console.error('[Router] App not initialized yet');
+            return;
+        }
+
         const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
         const currentUser = dataManager.getCurrentUser();
 
@@ -1915,13 +1923,15 @@ const router = {
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         if (element) element.classList.add('active');
 
-        document.getElementById('cartBar').style.display = 'none';
+        const cartBar = document.getElementById('cartBar');
+        if (cartBar) cartBar.style.display = 'none';
+        
         this.currentPage = page;
 
         switch(page) {
             case 'pos':
                 if (typeof posModule !== 'undefined') posModule.init();
-                document.getElementById('cartBar').style.display = 'flex';
+                if (cartBar) cartBar.style.display = 'flex';
                 break;
             case 'products':
                 if (typeof productsModule !== 'undefined') productsModule.init();
@@ -1939,7 +1949,12 @@ const router = {
                 if (typeof receiptModule !== 'undefined') receiptModule.init();
                 break;
             case 'backup':
-                backupModule.init();
+                // PERBAIKAN: Cek dulu backupModule ada sebelum init
+                if (typeof backupModule !== 'undefined') {
+                    backupModule.init();
+                } else {
+                    console.error('[Router] backupModule not defined');
+                }
                 break;
             case 'debt':
                 if (typeof debtModule !== 'undefined') debtModule.init();
@@ -2001,6 +2016,7 @@ const app = {
             return;
         }
 
+        // PERBAIKAN: Init backupModule di sini setelah dataManager
         if (typeof backupModule !== 'undefined') {
             backupModule.init();
         }
@@ -2024,8 +2040,11 @@ const app = {
     },
 
     showLogin() {
-        document.getElementById('loginContainer').style.display = 'flex';
-        document.getElementById('appContainer').classList.remove('active');
+        const loginContainer = document.getElementById('loginContainer');
+        const appContainer = document.getElementById('appContainer');
+        
+        if (loginContainer) loginContainer.style.display = 'flex';
+        if (appContainer) appContainer.classList.remove('active');
         
         const loginBtn = document.getElementById('loginBtn');
         const usernameInput = document.getElementById('loginUsername');
@@ -2119,8 +2138,11 @@ const app = {
             this.data = dataManager.data;
         }
         
-        document.getElementById('loginContainer').style.display = 'none';
-        document.getElementById('appContainer').classList.add('active');
+        const loginContainer = document.getElementById('loginContainer');
+        const appContainer = document.getElementById('appContainer');
+        
+        if (loginContainer) loginContainer.style.display = 'none';
+        if (appContainer) appContainer.classList.add('active');
         
         this.updateHeader();
         this.updateKasirStatus();
@@ -2134,7 +2156,8 @@ const app = {
             const defaultTab = document.querySelector('.nav-tab');
             if (defaultTab) defaultTab.classList.add('active');
             if (typeof posModule !== 'undefined') posModule.init();
-            document.getElementById('cartBar').style.display = 'flex';
+            const cartBar = document.getElementById('cartBar');
+            if (cartBar) cartBar.style.display = 'flex';
         } else if (kasirStatus.reason === 'new_day_same_user') {
             console.log('[App] New day, showing confirm modal');
             this.showNewDayConfirmModal();
@@ -2209,7 +2232,8 @@ const app = {
             const defaultTab = document.querySelector('.nav-tab');
             if (defaultTab) defaultTab.classList.add('active');
             if (typeof posModule !== 'undefined') posModule.init();
-            document.getElementById('cartBar').style.display = 'flex';
+            const cartBar = document.getElementById('cartBar');
+            if (cartBar) cartBar.style.display = 'flex';
         }
     },
 
