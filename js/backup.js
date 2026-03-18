@@ -1,16 +1,16 @@
-// backup.js - Versi Final dengan Perbaikan Login
+// backup.js - Terintegrasi dengan dataManager
 const backupModule = {
     currentProvider: 'local',
     gasUrl: '',
     
     firebaseConfig: {
-        apiKey: "AIzaSyDekQF6DX_SM1avMegdy5HaXtLyODnIb9o",
-        authDomain: "newhifzicell.firebaseapp.com",
-        databaseURL: "https://newhifzicell-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "newhifzicell",
-        storageBucket: "newhifzicell.firebasestorage.app",
-        messagingSenderId: "324187914263",
-        appId: "1:324187914263:web:04d190bfd901f0a1cf5c52"
+        apiKey: "",
+        authDomain: "",
+        databaseURL: "",
+        projectId: "",
+        storageBucket: "",
+        messagingSenderId: "",
+        appId: ""
     },
     
     firebaseApp: null,
@@ -25,16 +25,8 @@ const backupModule = {
     deviceId: null,
     deviceName: null,
     
-    STORAGE_KEYS: {
-        products: 'hifzi_products',
-        categories: 'hifzi_categories',
-        transactions: 'hifzi_transactions',
-        cashFlow: 'hifzi_cash',
-        debts: 'hifzi_debts',
-        settings: 'hifzi_settings',
-        kasir: 'hifzi_kasir',
-        receipt: 'hifzi_receipt'
-    },
+    // Storage keys - sekarang mengikuti dataManager
+    STORAGE_KEY: 'hifzi_data', // SAMA dengan dataManager
     
     GAS_URL_KEY: 'hifzi_gas_url',
     AUTO_SYNC_KEY: 'hifzi_auto_sync',
@@ -42,7 +34,6 @@ const backupModule = {
     DEVICE_ID_KEY: 'hifzi_device_id',
     DEVICE_NAME_KEY: 'hifzi_device_name',
     USER_KEY: 'hifzi_user',
-    LOGS_KEY: 'hifzi_backup_logs',
     PROVIDER_KEY: 'hifzi_provider',
     FIREBASE_CONFIG_KEY: 'hifzi_firebase_config',
     
@@ -85,8 +76,125 @@ const backupModule = {
         }
         
         this.setupConnectivityListeners();
-        this.render();
+        this.updateSyncStatusUI();
     },
+
+    // ========== DATA ACCESS METHODS - TERINTEGRASI DENGAN DATAMANAGER ==========
+    
+    getAllData: function() {
+        // Gunakan dataManager jika tersedia, jika tidak baca langsung dari localStorage
+        if (typeof dataManager !== 'undefined' && dataManager.getAllData) {
+            return dataManager.getAllData();
+        }
+        
+        // Fallback: baca langsung dari localStorage
+        const saved = localStorage.getItem(this.STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            return {
+                products: parsed.products || [],
+                categories: parsed.categories || [],
+                transactions: parsed.transactions || [],
+                cashFlow: parsed.cashTransactions || [],
+                debts: parsed.debts || [],
+                settings: parsed.settings || {},
+                kasir: parsed.kasir || {},
+                receipt: parsed.settings?.receiptHeader || {
+                    storeName: 'HIFZI CELL',
+                    address: '',
+                    phone: '',
+                    note: 'Terima kasih atas kunjungan Anda'
+                }
+            };
+        }
+        
+        return this.getDefaultData();
+    },
+
+    saveAllData: function(data) {
+        // Gunakan dataManager jika tersedia
+        if (typeof dataManager !== 'undefined' && dataManager.saveAllData) {
+            dataManager.saveAllData(data);
+            return;
+        }
+        
+        // Fallback: simpan langsung ke localStorage
+        const current = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}');
+        
+        if (data.products !== undefined) current.products = data.products;
+        if (data.categories !== undefined) current.categories = data.categories;
+        if (data.transactions !== undefined) current.transactions = data.transactions;
+        if (data.cashFlow !== undefined) current.cashTransactions = data.cashFlow;
+        if (data.debts !== undefined) current.debts = data.debts;
+        if (data.settings !== undefined) current.settings = { ...current.settings, ...data.settings };
+        if (data.kasir !== undefined) current.kasir = { ...current.kasir, ...data.kasir };
+        
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(current));
+        
+        // Update app
+        if (typeof app !== 'undefined' && app.data) {
+            app.data = current;
+            if (app.updateHeader) app.updateHeader();
+        }
+    },
+
+    getDefaultData: function() {
+        return {
+            products: [],
+            categories: [
+                { id: 'all', name: 'Semua', icon: '📦' },
+                { id: 'handphone', name: 'Handphone', icon: '📱' },
+                { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
+                { id: 'pulsa', name: 'Pulsa', icon: '💳' },
+                { id: 'servis', name: 'Servis', icon: '🔧' }
+            ],
+            transactions: [],
+            cashFlow: [],
+            debts: [],
+            settings: {
+                storeName: 'Hifzi Cell',
+                address: '',
+                phone: '',
+                tax: 0,
+                modalAwal: 0,
+                currentCash: 0,
+                receiptHeader: {
+                    storeName: 'HIFZI CELL',
+                    address: 'Alamat Belum Diatur',
+                    phone: '',
+                    note: 'Terima kasih atas kunjungan Anda'
+                }
+            },
+            kasir: {
+                isOpen: false,
+                openTime: null,
+                closeTime: null,
+                date: null,
+                shiftId: null,
+                openingBalance: 0,
+                closingBalance: 0
+            },
+            receipt: {
+                header: { storeName: 'HIFZI CELL', address: '', phone: '', note: 'Terima kasih atas kunjungan Anda' },
+                footer: { message: '', thanks: '' },
+                showLogo: false,
+                logoUrl: ''
+            }
+        };
+    },
+
+    hasAnyData: function(data) {
+        if (!data) data = this.getAllData();
+        return (
+            (data.products && data.products.length > 0) ||
+            (data.transactions && data.transactions.length > 0) ||
+            (data.debts && data.debts.length > 0) ||
+            (data.cashFlow && data.cashFlow.length > 0) ||
+            (data.categories && data.categories.length > 1)
+        );
+    },
+
+    // ========== PROVIDER MANAGEMENT ==========
 
     setProvider: function(provider) {
         this.log('INFO', 'Provider changed to: ' + provider);
@@ -96,10 +204,6 @@ const backupModule = {
         
         if (provider === 'firebase') {
             this.initFirebase();
-        } else if (provider === 'googlesheet') {
-            // GAS tidak perlu init
-        } else {
-            this.currentUser = null;
         }
         
         this.render();
@@ -151,7 +255,6 @@ const backupModule = {
             console.log('[Firebase] Initialized successfully!');
             this.log('INFO', 'Firebase initialized: ' + this.firebaseConfig.projectId);
             
-            // PERBAIKAN: Cek user yang sudah login sebelumnya
             this.auth.onAuthStateChanged((user) => {
                 if (user) {
                     console.log('[Firebase] User already logged in:', user.email);
@@ -195,6 +298,8 @@ const backupModule = {
             }
         });
     },
+
+    // ========== FIREBASE AUTH ==========
 
     firebaseLogin: function(email, password) {
         if (!this.auth && typeof firebase !== 'undefined' && firebase.auth) {
@@ -269,9 +374,9 @@ const backupModule = {
         });
     },
 
-    // PERBAIKAN UTAMA: Upload dengan cek currentUser dari auth
+    // ========== FIREBASE SYNC ==========
+
     uploadDataFirebase: function(silent = false, callback) {
-        // PERBAIKAN: Sync currentUser dari auth jika null
         if (!this.currentUser && this.auth) {
             this.currentUser = this.auth.currentUser;
         }
@@ -306,6 +411,7 @@ const backupModule = {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
                 this.pendingSync = false;
+                this.updateSyncStatusUI();
                 if (!silent) this.showToast('✅ Upload OK!');
                 this.render();
                 if (callback) callback(true);
@@ -316,9 +422,7 @@ const backupModule = {
             });
     },
 
-    // PERBAIKAN UTAMA: Download dengan cek currentUser dari auth
     downloadDataFirebase: function(silent = false) {
-        // PERBAIKAN: Sync currentUser dari auth jika null
         if (!this.currentUser && this.auth) {
             this.currentUser = this.auth.currentUser;
         }
@@ -348,9 +452,7 @@ const backupModule = {
             });
     },
 
-    syncFromCloud: function(silent = false) {
-        this.downloadDataFirebase(silent);
-    },
+    // ========== GOOGLE APPS SCRIPT ==========
 
     checkNewDeviceGAS: function() {
         const localData = this.getAllData();
@@ -395,6 +497,7 @@ const backupModule = {
             if (result && result.success) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+                this.updateSyncStatusUI();
                 if (!silent) this.showToast('✅ Upload berhasil!');
                 this.render();
                 if (callback) callback(true);
@@ -422,6 +525,7 @@ const backupModule = {
             if (result && result.success) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+                this.updateSyncStatusUI();
                 if (!silent) this.showToast('✅ Upload berhasil!');
                 this.render();
                 if (callback) callback(true);
@@ -481,6 +585,7 @@ const backupModule = {
                 if (result && result.success) {
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+                    this.updateSyncStatusUI();
                     if (!silent) this.showToast('✅ Upload selesai');
                     this.render();
                     if (callback) callback(true);
@@ -488,6 +593,7 @@ const backupModule = {
             } catch(e) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+                this.updateSyncStatusUI();
                 if (!silent) this.showToast('✅ Upload selesai');
                 this.render();
                 if (callback) callback(true);
@@ -545,6 +651,7 @@ const backupModule = {
             this.saveAllData(result.data);
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+            this.updateSyncStatusUI();
             
             if (!silent) {
                 this.showToast(`✅ Download berhasil!`);
@@ -555,12 +662,14 @@ const backupModule = {
         }
     },
 
+    // ========== AUTO SYNC ==========
+
     startAutoSyncGAS: function() {
         this.stopAutoSync();
         this.performTwoWaySyncGAS();
         this.autoSyncInterval = setInterval(() => {
             this.performTwoWaySyncGAS();
-        }, 180000);
+        }, 180000); // 3 menit
         this.log('INFO', 'Auto Sync GAS started');
     },
 
@@ -628,9 +737,30 @@ const backupModule = {
         }, 10000);
     },
 
+    toggleAutoSync: function() {
+        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
+        localStorage.setItem(this.AUTO_SYNC_KEY, this.isAutoSyncEnabled);
+        
+        if (this.isAutoSyncEnabled) {
+            if (this.currentProvider === 'firebase' && this.currentUser) {
+                this.startAutoSyncFirebase();
+            } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
+                this.startAutoSyncGAS();
+            }
+            this.showToast('🟢 Auto sync aktif');
+        } else {
+            this.stopAutoSync();
+            this.showToast('⚪ Auto sync mati');
+        }
+        this.render();
+    },
+
+    // ========== UTILITY METHODS ==========
+
     setupConnectivityListeners: function() {
         window.addEventListener('online', () => {
             this.isOnline = true;
+            this.updateSyncStatusUI();
             this.showToast('🌐 Online');
             if (this.pendingSync) {
                 if (this.currentProvider === 'firebase' && this.currentUser) {
@@ -643,6 +773,7 @@ const backupModule = {
         
         window.addEventListener('offline', () => {
             this.isOnline = false;
+            this.updateSyncStatusUI();
             this.showToast('📴 Offline');
         });
     },
@@ -677,17 +808,11 @@ const backupModule = {
         this.saveAllData(cleanData);
         this.lastSyncTime = new Date().toISOString();
         localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+        this.updateSyncStatusUI();
         
         if (!silent) {
             const deviceInfo = lastModifiedByName ? ' (dari ' + lastModifiedByName + ')' : '';
             this.showToast('✅ Data diperbarui' + deviceInfo);
-            if (typeof dataManager !== 'undefined' && dataManager) {
-                dataManager.data = this.getAllData();
-                if (dataManager.save) dataManager.save();
-            }
-            if (typeof app !== 'undefined' && app.updateHeader) {
-                app.updateHeader();
-            }
         }
         this.render();
     },
@@ -699,109 +824,24 @@ const backupModule = {
         }));
     },
 
-    toggleAutoSync: function() {
-        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
-        localStorage.setItem(this.AUTO_SYNC_KEY, this.isAutoSyncEnabled);
+    updateSyncStatusUI: function() {
+        const syncStatus = document.getElementById('syncStatus');
+        const syncText = document.getElementById('syncText');
         
-        if (this.isAutoSyncEnabled) {
-            if (this.currentProvider === 'firebase' && this.currentUser) {
-                this.startAutoSyncFirebase();
-            } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-                this.startAutoSyncGAS();
-            }
-            this.showToast('🟢 Auto sync aktif');
+        if (!syncStatus || !syncText) return;
+        
+        if (!this.isOnline) {
+            syncText.textContent = 'Offline';
+            syncStatus.style.opacity = '0.5';
+        } else if (this.isAutoSyncEnabled) {
+            syncText.textContent = 'Auto Sync';
+            syncStatus.style.color = '#48bb78';
+        } else if (this.lastSyncTime) {
+            const time = new Date(this.lastSyncTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+            syncText.textContent = 'Sync ' + time;
         } else {
-            this.stopAutoSync();
-            this.showToast('⚪ Auto sync mati');
+            syncText.textContent = 'Ready';
         }
-        this.render();
-    },
-
-    getAllData: function() {
-        const data = {};
-        for (let key in this.STORAGE_KEYS) {
-            try {
-                const stored = localStorage.getItem(this.STORAGE_KEYS[key]);
-                data[key] = stored ? JSON.parse(stored) : this.getDefaultData(key);
-            } catch(e) {
-                data[key] = this.getDefaultData(key);
-            }
-        }
-        return data;
-    },
-
-    getDefaultData: function(type) {
-        switch(type) {
-            case 'products': return [];
-            case 'categories': return [
-                { id: 'all', name: 'Semua', icon: '📦' },
-                { id: 'handphone', name: 'Handphone', icon: '📱' },
-                { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
-                { id: 'pulsa', name: 'Pulsa', icon: '💳' },
-                { id: 'servis', name: 'Servis', icon: '🔧' }
-            ];
-            case 'transactions': return [];
-            case 'cashFlow': return [];
-            case 'debts': return [];
-            case 'settings': return {
-                storeName: 'Hifzi Cell',
-                address: '',
-                phone: '',
-                taxRate: 0,
-                modalAwal: 0,
-                currentCash: 0,
-                receiptHeader: {
-                    storeName: 'HIFZI CELL',
-                    address: 'Alamat Belum Diatur',
-                    phone: '',
-                    note: 'Terima kasih atas kunjungan Anda'
-                }
-            };
-            case 'kasir': return {
-                isOpen: false,
-                openTime: null,
-                closeTime: null,
-                date: null,
-                shiftId: null,
-                openingBalance: 0,
-                closingBalance: 0
-            };
-            case 'receipt': return {
-                header: { storeName: 'HIFZI CELL', address: '', phone: '', note: 'Terima kasih atas kunjungan Anda' },
-                footer: { message: '', thanks: '' },
-                showLogo: false,
-                logoUrl: ''
-            };
-            default: return null;
-        }
-    },
-
-    hasAnyData: function(data) {
-        if (!data) data = this.getAllData();
-        return (
-            (data.products && data.products.length > 0) ||
-            (data.transactions && data.transactions.length > 0) ||
-            (data.debts && data.debts.length > 0) ||
-            (data.cashFlow && data.cashFlow.length > 0) ||
-            (data.categories && data.categories.length > 1)
-        );
-    },
-
-    saveAllData: function(data) {
-        for (let key in this.STORAGE_KEYS) {
-            if (data[key] !== undefined) {
-                localStorage.setItem(this.STORAGE_KEYS[key], JSON.stringify(data[key]));
-            }
-        }
-        if (typeof dataManager !== 'undefined' && dataManager) {
-            dataManager.data = this.getAllData();
-            if (dataManager.save) dataManager.save();
-        }
-    },
-
-    formatRupiah: function(amount) {
-        if (!amount && amount !== 0) return 'Rp 0';
-        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     },
 
     manualSync: function() {
@@ -813,6 +853,105 @@ const backupModule = {
             this.showToast('⚠️ Pilih provider dan pastikan sudah login');
         }
     },
+
+    // ========== LOCAL BACKUP ==========
+
+    downloadJSON: function() {
+        const data = this.getAllData();
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'hifzi_backup_' + new Date().toISOString().split('T')[0] + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showToast('✅ File JSON didownload!');
+    },
+
+    importJSON: function(input) {
+        const file = input.files[0];
+        if (!file) return;
+        if (!confirm('⚠️ Import akan menimpa data lokal?')) { 
+            input.value = ''; 
+            return; 
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const d = JSON.parse(e.target.result);
+                this.saveAllData(d);
+                this.showToast('✅ Import berhasil!');
+                
+                if (this.currentProvider === 'firebase' && (this.currentUser || (this.auth && this.auth.currentUser))) {
+                    this.uploadDataFirebase(true);
+                } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
+                    this.uploadDataGAS(true);
+                }
+                
+                this.render();
+            } catch(err) {
+                this.showToast('❌ Error: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        input.value = '';
+    },
+
+    resetLocal: function() {
+        if (!confirm('⚠️ HAPUS SEMUA DATA LOKAL?\n\nLanjutkan?')) return;
+        if (prompt('Ketik HAPUS:') !== 'HAPUS') {
+            this.showToast('Dibatalkan');
+            return;
+        }
+        
+        localStorage.removeItem(this.STORAGE_KEY);
+        
+        const defaults = this.getDefaultData();
+        this.saveAllData(defaults);
+        this.showToast('✅ Data lokal dihapus!');
+        setTimeout(() => location.reload(), 1500);
+    },
+
+    resetCloud: function() {
+        if (this.currentProvider === 'firebase') {
+            if (!this.currentUser && !(this.auth && this.auth.currentUser)) {
+                this.showToast('❌ Belum login');
+                return;
+            }
+            if (!confirm('⚠️ Reset Firebase?')) return;
+            if (prompt('Ketik RESET:') !== 'RESET') return;
+            
+            const userId = (this.currentUser || this.auth.currentUser).uid;
+            this.database.ref('users/' + userId + '/data').remove()
+                .then(() => {
+                    this.showToast('✅ Firebase direset!');
+                    this.render();
+                });
+                
+        } else if (this.currentProvider === 'googlesheet') {
+            if (!this.gasUrl) {
+                this.showToast('❌ URL GAS belum diisi');
+                return;
+            }
+            if (!confirm('⚠️ Reset Google Sheets?')) return;
+            if (prompt('Ketik RESET:') !== 'RESET') return;
+            
+            this.showToast('🗑️ Mereset GAS...');
+        }
+    },
+
+    resetBoth: function() {
+        if (!confirm('💀 HAPUS SEMUA DATA?\n\nLokal + Cloud\n\nTIDAK BISA DIBATALKAN!')) return;
+        if (prompt('Ketik HAPUS SEMUA:') !== 'HAPUS SEMUA') return;
+        
+        this.resetCloud();
+        setTimeout(() => this.resetLocal(), 2000);
+    },
+
+    // ========== RENDER UI ==========
 
     render: function() {
         const container = document.getElementById('mainContent');
@@ -829,7 +968,6 @@ const backupModule = {
             storeName: data.settings?.storeName || 'HIFZI CELL'
         };
 
-        // PERBAIKAN: Cek currentUser dari auth juga
         let isLoggedIn = !!this.currentUser;
         if (!isLoggedIn && this.auth) {
             isLoggedIn = !!this.auth.currentUser;
@@ -1196,101 +1334,9 @@ const backupModule = {
         this.render();
     },
 
-    resetLocal: function() {
-        if (!confirm('⚠️ HAPUS SEMUA DATA LOKAL?\n\nLanjutkan?')) return;
-        if (prompt('Ketik HAPUS:') !== 'HAPUS') {
-            this.showToast('Dibatalkan');
-            return;
-        }
-        
-        for (let key in this.STORAGE_KEYS) {
-            localStorage.removeItem(this.STORAGE_KEYS[key]);
-        }
-        
-        const defaults = this.getAllData();
-        this.saveAllData(defaults);
-        this.showToast('✅ Data lokal dihapus!');
-        setTimeout(() => location.reload(), 1500);
-    },
-
-    resetCloud: function() {
-        if (this.currentProvider === 'firebase') {
-            if (!this.currentUser && !(this.auth && this.auth.currentUser)) {
-                this.showToast('❌ Belum login');
-                return;
-            }
-            if (!confirm('⚠️ Reset Firebase?')) return;
-            if (prompt('Ketik RESET:') !== 'RESET') return;
-            
-            const userId = (this.currentUser || this.auth.currentUser).uid;
-            this.database.ref('users/' + userId + '/data').remove()
-                .then(() => {
-                    this.showToast('✅ Firebase direset!');
-                    this.render();
-                });
-                
-        } else if (this.currentProvider === 'googlesheet') {
-            if (!this.gasUrl) {
-                this.showToast('❌ URL GAS belum diisi');
-                return;
-            }
-            if (!confirm('⚠️ Reset Google Sheets?')) return;
-            if (prompt('Ketik RESET:') !== 'RESET') return;
-            
-            this.showToast('🗑️ Mereset GAS...');
-        }
-    },
-
-    resetBoth: function() {
-        if (!confirm('💀 HAPUS SEMUA DATA?\n\nLokal + Cloud\n\nTIDAK BISA DIBATALKAN!')) return;
-        if (prompt('Ketik HAPUS SEMUA:') !== 'HAPUS SEMUA') return;
-        
-        this.resetCloud();
-        setTimeout(() => this.resetLocal(), 2000);
-    },
-
-    downloadJSON: function() {
-        const data = this.getAllData();
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'hifzi_backup_' + new Date().toISOString().split('T')[0] + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.showToast('✅ File JSON didownload!');
-    },
-
-    importJSON: function(input) {
-        const file = input.files[0];
-        if (!file) return;
-        if (!confirm('⚠️ Import akan menimpa data lokal?')) { 
-            input.value = ''; 
-            return; 
-        }
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const d = JSON.parse(e.target.result);
-                this.saveAllData(d);
-                this.showToast('✅ Import berhasil!');
-                
-                if (this.currentProvider === 'firebase' && (this.currentUser || (this.auth && this.auth.currentUser))) {
-                    this.uploadDataFirebase(true);
-                } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-                    this.uploadDataGAS(true);
-                }
-                
-                this.render();
-            } catch(err) {
-                this.showToast('❌ Error: ' + err.message);
-            }
-        };
-        reader.readAsText(file);
-        input.value = '';
+    formatRupiah: function(amount) {
+        if (!amount && amount !== 0) return 'Rp 0';
+        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     },
 
     showToast: function(msg) {
