@@ -1,7 +1,7 @@
 /**
  * HIFZI CELL - Debt Module (Hutang/Piutang)
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
- * + Sidebar Autocomplete Nama Pelanggan (Kanan)
+ * + Sidebar Autocomplete Nama Pelanggan (Muncul saat focus field nama)
  * + Tambah Nama Manual ke List
  */
 
@@ -13,14 +13,15 @@ const debtModule = {
     showPaidDebts: false,
     itemCount: 1,
     isInitialized: false,
-    customCustomerNames: [], // Nama manual yang ditambahkan user
+    customCustomerNames: [],
+    sidebarVisible: false,
 
     init() {
         console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
         this.loadDebts();
-        this.loadCustomNames(); // Load nama custom
+        this.loadCustomNames();
         this.isInitialized = true;
-        this.render(); // ✅ TAMBAHAN: render setelah init
+        this.render();
     },
 
     loadDebts() {
@@ -51,7 +52,6 @@ const debtModule = {
         }
     },
 
-    // Load nama custom dari localStorage
     loadCustomNames() {
         const saved = localStorage.getItem('hifzi_custom_customers');
         if (saved) {
@@ -63,16 +63,13 @@ const debtModule = {
         }
     },
 
-    // Simpan nama custom ke localStorage
     saveCustomNames() {
         localStorage.setItem('hifzi_custom_customers', JSON.stringify(this.customCustomerNames));
     },
 
-    // Tambah nama custom baru
     addCustomCustomerName(name, phone = '') {
         if (!name.trim()) return;
         
-        // Cek apakah sudah ada
         const exists = this.customCustomerNames.find(c => 
             c.name.toLowerCase() === name.trim().toLowerCase()
         );
@@ -87,13 +84,12 @@ const debtModule = {
         }
     },
 
-    // Hapus nama custom
     removeCustomCustomerName(name) {
         this.customCustomerNames = this.customCustomerNames.filter(c => 
             c.name !== name
         );
         this.saveCustomNames();
-        this.renderCustomerSidebar(); // Refresh sidebar
+        this.renderCustomerSidebar();
     },
 
     saveDebts() {
@@ -111,14 +107,10 @@ const debtModule = {
         this.isInitialized = false;
         this.expandedGroups.clear();
         this.init();
-        this.render(); // ✅ TAMBAHAN: render setelah reload
+        this.render();
     },
 
-    // ==========================================
-    // AMBIL SEMUA NAMA PELANGGAN (DEBT + CUSTOM)
-    // ==========================================
     getAllCustomerNames() {
-        // Ambil dari data hutang yang sudah ada
         const debtCustomers = {};
         this.debts.forEach(debt => {
             if (!debtCustomers[debt.customerName]) {
@@ -131,7 +123,6 @@ const debtModule = {
             }
         });
 
-        // Ambil dari nama custom
         this.customCustomerNames.forEach(cust => {
             if (!debtCustomers[cust.name]) {
                 debtCustomers[cust.name] = {
@@ -146,7 +137,6 @@ const debtModule = {
         return Object.values(debtCustomers).sort((a, b) => a.name.localeCompare(b.name));
     },
 
-    // Filter untuk search di sidebar
     filterCustomers(query) {
         const all = this.getAllCustomerNames();
         if (!query) return all;
@@ -155,7 +145,6 @@ const debtModule = {
         return all.filter(c => c.name.toLowerCase().includes(lowerQuery));
     },
 
-    // Pilih customer dari sidebar
     selectCustomerFromSidebar(name, phone) {
         const nameInput = document.getElementById('addCustomerName');
         const phoneInput = document.getElementById('addCustomerPhone');
@@ -163,13 +152,32 @@ const debtModule = {
         if (nameInput) nameInput.value = name;
         if (phoneInput && phone) phoneInput.value = phone;
         
-        // Highlight yang dipilih
         document.querySelectorAll('.hifzi-debt-sidebar-item').forEach(item => {
             item.classList.remove('hifzi-selected');
         });
         
         const selectedItem = document.querySelector(`[data-customer-name="${name.replace(/"/g, '&quot;')}"]`);
         if (selectedItem) selectedItem.classList.add('hifzi-selected');
+        
+        // Sembunyikan sidebar setelah memilih
+        this.hideSidebar();
+    },
+
+    showSidebar() {
+        this.sidebarVisible = true;
+        const sidebar = document.getElementById('customerSidebar');
+        if (sidebar) {
+            sidebar.style.display = 'flex';
+            this.renderCustomerSidebar();
+        }
+    },
+
+    hideSidebar() {
+        this.sidebarVisible = false;
+        const sidebar = document.getElementById('customerSidebar');
+        if (sidebar) {
+            sidebar.style.display = 'none';
+        }
     },
 
     toggleShowPaid() {
@@ -589,7 +597,7 @@ const debtModule = {
     },
 
     // ==========================================
-    // MODAL TAMBAH HUTANG + SIDEBAR CUSTOMER
+    // MODAL TAMBAH HUTANG - SIDEBAR MUNCUL SAAT FOCUS
     // ==========================================
     openAddDebtModal() {
         this.itemCount = 1;
@@ -606,8 +614,8 @@ const debtModule = {
                 </div>
                 
                 <div class="hifzi-debt-modal-content">
-                    <!-- SIDEBAR KANAN: DAFTAR PELANGGAN -->
-                    <div class="hifzi-debt-customer-sidebar">
+                    <!-- SIDEBAR KANAN: DAFTAR PELANGGAN (SEMBUNYI DEFAULT) -->
+                    <div class="hifzi-debt-customer-sidebar" id="customerSidebar" style="display: none;">
                         <div class="hifzi-debt-sidebar-header">
                             <span class="hifzi-debt-sidebar-title">👥 Daftar Pelanggan</span>
                             <button class="hifzi-debt-sidebar-add-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
@@ -632,7 +640,7 @@ const debtModule = {
                     </div>
 
                     <!-- FORM UTAMA -->
-                    <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-modal-body" id="modalBody">
                         <div class="hifzi-debt-section-title">👤 Informasi Pelanggan</div>
                         
                         <div class="hifzi-debt-form-group">
@@ -640,8 +648,9 @@ const debtModule = {
                             <input type="text" 
                                    class="hifzi-debt-form-input" 
                                    id="addCustomerName" 
-                                   placeholder="Ketik nama pelanggan atau pilih dari daftar kanan..."
+                                   placeholder="Ketik nama pelanggan atau klik untuk melihat daftar..."
                                    autocomplete="off"
+                                   onfocus="debtModule.showSidebar()"
                                    oninput="debtModule.syncSidebarSearch(this.value)">
                         </div>
 
@@ -721,20 +730,34 @@ const debtModule = {
 
         document.body.appendChild(modal);
         
-        // Render sidebar setelah modal muncul
+        // Close sidebar when clicking outside
         setTimeout(() => {
             modal.classList.add('hifzi-active');
-            this.renderCustomerSidebar();
             
             // Set default due date
             const today = new Date();
             today.setDate(today.getDate() + 30);
             const dueDateInput = document.getElementById('addDueDate');
             if (dueDateInput) dueDateInput.value = today.toISOString().split('T')[0];
+            
+            // Add click outside listener
+            document.addEventListener('click', this.handleClickOutside);
         }, 10);
     },
 
-    // Render sidebar daftar pelanggan
+    handleClickOutside(e) {
+        const sidebar = document.getElementById('customerSidebar');
+        const nameInput = document.getElementById('addCustomerName');
+        const modal = document.getElementById('addDebtModal');
+        
+        if (!sidebar || !nameInput || !modal) return;
+        
+        // If click is outside sidebar and outside name input, hide sidebar
+        if (!sidebar.contains(e.target) && e.target !== nameInput && !nameInput.contains(e.target)) {
+            debtModule.hideSidebar();
+        }
+    },
+
     renderCustomerSidebar() {
         const sidebarList = document.getElementById('customerSidebarList');
         const searchInput = document.getElementById('sidebarCustomerSearch');
@@ -782,7 +805,6 @@ const debtModule = {
         }).join('');
     },
 
-    // Sinkronkan search sidebar dengan input nama
     syncSidebarSearch(value) {
         const sidebarSearch = document.getElementById('sidebarCustomerSearch');
         if (sidebarSearch) {
@@ -791,12 +813,11 @@ const debtModule = {
         }
     },
 
-    // Buka modal tambah nama pelanggan manual
     openAddCustomerNameModal() {
         const modal = document.createElement('div');
         modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'addCustomerNameModal';
-        modal.style.zIndex = '2000'; // Lebih tinggi dari modal utama
+        modal.style.zIndex = '2000';
         modal.innerHTML = `
             <div class="hifzi-debt-modal" style="max-width: 400px;">
                 <div class="hifzi-debt-modal-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
@@ -855,7 +876,6 @@ const debtModule = {
             return;
         }
 
-        // Cek apakah sudah ada
         const allCustomers = this.getAllCustomerNames();
         const exists = allCustomers.find(c => c.name.toLowerCase() === name.toLowerCase());
         
@@ -867,10 +887,8 @@ const debtModule = {
         this.addCustomCustomerName(name, phone);
         this.closeAddCustomerNameModal();
         
-        // Refresh sidebar
         this.renderCustomerSidebar();
         
-        // Auto select nama yang baru ditambahkan
         this.selectCustomerFromSidebar(name, phone);
         
         this.showToast(`Nama "${name}" ditambahkan ke daftar`, 'success');
@@ -918,7 +936,6 @@ const debtModule = {
             return;
         }
 
-        // Tambahkan ke custom names jika belum ada
         const allCustomers = this.getAllCustomerNames();
         const exists = allCustomers.find(c => c.name.toLowerCase() === customerName.toLowerCase());
         if (!exists) {
@@ -948,7 +965,6 @@ const debtModule = {
             return;
         }
 
-        // Cek kas jika mau mengurangi
         if (reduceCash) {
             const currentCash = this.getCurrentCash();
             const cashNeeded = total - dp;
@@ -981,7 +997,6 @@ const debtModule = {
             }] : []
         };
 
-        // Proses pengurangan kas
         if (reduceCash && typeof dataManager !== 'undefined') {
             if (!dataManager.data.settings) dataManager.data.settings = {};
             
@@ -990,7 +1005,6 @@ const debtModule = {
             dataManager.save();
             this.updateCashDisplay();
 
-            // Simpan transaksi kas
             if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
             dataManager.data.cashTransactions.push({
                 id: Date.now(),
@@ -1014,9 +1028,6 @@ const debtModule = {
         this.itemCount = 1;
     },
 
-    // ==========================================
-    // HAPUS HUTANG + PILIHAN KEMBALIKAN KE KAS
-    // ==========================================
     confirmDelete(debtId) {
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) return;
@@ -1128,9 +1139,6 @@ const debtModule = {
         this.showToast(msg, 'success');
     },
 
-    // ==========================================
-    // PEMBAYARAN + PILIHAN TAMBAH KE KAS
-    // ==========================================
     openPaymentModal(debtId) {
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) return;
@@ -1478,6 +1486,9 @@ const debtModule = {
     },
 
     closeModal() {
+        // Remove click outside listener
+        document.removeEventListener('click', this.handleClickOutside);
+        
         const modal = document.querySelector('.hifzi-debt-modal-overlay.hifzi-active');
         if (modal) {
             modal.classList.remove('hifzi-active');
