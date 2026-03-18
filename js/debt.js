@@ -1,6 +1,8 @@
 /**
  * HIFZI CELL - Debt Module (Hutang/Piutang)
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
+ * + Autocomplete Nama Pelanggan
+ * + Pilihan Kas Masuk/Keluar
  */
 
 const debtModule = {
@@ -12,14 +14,12 @@ const debtModule = {
     itemCount: 1,
     isInitialized: false,
 
-    // Inisialisasi modul - terhubung ke dataManager
     init() {
         console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
         this.loadDebts();
         this.isInitialized = true;
     },
 
-    // Load data hutang dari DATABASE HIFZI APPS
     loadDebts() {
         if (typeof dataManager !== 'undefined' && dataManager.data) {
             if (!dataManager.data.debts) {
@@ -27,7 +27,6 @@ const debtModule = {
             }
             this.debts = dataManager.data.debts;
 
-            // Migrasi data lama
             const oldData = localStorage.getItem('hifzi_debts');
             if (oldData) {
                 try {
@@ -49,7 +48,6 @@ const debtModule = {
         }
     },
 
-    // Simpan data hutang ke DATABASE HIFZI APPS
     saveDebts() {
         if (typeof dataManager !== 'undefined' && dataManager.data) {
             dataManager.data.debts = this.debts;
@@ -60,7 +58,6 @@ const debtModule = {
         }
     },
 
-    // ✅ FUNGSI BARU: Force re-initialize dan render
     reload() {
         console.log('[Debt] Reloading module...');
         this.isInitialized = false;
@@ -69,7 +66,42 @@ const debtModule = {
         this.render();
     },
 
-    // Toggle tampilkan hutang lunas
+    // ==========================================
+    // AUTOCOMPLETE - AMBIL NAMA YANG SUDAH ADA
+    // ==========================================
+    getUniqueCustomers() {
+        const customers = {};
+        this.debts.forEach(debt => {
+            if (!customers[debt.customerName]) {
+                customers[debt.customerName] = {
+                    name: debt.customerName,
+                    phone: debt.customerPhone || ''
+                };
+            }
+        });
+        return Object.values(customers);
+    },
+
+    // Filter customer berdasarkan input
+    filterCustomers(query) {
+        if (!query || query.length < 1) return [];
+        const allCustomers = this.getUniqueCustomers();
+        return allCustomers.filter(c => 
+            c.name.toLowerCase().includes(query.toLowerCase())
+        );
+    },
+
+    // Pilih customer dari autocomplete
+    selectCustomer(name, phone) {
+        const nameInput = document.getElementById('addCustomerName');
+        const phoneInput = document.getElementById('addCustomerPhone');
+        const list = document.getElementById('customerAutocompleteList');
+        
+        if (nameInput) nameInput.value = name;
+        if (phoneInput && phone) phoneInput.value = phone;
+        if (list) list.style.display = 'none';
+    },
+
     toggleShowPaid() {
         this.showPaidDebts = !this.showPaidDebts;
         this.render();
@@ -93,13 +125,26 @@ const debtModule = {
         return `H${String(maxId + 1).padStart(3, '0')}`;
     },
 
+    getCurrentCash() {
+        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
+            return dataManager.data.settings.currentCash || 0;
+        }
+        return 0;
+    },
+
+    updateCashDisplay() {
+        if (typeof app !== 'undefined' && app.updateHeader) {
+            app.updateHeader();
+        }
+    },
+
     getGroupedDebts() {
         let filtered = this.debts.filter(debt => {
             if (this.searchQuery) {
                 const searchLower = this.searchQuery.toLowerCase();
                 const matchSearch = (
                     debt.customerName.toLowerCase().includes(searchLower) ||
-                    debt.customerPhone.includes(searchLower) ||
+                    (debt.customerPhone && debt.customerPhone.includes(this.searchQuery)) ||
                     debt.id.toLowerCase().includes(searchLower)
                 );
                 if (!matchSearch) return false;
@@ -160,7 +205,6 @@ const debtModule = {
         });
     },
 
-    // ✅ PERBAIKAN: Get summary dengan total transaksi
     getSummary() {
         const allDebts = this.debts;
         const totalDebt = allDebts.reduce((sum, d) => sum + d.total, 0);
@@ -176,16 +220,12 @@ const debtModule = {
         const paidCount = allDebts.filter(d => d.status === 'paid').length;
         const customerCount = new Set(activeDebts.map(d => d.customerName)).size;
         
-        // ✅ TAMBAHAN: Hitung total transaksi dan laba dari dataManager
         let totalTransactions = 0;
         let totalProfit = 0;
         
         if (typeof dataManager !== 'undefined' && dataManager.data) {
-            // Hitung dari transactions
             if (dataManager.data.transactions) {
                 totalTransactions = dataManager.data.transactions.length;
-                
-                // Hitung laba dari transaksi
                 totalProfit = dataManager.data.transactions.reduce((sum, t) => {
                     if (t.items && Array.isArray(t.items)) {
                         const transactionProfit = t.items.reduce((itemSum, item) => {
@@ -207,8 +247,8 @@ const debtModule = {
             overdueCount, 
             paidCount,
             customerCount,
-            totalTransactions,  // ✅ BARU
-            totalProfit         // ✅ BARU
+            totalTransactions,
+            totalProfit
         };
     },
 
@@ -221,7 +261,6 @@ const debtModule = {
         this.renderGroups();
     },
 
-    // ✅ PERBAIKAN: Render dengan summary card yang lebih besar
     render() {
         if (!this.isInitialized) {
             this.init();
@@ -238,7 +277,6 @@ const debtModule = {
 
         container.innerHTML = `
             <div class="debt-container">
-                <!-- ✅ SUMMARY CARDS BARU - Seperti di gambar -->
                 <div class="debt-summary-header">
                     <div class="debt-summary-main-card">
                         <div class="debt-summary-label">Total Piutang Aktif</div>
@@ -263,7 +301,6 @@ const debtModule = {
                     </div>
                 </div>
 
-                <!-- ✅ TAMBAHAN: Statistik Transaksi & Laba -->
                 <div class="debt-stats-bar">
                     <div class="debt-stat-item">
                         <span class="debt-stat-icon">📝</span>
@@ -282,7 +319,6 @@ const debtModule = {
                     </div>
                 </div>
 
-                <!-- Controls & Add Button -->
                 <div class="debt-controls-header">
                     <div class="debt-controls">
                         <div class="debt-search">
@@ -308,7 +344,6 @@ const debtModule = {
                     </button>
                 </div>
 
-                <!-- Toggle Show Paid -->
                 <div class="debt-toggle-paid">
                     <label class="debt-toggle-switch">
                         <input type="checkbox" ${this.showPaidDebts ? 'checked' : ''} 
@@ -323,7 +358,6 @@ const debtModule = {
                     </span>
                 </div>
 
-                <!-- Grouped Debt List -->
                 <div class="debt-groups" id="debtGroups">
                     ${this.renderGroupsHTML(groupedDebts)}
                 </div>
@@ -484,11 +518,13 @@ const debtModule = {
         `;
     },
 
-    // ... (sisa fungsi modal dan lainnya tetap sama seperti sebelumnya)
-    
+    // ==========================================
+    // MODAL TAMBAH HUTANG + AUTOCOMPLETE + KAS
+    // ==========================================
     openAddDebtModal() {
         this.itemCount = 1;
-        
+        const currentCash = this.getCurrentCash();
+
         const modal = document.createElement('div');
         modal.className = 'debt-modal-overlay';
         modal.id = 'addDebtModal';
@@ -500,10 +536,21 @@ const debtModule = {
                 </div>
                 <div class="debt-modal-body" style="max-height: 75vh;">
                     <div class="debt-section-title">👤 Informasi Pelanggan</div>
-                    <div class="debt-form-group">
+                    
+                    <!-- AUTOCOMPLETE NAMA -->
+                    <div class="debt-form-group" style="position: relative;">
                         <label class="debt-form-label">Nama Pelanggan *</label>
-                        <input type="text" class="debt-form-input" id="addCustomerName" placeholder="Nama pelanggan">
+                        <input type="text" 
+                               class="debt-form-input" 
+                               id="addCustomerName" 
+                               placeholder="Ketik nama pelanggan..."
+                               autocomplete="off"
+                               oninput="debtModule.handleNameInput(this.value)"
+                               onfocus="debtModule.handleNameInput(this.value)"
+                               onblur="setTimeout(() => debtModule.hideAutocomplete(), 200)">
+                        <div id="customerAutocompleteList" class="debt-autocomplete-list" style="display: none;"></div>
                     </div>
+
                     <div class="debt-form-group">
                         <label class="debt-form-label">No. Telepon</label>
                         <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional">
@@ -535,6 +582,30 @@ const debtModule = {
                         <input type="number" class="debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
                     </div>
 
+                    <!-- PILIHAN KAS -->
+                    <div class="debt-cash-option">
+                        <div class="debt-cash-option-title">💰 Pengaruh ke Kas?</div>
+                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="debt-cash-toggle">
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="reduceCash" value="yes" checked>
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Ya, Kurangi Kas</strong>
+                                    <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
+                                </span>
+                            </label>
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="reduceCash" value="no">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Tidak, Jangan Kurangi Kas</strong>
+                                    <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="debt-form-group">
                         <label class="debt-form-label">Tanggal Jatuh Tempo *</label>
                         <input type="date" class="debt-form-input" id="addDueDate">
@@ -559,6 +630,33 @@ const debtModule = {
             modal.classList.add('active');
             document.getElementById('addDueDate').value = today.toISOString().split('T')[0];
         }, 10);
+    },
+
+    // Handler autocomplete
+    handleNameInput(value) {
+        const list = document.getElementById('customerAutocompleteList');
+        if (!list) return;
+
+        const filtered = this.filterCustomers(value);
+        
+        if (filtered.length === 0 || value.length < 1) {
+            list.style.display = 'none';
+            return;
+        }
+
+        list.innerHTML = filtered.map(c => `
+            <div class="debt-autocomplete-item" onclick="debtModule.selectCustomer('${c.name.replace(/'/g, "\\'")}', '${c.phone}')">
+                <div class="debt-autocomplete-name">${c.name}</div>
+                ${c.phone ? `<div class="debt-autocomplete-phone">📱 ${c.phone}</div>` : ''}
+            </div>
+        `).join('');
+        
+        list.style.display = 'block';
+    },
+
+    hideAutocomplete() {
+        const list = document.getElementById('customerAutocompleteList');
+        if (list) list.style.display = 'none';
     },
 
     addItemField() {
@@ -596,6 +694,7 @@ const debtModule = {
         const dueDate = document.getElementById('addDueDate').value;
         const dp = parseInt(document.getElementById('addDP').value) || 0;
         const notes = document.getElementById('addNotes').value.trim();
+        const reduceCash = document.querySelector('input[name="reduceCash"]:checked')?.value === 'yes';
 
         if (!customerName || !dueDate) {
             this.showToast('Nama pelanggan dan tanggal jatuh tempo wajib diisi!', 'error');
@@ -625,6 +724,17 @@ const debtModule = {
             return;
         }
 
+        // Cek kas jika mau mengurangi
+        if (reduceCash) {
+            const currentCash = this.getCurrentCash();
+            const cashNeeded = total - dp;
+            if (currentCash < cashNeeded) {
+                if (!confirm(`⚠️ Peringatan!\n\nKas saat ini: ${this.formatRupiah(currentCash)}\nYang dibutuhkan: ${this.formatRupiah(cashNeeded)}\n\nKas akan menjadi MINUS. Lanjutkan?`)) {
+                    return;
+                }
+            }
+        }
+
         const newDebt = {
             id: this.generateId(),
             customerName,
@@ -637,40 +747,174 @@ const debtModule = {
             status: dp >= total ? 'paid' : 'pending',
             paidDate: dp >= total ? new Date().toISOString().split('T')[0] : null,
             notes,
+            reduceCash, // Simpan pilihan kas
             payments: dp > 0 ? [{
                 date: new Date().toISOString(),
                 amount: dp,
                 method: 'cash',
-                note: 'DP/ Pembayaran awal'
+                note: 'DP/ Pembayaran awal',
+                addToCash: false // DP tidak tambah kas karena reduceCash yang handle
             }] : []
         };
+
+        // Proses pengurangan kas
+        if (reduceCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) dataManager.data.settings = {};
+            
+            const cashChange = -(total - dp);
+            dataManager.data.settings.currentCash += cashChange;
+            dataManager.save();
+            this.updateCashDisplay();
+
+            // Simpan transaksi kas
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'out',
+                category: 'debt_create',
+                description: `Hutang baru ${customerName} (${newDebt.id})`,
+                amount: total - dp,
+                balance: dataManager.data.settings.currentCash
+            });
+            dataManager.save();
+        }
 
         this.debts.push(newDebt);
         this.saveDebts();
         this.closeModal();
         this.render();
-        this.showToast(`Hutang ${customerName} sebesar ${this.formatRupiah(total)} tersimpan`, 'success');
+        
+        const cashMsg = reduceCash ? ' (Kas berkurang)' : ' (Tidak kurangi kas)';
+        this.showToast(`Hutang ${customerName} tersimpan${cashMsg}`, 'success');
         this.itemCount = 1;
     },
 
+    // ==========================================
+    // HAPUS HUTANG + PILIHAN KEMBALIKAN KE KAS
+    // ==========================================
     confirmDelete(debtId) {
-        if (!confirm('Yakin ingin menghapus hutang ini?')) return;
-        this.deleteDebt(debtId);
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const remaining = debt.total - debt.paid;
+        const showCashOption = remaining > 0 && debt.reduceCash;
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'deleteModal';
+        modal.innerHTML = `
+            <div class="debt-modal" style="max-width: 450px;">
+                <div class="debt-modal-header" style="background: #fee2e2;">
+                    <div class="debt-modal-title" style="color: #dc2626;">⚠️ Hapus Hutang</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div style="text-align: center; padding: 20px 0;">
+                        <div style="font-size: 64px; margin-bottom: 16px;">🗑️</div>
+                        <p style="font-size: 16px; color: #1e293b; margin-bottom: 8px;">
+                            Yakin ingin menghapus hutang ini?
+                        </p>
+                        <p style="font-size: 14px; color: #64748b; line-height: 1.6;">
+                            <strong>#${debt.id}</strong> - ${debt.customerName}<br>
+                            Total: ${this.formatRupiah(debt.total)}<br>
+                            Sisa: ${this.formatRupiah(remaining)}
+                        </p>
+                    </div>
+
+                    ${showCashOption ? `
+                        <div class="debt-cash-option" style="margin-top: 16px; background: #fef3c7; border-color: #fbbf24;">
+                            <div class="debt-cash-option-title">💰 Kembalikan ke Kas?</div>
+                            <div class="debt-cash-current">Sisa hutang: <strong>${this.formatRupiah(remaining)}</strong></div>
+                            <div class="debt-cash-toggle">
+                                <label class="debt-cash-radio">
+                                    <input type="radio" name="returnCash" value="yes" checked>
+                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                    <span class="debt-cash-radio-label">
+                                        <strong>Ya, Kembalikan ke Kas</strong>
+                                        <small>Kas bertambah ${this.formatRupiah(remaining)}</small>
+                                    </span>
+                                </label>
+                                <label class="debt-cash-radio">
+                                    <input type="radio" name="returnCash" value="no">
+                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                    <span class="debt-cash-radio-label">
+                                        <strong>Tidak, Hanya Hapus Data</strong>
+                                        <small>Kas tidak berubah (untuk trial/test)</small>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    ` : `
+                        <div style="background: #f3f4f6; padding: 12px; border-radius: 8px; margin-top: 16px; text-align: center; color: #6b7280; font-size: 13px;">
+                            Hutang ini tidak mengurangi kas saat dibuat
+                        </div>
+                    `}
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="debt-btn" style="background: #dc2626; color: white;" onclick="debtModule.deleteDebt('${debtId}')">Ya, Hapus</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
     },
 
     deleteDebt(debtId) {
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const remaining = debt.total - debt.paid;
+        const returnCash = document.querySelector('input[name="returnCash"]:checked')?.value === 'yes';
+
+        // Kembalikan ke kas jika dipilih dan memang reduceCash
+        if (returnCash && remaining > 0 && debt.reduceCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) dataManager.data.settings = {};
+            
+            dataManager.data.settings.currentCash += remaining;
+            dataManager.save();
+            this.updateCashDisplay();
+
+            // Simpan transaksi kas
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'in',
+                category: 'debt_delete',
+                description: `Hapus hutang ${debt.customerName} (${debt.id})`,
+                amount: remaining,
+                balance: dataManager.data.settings.currentCash
+            });
+            dataManager.save();
+        }
+
         const index = this.debts.findIndex(d => d.id === debtId);
-        if (index === -1) return;
-        this.debts.splice(index, 1);
-        this.saveDebts();
+        if (index > -1) {
+            this.debts.splice(index, 1);
+            this.saveDebts();
+        }
+
+        this.closeModal();
         this.render();
-        this.showToast('Hutang berhasil dihapus!', 'success');
+        
+        const msg = (returnCash && remaining > 0 && debt.reduceCash) 
+            ? `Hutang dihapus & kas dikembalikan ${this.formatRupiah(remaining)}` 
+            : 'Hutang berhasil dihapus';
+        this.showToast(msg, 'success');
     },
 
+    // ==========================================
+    // PEMBAYARAN + PILIHAN TAMBAH KE KAS
+    // ==========================================
     openPaymentModal(debtId) {
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) return;
+
         const remaining = debt.total - debt.paid;
+        const currentCash = this.getCurrentCash();
 
         const modal = document.createElement('div');
         modal.className = 'debt-modal-overlay';
@@ -686,21 +930,53 @@ const debtModule = {
                         <div class="debt-amount-label">Sisa Hutang</div>
                         <div class="debt-amount-value">${this.formatRupiah(remaining)}</div>
                     </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Nama Pelanggan</label>
+                        <input type="text" class="debt-form-input" value="${debt.customerName}" readonly>
+                    </div>
+
                     <div class="debt-form-group">
                         <label class="debt-form-label">Jumlah Pembayaran</label>
                         <input type="number" class="debt-form-input" id="paymentAmount" value="${remaining}" max="${remaining}" min="1">
                     </div>
+
+                    <!-- PILIHAN TAMBAH KE KAS -->
+                    <div class="debt-cash-option">
+                        <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
+                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="debt-cash-toggle">
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="addToCash" value="yes" checked>
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Ya, Tambah ke Kas</strong>
+                                    <small>Uang masuk ke laci/kas toko</small>
+                                </span>
+                            </label>
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="addToCash" value="no">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Tidak, Hanya Catat</strong>
+                                    <small>Uang tidak masuk kas (sudah masuk sebelumnya/dll)</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="debt-form-group">
-                        <label class="debt-form-label">Catatan</label>
-                        <input type="text" class="debt-form-input" id="paymentNote" placeholder="Opsional">
+                        <label class="debt-form-label">Catatan (Opsional)</label>
+                        <input type="text" class="debt-form-input" id="paymentNote" placeholder="Tambahkan catatan...">
                     </div>
                 </div>
                 <div class="debt-modal-footer">
                     <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayment('${debtId}')">Konfirmasi</button>
+                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayment('${debtId}')">Konfirmasi Pembayaran</button>
                 </div>
             </div>
         `;
+
         document.body.appendChild(modal);
         setTimeout(() => modal.classList.add('active'), 10);
     },
@@ -708,6 +984,8 @@ const debtModule = {
     processPayment(debtId) {
         const amount = parseInt(document.getElementById('paymentAmount').value) || 0;
         const note = document.getElementById('paymentNote').value;
+        const addToCash = document.querySelector('input[name="addToCash"]:checked')?.value === 'yes';
+
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) return;
 
@@ -718,7 +996,9 @@ const debtModule = {
         }
 
         debt.paid += amount;
-        if (debt.paid >= debt.total) {
+        const isFullyPaid = debt.paid >= debt.total;
+
+        if (isFullyPaid) {
             debt.status = 'paid';
             debt.paidDate = new Date().toISOString().split('T')[0];
         }
@@ -727,41 +1007,167 @@ const debtModule = {
         debt.payments.push({
             date: new Date().toISOString(),
             amount: amount,
-            note: note
+            note: note,
+            addToCash: addToCash
         });
+
+        // Tambah ke kas jika dipilih
+        if (addToCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) dataManager.data.settings = {};
+            
+            dataManager.data.settings.currentCash += amount;
+            dataManager.save();
+            this.updateCashDisplay();
+
+            // Simpan transaksi kas
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'in',
+                category: 'debt_payment',
+                description: `Pembayaran hutang ${debt.customerName} (${debt.id})`,
+                amount: amount,
+                balance: dataManager.data.settings.currentCash
+            });
+            dataManager.save();
+        }
 
         this.saveDebts();
         this.closeModal();
         this.render();
-        this.showToast(`Pembayaran ${this.formatRupiah(amount)} berhasil!`, 'success');
+
+        const cashMsg = addToCash ? ' (tambah ke kas)' : ' (tidak tambah kas)';
+        const lunasMsg = isFullyPaid ? ' - LUNAS!' : '';
+        this.showToast(`Pembayaran ${this.formatRupiah(amount)} berhasil${cashMsg}${lunasMsg}`, 'success');
     },
 
     payAll(customerName) {
-        const customerDebts = this.debts.filter(d => d.customerName === customerName && d.status !== 'paid');
+        const customerDebts = this.debts.filter(d => 
+            d.customerName === customerName && d.status !== 'paid'
+        );
+
         const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
-        
-        if (!confirm(`Bayar semua hutang ${customerName} sebesar ${this.formatRupiah(totalRemaining)}?`)) return;
+        const currentCash = this.getCurrentCash();
+
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'payAllModal';
+        modal.innerHTML = `
+            <div class="debt-modal">
+                <div class="debt-modal-header">
+                    <div class="debt-modal-title">💰 Bayar Semua Hutang</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div class="debt-amount-display">
+                        <div class="debt-amount-label">Total Hutang ${customerName}</div>
+                        <div class="debt-amount-value">${this.formatRupiah(totalRemaining)}</div>
+                    </div>
+
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Jumlah Transaksi</label>
+                        <input type="text" class="debt-form-input" value="${customerDebts.length} transaksi" readonly>
+                    </div>
+
+                    <div class="debt-cash-option">
+                        <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
+                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="debt-cash-toggle">
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="payAllAddToCash" value="yes" checked>
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Ya, Tambah ke Kas</strong>
+                                    <small>Kas bertambah ${this.formatRupiah(totalRemaining)}</small>
+                                </span>
+                            </label>
+                            <label class="debt-cash-radio">
+                                <input type="radio" name="payAllAddToCash" value="no">
+                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                <span class="debt-cash-radio-label">
+                                    <strong>Tidak, Hanya Catat</strong>
+                                    <small>Kas tidak berubah</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayAll('${customerName}')">Bayar Semua</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => modal.classList.add('active'), 10);
+    },
+
+    processPayAll(customerName) {
+        const customerDebts = this.debts.filter(d => 
+            d.customerName === customerName && d.status !== 'paid'
+        );
+
+        const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
+        const addToCash = document.querySelector('input[name="payAllAddToCash"]:checked')?.value === 'yes';
 
         customerDebts.forEach(debt => {
+            const remaining = debt.total - debt.paid;
             debt.paid = debt.total;
             debt.status = 'paid';
             debt.paidDate = new Date().toISOString().split('T')[0];
+
+            if (!debt.payments) debt.payments = [];
+            debt.payments.push({
+                date: new Date().toISOString(),
+                amount: remaining,
+                method: 'cash',
+                note: 'Pelunasan semua hutang',
+                addToCash: addToCash
+            });
         });
 
+        if (addToCash && typeof dataManager !== 'undefined') {
+            if (!dataManager.data.settings) dataManager.data.settings = {};
+            
+            dataManager.data.settings.currentCash += totalRemaining;
+            dataManager.save();
+            this.updateCashDisplay();
+
+            if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'in',
+                category: 'debt_payment',
+                description: `Pelunasan semua hutang ${customerName}`,
+                amount: totalRemaining,
+                balance: dataManager.data.settings.currentCash
+            });
+            dataManager.save();
+        }
+
         this.saveDebts();
+        this.closeModal();
         this.render();
-        this.showToast(`Semua hutang ${customerName} dilunaskan!`, 'success');
+
+        const cashMsg = addToCash ? ' (tambah ke kas)' : ' (tidak tambah kas)';
+        this.showToast(`Semua hutang ${customerName} dilunaskan${cashMsg}!`, 'success');
     },
 
     viewPaidHistory(customerName) {
-        const customerDebts = this.debts.filter(d => d.customerName === customerName && d.status === 'paid');
+        const customerDebts = this.debts.filter(d => 
+            d.customerName === customerName && d.status === 'paid'
+        );
+
         const totalPaid = customerDebts.reduce((sum, d) => sum + d.total, 0);
 
         const modal = document.createElement('div');
         modal.className = 'debt-modal-overlay';
         modal.id = 'paidHistoryModal';
         modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 500px;">
+            <div class="debt-modal" style="max-width: 600px;">
                 <div class="debt-modal-header">
                     <div class="debt-modal-title">📋 Riwayat Lunas - ${customerName}</div>
                     <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
@@ -775,10 +1181,12 @@ const debtModule = {
                         ${customerDebts.map(debt => `
                             <div class="debt-history-item">
                                 <div class="debt-history-header">
-                                    <span>#${debt.id}</span>
-                                    <span>${this.formatDate(debt.paidDate)}</span>
+                                    <span class="debt-history-id">#${debt.id}</span>
+                                    <span class="debt-history-date">Lunas: ${this.formatDate(debt.paidDate)}</span>
                                 </div>
+                                <div class="debt-history-products">${debt.items.map(i => i.name).join(', ')}</div>
                                 <div class="debt-history-amount">${this.formatRupiah(debt.total)}</div>
+                                ${debt.reduceCash ? '<span class="debt-reduce-badge">📉 Kurangi Kas</span>' : ''}
                             </div>
                         `).join('')}
                     </div>
@@ -788,6 +1196,7 @@ const debtModule = {
                 </div>
             </div>
         `;
+
         document.body.appendChild(modal);
         setTimeout(() => modal.classList.add('active'), 10);
     },
@@ -806,21 +1215,32 @@ const debtModule = {
                     <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
                 <div class="debt-modal-body">
-                    <div class="debt-form-group">
-                        <label>Pelanggan: ${debt.customerName}</label>
+                    <div class="debt-cash-info ${debt.reduceCash ? 'reduce' : 'normal'}">
+                        ${debt.reduceCash ? '📉 Hutang ini mengurangi kas' : '📋 Hutang ini tidak mengurangi kas'}
                     </div>
                     <div class="debt-form-group">
-                        <label>Total: ${this.formatRupiah(debt.total)}</label>
+                        <label>Pelanggan: <strong>${debt.customerName}</strong></label>
                     </div>
                     <div class="debt-form-group">
-                        <label>Dibayar: ${this.formatRupiah(debt.paid)}</label>
+                        <label>Total: <strong>${this.formatRupiah(debt.total)}</strong></label>
                     </div>
                     <div class="debt-form-group">
-                        <label>Sisa: ${this.formatRupiah(debt.total - debt.paid)}</label>
+                        <label>Dibayar: <strong style="color: #059669;">${this.formatRupiah(debt.paid)}</strong></label>
                     </div>
+                    <div class="debt-form-group">
+                        <label>Sisa: <strong style="color: ${debt.total - debt.paid > 0 ? '#dc2626' : '#059669'};">${this.formatRupiah(debt.total - debt.paid)}</strong></label>
+                    </div>
+                    ${debt.notes ? `
+                        <div class="debt-form-group">
+                            <label>Catatan: ${debt.notes}</label>
+                        </div>
+                    ` : ''}
                 </div>
                 <div class="debt-modal-footer">
                     <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
+                    ${debt.status !== 'paid' ? `
+                        <button class="debt-btn debt-btn-primary" onclick="debtModule.closeModal(); setTimeout(() => debtModule.openPaymentModal('${debt.id}'), 300)">Bayar</button>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -848,7 +1268,7 @@ const debtModule = {
 
     showToast(message, type = 'success') {
         if (typeof app !== 'undefined' && app.showToast) {
-            app.showToast(message);
+            app.showToast(message, type);
         } else {
             alert(message);
         }
