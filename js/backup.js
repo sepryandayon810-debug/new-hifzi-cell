@@ -1,491 +1,30 @@
-// ============================================
-// HIFZI CELL - COMPLETE SYSTEM
-// ============================================
+// backup.js - Versi Modern UI (Sesuai Tampilan Hifzi Cell)
+// Backup untuk: Products, Categories, Transactions, CashFlow, Debts, Settings, Kasir, Receipt
 
-// ============================================
-// 1. DATA MANAGER
-// ============================================
-const dataManager = {
-    STORAGE_KEY: 'hifzi_data',
-    USERS_KEY: 'hifzi_users',
-    CURRENT_USER_KEY: 'hifzi_current_user',
-    
-    data: {
-        categories: [
-            { id: 'all', name: 'Semua', icon: '📦' },
-            { id: 'handphone', name: 'Handphone', icon: '📱' },
-            { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
-            { id: 'pulsa', name: 'Pulsa', icon: '💳' },
-            { id: 'servis', name: 'Servis', icon: '🔧' }
-        ],
-        products: [],
-        transactions: [],
-        cashTransactions: [],
-        debts: [],
-        shiftHistory: [],
-        settings: {
-            storeName: 'Hifzi Cell',
-            address: '',
-            phone: '',
-            tax: 0,
-            taxRate: 0,
-            modalAwal: 0,
-            currentCash: 0,
-            receiptHeader: {
-                storeName: 'HIFZI CELL',
-                address: 'Alamat Belum Diatur',
-                phone: '',
-                note: 'Terima kasih atas kunjungan Anda'
-            }
-        },
-        kasir: {
-            isOpen: false,
-            openTime: null,
-            closeTime: null,
-            date: null,
-            currentUser: null,
-            lastCheckDate: null
-        }
-    },
-    
-    defaultUsers: [
-        { id: 'admin', username: 'admin', password: 'admin123', name: 'Administrator', role: 'admin' },
-        { id: 'kasir1', username: 'kasir1', password: 'kasir123', name: 'Kasir 1', role: 'kasir' }
-    ],
-
-    init() {
-        const saved = localStorage.getItem(this.STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            this.data = this.deepMerge(this.data, parsed);
-        }
-        
-        if (!this.data.kasir) {
-            this.data.kasir = {
-                isOpen: false,
-                openTime: null,
-                closeTime: null,
-                date: null,
-                currentUser: null,
-                lastCheckDate: null
-            };
-        }
-
-        if (!this.data.settings.phone) this.data.settings.phone = '';
-        if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
-
-        this.checkAutoCloseMidnight();
-        
-        let users = JSON.parse(localStorage.getItem(this.USERS_KEY));
-        if (!users) {
-            users = this.defaultUsers;
-            localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
-        }
-        
-        this.save();
-        return this.data;
-    },
-
-    checkAutoCloseMidnight() {
-        const now = new Date();
-        const today = now.toDateString();
-        
-        if (this.data.kasir.isOpen && this.data.kasir.date) {
-            const kasirDate = new Date(this.data.kasir.date).toDateString();
-            
-            if (kasirDate !== today) {
-                console.log('[AutoClose] Kasir otomatis ditutup karena sudah lewat jam 12 malam');
-                this.saveShiftHistory();
-                
-                this.data.kasir.isOpen = false;
-                this.data.kasir.closeTime = new Date().toISOString();
-                this.data.kasir.currentUser = null;
-                this.data.kasir.date = null;
-                this.data.settings.modalAwal = 0;
-                this.data.kasir.lastCheckDate = today;
-                
-                this.save();
-                return true;
-            }
-        }
-        
-        this.data.kasir.lastCheckDate = today;
-        return false;
-    },
-
-    save() {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
-        
-        // Trigger auto-sync jika backupModule sudah ada dan aktif
-        if (typeof backupModule !== 'undefined' && backupModule.isAutoSyncEnabled) {
-            if (backupModule.currentProvider === 'firebase' && backupModule.currentUser) {
-                backupModule.uploadDataFirebase(true);
-            } else if (backupModule.currentProvider === 'googlesheet' && backupModule.gasUrl) {
-                backupModule.uploadDataGAS(true);
-            }
-        }
-    },
-
-    saveData() {
-        this.save();
-    },
-
-    getAllData() {
-        return {
-            products: this.data.products || [],
-            categories: this.data.categories || [],
-            transactions: this.data.transactions || [],
-            cashFlow: this.data.cashTransactions || [],
-            debts: this.data.debts || [],
-            settings: this.data.settings || {},
-            kasir: this.data.kasir || {},
-            receipt: this.data.settings?.receiptHeader || {
-                storeName: 'HIFZI CELL',
-                address: '',
-                phone: '',
-                note: 'Terima kasih atas kunjungan Anda'
-            }
-        };
-    },
-
-    saveAllData(data) {
-        if (data.products !== undefined) this.data.products = data.products;
-        if (data.categories !== undefined) this.data.categories = data.categories;
-        if (data.transactions !== undefined) this.data.transactions = data.transactions;
-        if (data.cashFlow !== undefined) this.data.cashTransactions = data.cashFlow;
-        if (data.debts !== undefined) this.data.debts = data.debts;
-        if (data.settings !== undefined) {
-            this.data.settings = { ...this.data.settings, ...data.settings };
-        }
-        if (data.kasir !== undefined) {
-            this.data.kasir = { ...this.data.kasir, ...data.kasir };
-        }
-        
-        this.save();
-        
-        if (typeof app !== 'undefined' && app.data) {
-            app.data = this.data;
-            if (app.updateHeader) app.updateHeader();
-        }
-    },
-
-    deepMerge(target, source) {
-        const output = Object.assign({}, target);
-        if (this.isObject(target) && this.isObject(source)) {
-            Object.keys(source).forEach(key => {
-                if (this.isObject(source[key])) {
-                    if (!(key in target)) {
-                        Object.assign(output, { [key]: source[key] });
-                    } else {
-                        output[key] = this.deepMerge(target[key], source[key]);
-                    }
-                } else {
-                    Object.assign(output, { [key]: source[key] });
-                }
-            });
-        }
-        return output;
-    },
-
-    isObject(item) {
-        return (item && typeof item === 'object' && !Array.isArray(item));
-    },
-
-    load() {
-        return this.init();
-    },
-    
-    getProducts() { return this.data.products; },
-    getTransactions() { return this.data.transactions; },
-    getCategories() { return this.data.categories; },
-    getSettings() { return this.data.settings; },
-    
-    addProduct(product) {
-        product.id = product.id || 'prod_' + Date.now();
-        product.createdAt = new Date().toISOString();
-        this.data.products.push(product);
-        this.save();
-        return product;
-    },
-    
-    updateProduct(id, updates) {
-        const idx = this.data.products.findIndex(p => p.id === id);
-        if (idx !== -1) {
-            this.data.products[idx] = { ...this.data.products[idx], ...updates };
-            this.save();
-            return this.data.products[idx];
-        }
-        return null;
-    },
-    
-    deleteProduct(id) {
-        this.data.products = this.data.products.filter(p => p.id !== id);
-        this.save();
-    },
-    
-    addTransaction(transaction) {
-        transaction.id = transaction.id || 'trans_' + Date.now();
-        transaction.createdAt = new Date().toISOString();
-        this.data.transactions.push(transaction);
-        this.save();
-        return transaction;
-    },
-    
-    updateTransaction(id, updates) {
-        const idx = this.data.transactions.findIndex(t => t.id === id);
-        if (idx !== -1) {
-            this.data.transactions[idx] = { ...this.data.transactions[idx], ...updates };
-            this.save();
-            return this.data.transactions[idx];
-        }
-        return null;
-    },
-
-    getUsers() {
-        return JSON.parse(localStorage.getItem(this.USERS_KEY)) || this.defaultUsers;
-    },
-
-    saveUsers(users) {
-        localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
-    },
-
-    addUser(user) {
-        const users = this.getUsers();
-        user.id = 'user_' + Date.now();
-        users.push(user);
-        this.saveUsers(users);
-        return user;
-    },
-
-    updateUser(userId, updateData) {
-        const users = this.getUsers();
-        const userIndex = users.findIndex(u => u.id === userId);
-        
-        if (userIndex === -1) return false;
-        
-        if (updateData.name) users[userIndex].name = updateData.name;
-        if (updateData.username) users[userIndex].username = updateData.username;
-        if (updateData.role) users[userIndex].role = updateData.role;
-        if (updateData.password) users[userIndex].password = updateData.password;
-        
-        this.saveUsers(users);
-        return true;
-    },
-
-    deleteUser(userId) {
-        let users = this.getUsers();
-        users = users.filter(u => u.id !== userId);
-        this.saveUsers(users);
-    },
-
-    login(username, password) {
-        const users = this.getUsers();
-        const user = users.find(u => u.username === username && u.password === password);
-        
-        if (user) {
-            const session = {
-                userId: user.id,
-                username: user.username,
-                name: user.name,
-                role: user.role,
-                loginTime: new Date().toISOString()
-            };
-            localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify(session));
-            return { success: true, user: session };
-        }
-        return { success: false, message: 'Username atau password salah!' };
-    },
-
-    logout() {
-        this.save();
-        localStorage.removeItem(this.CURRENT_USER_KEY);
-    },
-
-    getCurrentUser() {
-        const session = localStorage.getItem(this.CURRENT_USER_KEY);
-        return session ? JSON.parse(session) : null;
-    },
-
-    isLoggedIn() {
-        return this.getCurrentUser() !== null;
-    },
-
-    checkKasirStatusForUser(userId) {
-        const today = new Date().toDateString();
-        const kasir = this.data.kasir;
-        
-        this.checkAutoCloseMidnight();
-        
-        if (!kasir.isOpen) {
-            return { canOpen: true, shouldReset: true, reason: 'closed' };
-        }
-        
-        if (kasir.currentUser === userId) {
-            if (kasir.date === today) {
-                return { 
-                    canOpen: false, 
-                    shouldReset: false, 
-                    reason: 'already_open_same_user',
-                    message: 'Kasir sudah buka dengan akun Anda. Lanjutkan shift.'
-                };
-            } else {
-                return { 
-                    canOpen: true, 
-                    shouldReset: true, 
-                    reason: 'new_day_same_user',
-                    message: 'Shift baru untuk hari ini. Modal akan direset.'
-                };
-            }
-        }
-        
-        return { 
-            canOpen: false, 
-            shouldReset: false, 
-            reason: 'different_user',
-            message: `Kasir sedang digunakan oleh user lain.`
-        };
-    },
-
-    openKasir(userId, forceReset = false) {
-        const today = new Date().toDateString();
-        const status = this.checkKasirStatusForUser(userId);
-        
-        if (status.reason === 'already_open_same_user') {
-            this.data.kasir.currentUser = userId;
-            this.data.kasir.lastLoginTime = new Date().toISOString();
-            this.save();
-            return { 
-                success: true, 
-                reset: false,
-                message: 'Selamat datang kembali! Shift Anda dilanjutkan.'
-            };
-        }
-        
-        if (status.shouldReset || forceReset) {
-            if (this.data.kasir.date && this.data.kasir.date !== today) {
-                this.saveShiftHistory();
-            }
-            this.data.settings.modalAwal = 0;
-        }
-        
-        this.data.kasir = {
-            isOpen: true,
-            openTime: new Date().toISOString(),
-            closeTime: null,
-            date: today,
-            currentUser: userId,
-            lastLoginTime: new Date().toISOString(),
-            lastCheckDate: today
-        };
-        
-        this.save();
-        return { 
-            success: true, 
-            reset: status.shouldReset,
-            message: status.shouldReset ? 'Kasir dibuka dengan shift baru!' : 'Kasir dibuka!'
-        };
-    },
-
-    saveShiftHistory() {
-        if (!this.data.shiftHistory) this.data.shiftHistory = [];
-        
-        const kasirDate = this.data.kasir.date;
-        const dayTrans = this.data.transactions.filter(t => 
-            new Date(t.date).toDateString() === kasirDate && t.status !== 'voided'
-        );
-
-        const shiftSummary = {
-            date: kasirDate,
-            userId: this.data.kasir.currentUser,
-            openTime: this.data.kasir.openTime,
-            closeTime: new Date().toISOString(),
-            totalSales: dayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
-            totalProfit: dayTrans.reduce((sum, t) => sum + (t.profit || 0), 0),
-            transactionCount: dayTrans.length,
-            modalAwal: this.data.settings.modalAwal,
-            cashEnd: this.data.settings.currentCash
-        };
-
-        const existingIndex = this.data.shiftHistory.findIndex(s => s.date === kasirDate);
-        if (existingIndex !== -1) {
-            this.data.shiftHistory[existingIndex] = shiftSummary;
-        } else {
-            this.data.shiftHistory.push(shiftSummary);
-        }
-        
-        this.save();
-    },
-
-    closeKasir() {
-        if (!this.data.kasir.isOpen) {
-            return { success: false, message: 'Kasir sudah tutup!' };
-        }
-
-        this.saveShiftHistory();
-
-        this.data.kasir.isOpen = false;
-        this.data.kasir.closeTime = new Date().toISOString();
-        this.data.kasir.currentUser = null;
-        
-        this.save();
-        
-        return { success: true, message: 'Kasir ditutup. Shift berakhir.' };
-    },
-    
-    getTodayStats() {
-        const today = new Date().toDateString();
-        const todayTrans = this.data.transactions.filter(t => 
-            new Date(t.date).toDateString() === today && 
-            t.status !== 'deleted' && 
-            t.status !== 'voided'
-        );
-        
-        return {
-            transactionCount: todayTrans.length,
-            totalSales: todayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
-            totalProfit: todayTrans.reduce((sum, t) => sum + (t.profit || 0), 0)
-        };
-    }
-};
-
-// ============================================
-// 2. BACKUP MODULE (Firebase + Google Sheets)
-// ============================================
 const backupModule = {
     currentProvider: 'local',
+    autoSyncInterval: null,
+    isAutoSyncEnabled: false,
+    lastSyncTime: null,
     gasUrl: '',
     
-    firebaseConfig: {
-        apiKey: "",
-        authDomain: "",
-        databaseURL: "",
-        projectId: "",
-        storageBucket: "",
-        messagingSenderId: "",
-        appId: ""
+    STORAGE_KEYS: {
+        products: 'hifzi_products',
+        categories: 'hifzi_categories',
+        transactions: 'hifzi_transactions',
+        cashFlow: 'hifzi_cash',
+        debts: 'hifzi_debts',
+        settings: 'hifzi_settings',
+        kasir: 'hifzi_kasir',
+        receipt: 'hifzi_receipt'
     },
     
-    firebaseApp: null,
-    database: null,
-    auth: null,
-    currentUser: null,
-    isAutoSyncEnabled: false,
-    autoSyncInterval: null,
-    lastSyncTime: null,
-    isOnline: navigator.onLine,
-    pendingSync: false,
-    deviceId: null,
-    deviceName: null,
-    
-    STORAGE_KEY: 'hifzi_data',
     GAS_URL_KEY: 'hifzi_gas_url',
     AUTO_SYNC_KEY: 'hifzi_auto_sync',
     LAST_SYNC_KEY: 'hifzi_last_sync',
-    DEVICE_ID_KEY: 'hifzi_device_id',
-    DEVICE_NAME_KEY: 'hifzi_device_name',
-    USER_KEY: 'hifzi_user',
-    PROVIDER_KEY: 'hifzi_provider',
-    FIREBASE_CONFIG_KEY: 'hifzi_firebase_config',
+    LOGS_KEY: 'hifzi_backup_logs',
+    
+    debugMode: true,
     
     log: function(level, message, data) {
         const timestamp = new Date().toLocaleTimeString('id-ID');
@@ -493,112 +32,83 @@ const backupModule = {
         if (level === 'ERROR') console.error(prefix, message, data || '');
         else if (level === 'WARN') console.warn(prefix, message, data || '');
         else console.log(prefix, message, data || '');
+        
+        try {
+            let logs = JSON.parse(localStorage.getItem(this.LOGS_KEY) || '[]');
+            logs.push({ 
+                time: new Date().toISOString(), 
+                level: level, 
+                message: message, 
+                data: data ? JSON.stringify(data).substring(0, 200) : null 
+            });
+            if (logs.length > 100) logs = logs.slice(-100);
+            localStorage.setItem(this.LOGS_KEY, JSON.stringify(logs));
+        } catch(e) {}
     },
 
     init: function() {
-        this.log('INFO', 'Backup Module Initialized');
-        
-        this.currentProvider = localStorage.getItem(this.PROVIDER_KEY) || 'local';
+        this.log('INFO', 'Backup Module Modern UI Initialized');
         this.gasUrl = localStorage.getItem(this.GAS_URL_KEY) || '';
         this.isAutoSyncEnabled = localStorage.getItem(this.AUTO_SYNC_KEY) === 'true';
         this.lastSyncTime = localStorage.getItem(this.LAST_SYNC_KEY) || null;
         
-        const savedFirebaseConfig = localStorage.getItem(this.FIREBASE_CONFIG_KEY);
-        if (savedFirebaseConfig) {
-            try {
-                const parsed = JSON.parse(savedFirebaseConfig);
-                this.firebaseConfig = { ...this.firebaseConfig, ...parsed };
-            } catch(e) {}
+        if (this.gasUrl && this.gasUrl.length > 10) {
+            this.currentProvider = 'googlesheet';
+            
+            const localData = this.getAllData();
+            const hasLocalData = this.hasAnyData(localData);
+            
+            if (!hasLocalData && this.gasUrl) {
+                this.log('INFO', 'Device baru terdeteksi, auto-download...');
+                this.showToast('📥 Device baru, mengunduh data...');
+                setTimeout(() => {
+                    this.downloadData(true);
+                }, 1000);
+            }
         }
         
-        this.deviceId = localStorage.getItem(this.DEVICE_ID_KEY);
-        if (!this.deviceId) {
-            this.deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem(this.DEVICE_ID_KEY, this.deviceId);
-        }
-        this.deviceName = localStorage.getItem(this.DEVICE_NAME_KEY) || 
-                          navigator.userAgent.split(' ')[0] + ' ' + this.deviceId.substr(-4);
-        
-        if (this.currentProvider === 'firebase') {
-            this.initFirebase();
-        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-            this.checkNewDeviceGAS();
+        if (this.isAutoSyncEnabled && this.gasUrl) {
+            this.startAutoSync();
         }
         
-        this.setupConnectivityListeners();
-        this.updateSyncStatusUI();
+        this.render();
     },
 
     getAllData: function() {
-        if (typeof dataManager !== 'undefined' && dataManager.getAllData) {
-            return dataManager.getAllData();
+        const data = {};
+        const keys = this.STORAGE_KEYS;
+        
+        for (let key in keys) {
+            try {
+                const stored = localStorage.getItem(keys[key]);
+                data[key] = stored ? JSON.parse(stored) : this.getDefaultData(key);
+            } catch(e) {
+                this.log('ERROR', 'Error reading ' + key, e.message);
+                data[key] = this.getDefaultData(key);
+            }
         }
         
-        const saved = localStorage.getItem(this.STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            return {
-                products: parsed.products || [],
-                categories: parsed.categories || [],
-                transactions: parsed.transactions || [],
-                cashFlow: parsed.cashTransactions || [],
-                debts: parsed.debts || [],
-                settings: parsed.settings || {},
-                kasir: parsed.kasir || {},
-                receipt: parsed.settings?.receiptHeader || {
-                    storeName: 'HIFZI CELL',
-                    address: '',
-                    phone: '',
-                    note: 'Terima kasih atas kunjungan Anda'
-                }
-            };
-        }
-        
-        return this.getDefaultData();
+        return data;
     },
 
-    saveAllData: function(data) {
-        if (typeof dataManager !== 'undefined' && dataManager.saveAllData) {
-            dataManager.saveAllData(data);
-            return;
-        }
-        
-        const current = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}');
-        
-        if (data.products !== undefined) current.products = data.products;
-        if (data.categories !== undefined) current.categories = data.categories;
-        if (data.transactions !== undefined) current.transactions = data.transactions;
-        if (data.cashFlow !== undefined) current.cashTransactions = data.cashFlow;
-        if (data.debts !== undefined) current.debts = data.debts;
-        if (data.settings !== undefined) current.settings = { ...current.settings, ...data.settings };
-        if (data.kasir !== undefined) current.kasir = { ...current.kasir, ...data.kasir };
-        
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(current));
-        
-        if (typeof app !== 'undefined' && app.data) {
-            app.data = current;
-            if (app.updateHeader) app.updateHeader();
-        }
-    },
-
-    getDefaultData: function() {
-        return {
-            products: [],
-            categories: [
+    getDefaultData: function(type) {
+        switch(type) {
+            case 'products': return [];
+            case 'categories': return [
                 { id: 'all', name: 'Semua', icon: '📦' },
                 { id: 'handphone', name: 'Handphone', icon: '📱' },
                 { id: 'aksesoris', name: 'Aksesoris', icon: '🎧' },
                 { id: 'pulsa', name: 'Pulsa', icon: '💳' },
                 { id: 'servis', name: 'Servis', icon: '🔧' }
-            ],
-            transactions: [],
-            cashFlow: [],
-            debts: [],
-            settings: {
+            ];
+            case 'transactions': return [];
+            case 'cashFlow': return [];
+            case 'debts': return [];
+            case 'settings': return {
                 storeName: 'Hifzi Cell',
                 address: '',
                 phone: '',
-                tax: 0,
+                taxRate: 0,
                 modalAwal: 0,
                 currentCash: 0,
                 receiptHeader: {
@@ -607,8 +117,8 @@ const backupModule = {
                     phone: '',
                     note: 'Terima kasih atas kunjungan Anda'
                 }
-            },
-            kasir: {
+            };
+            case 'kasir': return {
                 isOpen: false,
                 openTime: null,
                 closeTime: null,
@@ -616,14 +126,15 @@ const backupModule = {
                 shiftId: null,
                 openingBalance: 0,
                 closingBalance: 0
-            },
-            receipt: {
+            };
+            case 'receipt': return {
                 header: { storeName: 'HIFZI CELL', address: '', phone: '', note: 'Terima kasih atas kunjungan Anda' },
                 footer: { message: '', thanks: '' },
                 showLogo: false,
                 logoUrl: ''
-            }
-        };
+            };
+            default: return null;
+        }
     },
 
     hasAnyData: function(data) {
@@ -637,383 +148,461 @@ const backupModule = {
         );
     },
 
+    formatRupiah: function(amount) {
+        if (!amount && amount !== 0) return 'Rp 0';
+        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    },
+
+    // ==================== MODERN UI RENDER ====================
+    
+    render: function() {
+        const container = document.getElementById('mainContent');
+        if (!container) return;
+
+        const data = this.getAllData();
+        const stats = {
+            products: data.products ? data.products.length : 0,
+            categories: data.categories ? data.categories.length : 0,
+            transactions: data.transactions ? data.transactions.length : 0,
+            cashFlow: data.cashFlow ? data.cashFlow.length : 0,
+            debts: data.debts ? data.debts.length : 0,
+            currentCash: data.settings?.currentCash || 0,
+            storeName: data.settings?.storeName || 'HIFZI CELL'
+        };
+
+        container.innerHTML = `
+            <div class="content-section active" id="backupSection" style="padding: 16px; max-width: 1200px; margin: 0 auto;">
+                
+                <!-- Status Card -->
+                <div class="modern-card status-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Status Sinkronisasi</div>
+                            <div style="font-size: 20px; font-weight: 600;">
+                                ${this.isAutoSyncEnabled ? '🟢 Auto Sync Aktif' : '⚪ Auto Sync Nonaktif'}
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 12px; opacity: 0.8;">Terakhir Sync</div>
+                            <div style="font-size: 14px; font-weight: 500;">
+                                ${this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID', {hour: '2-digit', minute:'2-digit', day:'numeric', month:'short'}) : 'Belum pernah'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="modern-card" style="margin-bottom: 20px;">
+                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                        📊 Data Lokal: ${stats.storeName}
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
+                        ${this.renderStatCard('📦', 'Produk', stats.products, '#e3f2fd', '#2196F3')}
+                        ${this.renderStatCard('📁', 'Kategori', stats.categories, '#e8f5e9', '#4CAF50')}
+                        ${this.renderStatCard('📝', 'Transaksi', stats.transactions, '#fff3e0', '#FF9800')}
+                        ${this.renderStatCard('💰', 'Arus Kas', stats.cashFlow, '#fce4ec', '#E91E63')}
+                        ${this.renderStatCard('💳', 'Hutang', stats.debts, '#f3e5f5', '#9C27B0')}
+                        ${this.renderStatCard('🏦', 'Kas', this.formatRupiah(stats.currentCash), '#e0f2f1', '#009688')}
+                    </div>
+                </div>
+
+                <!-- Debug Panel -->
+                <div class="modern-card" style="margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                    <div onclick="document.getElementById('debugPanel').classList.toggle('hidden')" 
+                         style="padding: 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: #f7fafc; border-radius: 12px 12px 0 0;">
+                        <span style="font-weight: 600; color: #4a5568;">🐛 Debug Panel</span>
+                        <span style="color: #718096; font-size: 12px;">Klik untuk expand ▼</span>
+                    </div>
+                    <div id="debugPanel" class="hidden" style="padding: 16px; border-top: 1px solid #e2e8f0;">
+                        <div style="background: #1a202c; color: #68d391; padding: 12px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 11px; max-height: 200px; overflow-y: auto; margin-bottom: 12px;">
+                            ${this.getDebugLogs().slice(-5).reverse().map(log => {
+                                const color = log.level === 'ERROR' ? '#fc8181' : (log.level === 'WARN' ? '#f6e05e' : '#68d391');
+                                const time = log.time.split('T')[1] ? log.time.split('T')[1].substr(0,8) : '--:--:--';
+                                return `<div style="color: ${color}; margin-bottom: 4px;">[${time}] ${log.message}</div>`;
+                            }).join('') || '<span style="color: #718096;">No logs...</span>'}
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button onclick="backupModule.clearDebugLogs();backupModule.render();" class="btn-secondary" style="flex: 1; font-size: 12px; padding: 8px;">Clear Logs</button>
+                            <button onclick="backupModule.inspectData()" class="btn-secondary" style="flex: 1; font-size: 12px; padding: 8px;">Inspect Data</button>
+                            <button onclick="backupModule.testConnection()" class="btn-secondary" style="flex: 1; font-size: 12px; padding: 8px;">Test GAS</button>
+                            <button onclick="backupModule.checkCloudData()" class="btn-secondary" style="flex: 1; font-size: 12px; padding: 8px;">Cek Cloud</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Provider Selection -->
+                <div class="modern-card" style="margin-bottom: 20px;">
+                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">☁️ Metode Backup</div>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                        ${this.renderProviderCard('local', '💾', 'Local File', 'Simpan ke file JSON di device')}
+                        ${this.renderProviderCard('googlesheet', '📊', 'Google Sheets', 'Simpan ke Google Sheets cloud')}
+                    </div>
+                </div>
+
+                <!-- Google Sheets Config -->
+                ${this.currentProvider === 'googlesheet' ? this.renderGoogleSheetsSection() : ''}
+
+                <!-- Local Backup -->
+                <div class="modern-card" style="margin-bottom: 20px;">
+                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">💾 Backup Local</div>
+                    <button onclick="backupModule.downloadJSON()" class="btn-primary" style="width: 100%; margin-bottom: 12px;">
+                        ⬇️ Download JSON Backup
+                    </button>
+                    <label style="display: block; padding: 16px; border: 2px dashed #cbd5e0; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s;" 
+                           onmouseover="this.style.borderColor='#667eea';this.style.background='#f7fafc'" 
+                           onmouseout="this.style.borderColor='#cbd5e0';this.style.background='transparent'">
+                        <input type="file" accept=".json" onchange="backupModule.importJSON(this)" style="display: none;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📤</div>
+                        <div style="font-size: 14px; color: #4a5568; font-weight: 500;">Klik untuk Import JSON</div>
+                        <div style="font-size: 12px; color: #718096; margin-top: 4px;">atau drag & drop file</div>
+                    </label>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="modern-card" style="border: 1px solid #feb2b2; background: #fff5f5;">
+                    <div style="font-size: 16px; font-weight: 600; color: #c53030; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                        🗑️ Zona Bahaya
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button onclick="backupModule.resetLocal()" class="btn-danger" style="background: #e53e3e;">
+                            🗑️ Hapus Data Lokal Saja
+                        </button>
+                        <div style="font-size: 11px; color: #718096; text-align: center;">Data di cloud tetap ada</div>
+
+                        ${this.gasUrl ? `
+                            <button onclick="backupModule.resetCloud()" class="btn-danger" style="background: #805ad5;">
+                                ☁️ Reset Cloud (Google Sheets)
+                            </button>
+                            <div style="font-size: 11px; color: #718096; text-align: center;">Semua data di Google Sheets dihapus</div>
+                            
+                            <button onclick="backupModule.resetBoth()" class="btn-danger" style="background: #1a202c;">
+                                💀 Reset Total (Lokal + Cloud)
+                            </button>
+                            <div style="font-size: 11px; color: #718096; text-align: center;">Hapus semua data dimana-mana</div>
+                        ` : ''}
+                    </div>
+                </div>
+
+            </div>
+
+            <style>
+                .modern-card {
+                    background: white;
+                    border-radius: 12px;
+                    padding: 20px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+                    border: 1px solid #e2e8f0;
+                }
+                .stat-card {
+                    padding: 16px;
+                    border-radius: 10px;
+                    text-align: center;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }
+                .stat-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                }
+                .provider-card {
+                    padding: 20px;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 10px;
+                    text-align: center;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    background: white;
+                }
+                .provider-card:hover {
+                    border-color: #667eea;
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+                }
+                .provider-card.active {
+                    border-color: #48bb78;
+                    background: #f0fff4;
+                }
+                .btn-primary {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    font-size: 14px;
+                }
+                .btn-primary:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                }
+                .btn-secondary {
+                    background: #edf2f7;
+                    color: #4a5568;
+                    border: 1px solid #e2e8f0;
+                    padding: 10px 16px;
+                    border-radius: 6px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .btn-secondary:hover {
+                    background: #e2e8f0;
+                }
+                .btn-danger {
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    font-size: 14px;
+                }
+                .btn-danger:hover {
+                    opacity: 0.9;
+                    transform: translateY(-1px);
+                }
+                .hidden { display: none !important; }
+                .form-input {
+                    width: 100%;
+                    padding: 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: border-color 0.2s;
+                }
+                .form-input:focus {
+                    outline: none;
+                    border-color: #667eea;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+                }
+                .toggle-switch {
+                    position: relative;
+                    width: 48px;
+                    height: 24px;
+                    background: #cbd5e0;
+                    border-radius: 12px;
+                    cursor: pointer;
+                    transition: background 0.3s;
+                }
+                .toggle-switch.active {
+                    background: #48bb78;
+                }
+                .toggle-switch::after {
+                    content: '';
+                    position: absolute;
+                    width: 20px;
+                    height: 20px;
+                    background: white;
+                    border-radius: 50%;
+                    top: 2px;
+                    left: 2px;
+                    transition: transform 0.3s;
+                }
+                .toggle-switch.active::after {
+                    transform: translateX(24px);
+                }
+            </style>
+        `;
+    },
+
+    renderStatCard: function(icon, label, value, bgColor, textColor) {
+        return `
+            <div class="stat-card" style="background: ${bgColor};">
+                <div style="font-size: 24px; margin-bottom: 4px;">${icon}</div>
+                <div style="font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">${label}</div>
+                <div style="font-size: 20px; font-weight: 700; color: ${textColor};">${value}</div>
+            </div>
+        `;
+    },
+
+    renderProviderCard: function(provider, icon, title, desc) {
+        const isActive = this.currentProvider === provider;
+        const activeClass = isActive ? 'active' : '';
+        const checkmark = isActive ? '<div style="position: absolute; top: 8px; right: 8px; background: #48bb78; color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px;">✓</div>' : '';
+        
+        return `
+            <div onclick="backupModule.setProvider('${provider}')" class="provider-card ${activeClass}" style="position: relative;">
+                ${checkmark}
+                <div style="font-size: 32px; margin-bottom: 8px;">${icon}</div>
+                <div style="font-weight: 600; color: #2d3748; margin-bottom: 4px;">${title}</div>
+                <div style="font-size: 12px; color: #718096;">${desc}</div>
+            </div>
+        `;
+    },
+
+    renderGoogleSheetsSection: function() {
+        const lastSync = this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah';
+        
+        return `
+            <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #667eea;">
+                <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                    📊 Google Sheets Configuration
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">URL Web App GAS</label>
+                    <input type="text" id="gasUrl" value="${this.gasUrl || ''}" 
+                           placeholder="https://script.google.com/macros/s/.../exec" 
+                           class="form-input">
+                </div>
+                
+                <button onclick="backupModule.saveUrl()" class="btn-primary" style="width: 100%; margin-bottom: 16px;">
+                    💾 Simpan & Validasi URL
+                </button>
+                
+                ${this.gasUrl ? `
+                    <div style="padding: 12px; background: #f0fff4; border-radius: 8px; margin-bottom: 16px; border-left: 4px solid #48bb78;">
+                        <div style="font-size: 13px; color: #22543d; font-weight: 500;">✅ URL tersimpan</div>
+                        <div style="font-size: 12px; color: #718096; margin-top: 4px;">Last sync: ${lastSync}</div>
+                    </div>
+
+                    <!-- Pindah Device -->
+                    <div style="background: #ebf8ff; border-radius: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid #90cdf4;">
+                        <div style="font-size: 14px; font-weight: 600; color: #2b6cb0; margin-bottom: 12px;">📥 Pindah Device</div>
+                        <button onclick="backupModule.downloadData()" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);">
+                            📥 Download Data dari Cloud
+                        </button>
+                    </div>
+
+                    <!-- Auto Sync -->
+                    <div style="background: #fffaf0; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-size: 14px; font-weight: 600; color: #2d3748;">Auto Sync</div>
+                                <div style="font-size: 12px; color: #718096;">Upload & cek download tiap 3 menit</div>
+                            </div>
+                            <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}"></div>
+                        </div>
+                        
+                        <button onclick="backupModule.uploadData()" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">
+                            ⬆️ Upload ke Cloud Sekarang
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    },
+
+    // ==================== ACTIONS ====================
+
     setProvider: function(provider) {
         this.log('INFO', 'Provider changed to: ' + provider);
         this.currentProvider = provider;
-        localStorage.setItem(this.PROVIDER_KEY, provider);
+        this.render();
+    },
+
+    saveUrl: function() {
+        const input = document.getElementById('gasUrl');
+        if (!input) return;
+        const url = input.value.trim();
+        
+        if (!url || url.length < 20 || !url.includes('script.google.com')) {
+            this.showToast('❌ URL tidak valid!');
+            return;
+        }
+        
+        this.gasUrl = url;
+        localStorage.setItem(this.GAS_URL_KEY, url);
+        this.log('INFO', 'GAS URL saved');
+        
+        this.testConnection();
+    },
+
+    toggleAutoSync: function() {
+        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
+        localStorage.setItem(this.AUTO_SYNC_KEY, this.isAutoSyncEnabled);
+        
+        if (this.isAutoSyncEnabled) {
+            this.startAutoSync();
+            this.showToast('🟢 Auto sync diaktifkan');
+        } else {
+            this.stopAutoSync();
+            this.showToast('⚪ Auto sync dimatikan');
+        }
+        this.render();
+    },
+
+    startAutoSync: function() {
         this.stopAutoSync();
         
-        if (provider === 'firebase') {
-            this.initFirebase();
-        }
+        this.performTwoWaySync();
         
-        this.render();
+        this.autoSyncInterval = setInterval(() => {
+            this.performTwoWaySync();
+        }, 180000);
+        
+        this.log('INFO', 'Auto Sync started (3 min interval)');
     },
 
-    saveFirebaseConfig: function() {
-        const apiKey = document.getElementById('fb_apiKey').value.trim();
-        const authDomain = document.getElementById('fb_authDomain').value.trim();
-        const databaseURL = document.getElementById('fb_databaseURL').value.trim();
-        const projectId = document.getElementById('fb_projectId').value.trim();
-        const storageBucket = document.getElementById('fb_storageBucket').value.trim();
-        const messagingSenderId = document.getElementById('fb_messagingSenderId').value.trim();
-        const appId = document.getElementById('fb_appId').value.trim();
-        
-        if (!apiKey || !databaseURL || !authDomain) {
-            this.showToast('❌ API Key, Auth Domain, dan Database URL wajib diisi!');
-            return;
-        }
-        
-        this.firebaseConfig = { apiKey, authDomain, databaseURL, projectId, storageBucket, messagingSenderId, appId };
-        localStorage.setItem(this.FIREBASE_CONFIG_KEY, JSON.stringify(this.firebaseConfig));
-        this.showToast('✅ Konfigurasi Firebase tersimpan!');
-        this.initFirebase();
-        this.render();
-    },
-
-    initFirebase: function() {
-        console.log('[Firebase] Initializing...');
-        
-        if (typeof firebase === 'undefined') {
-            console.error('[Firebase] SDK not loaded!');
-            return;
-        }
-        
-        if (!this.firebaseConfig.apiKey || !this.firebaseConfig.databaseURL) {
-            console.log('[Firebase] Config incomplete');
-            return;
-        }
-        
-        try {
-            if (firebase.apps && firebase.apps.length) {
-                firebase.apps.forEach(app => app.delete());
-            }
-            
-            this.firebaseApp = firebase.initializeApp(this.firebaseConfig);
-            this.database = firebase.database();
-            this.auth = firebase.auth();
-            
-            console.log('[Firebase] Initialized successfully!');
-            this.log('INFO', 'Firebase initialized: ' + this.firebaseConfig.projectId);
-            
-            this.auth.onAuthStateChanged((user) => {
-                if (user) {
-                    console.log('[Firebase] User already logged in:', user.email);
-                    this.currentUser = user;
-                    this.saveUserToLocal(user);
-                    this.updateDeviceStatus(true);
-                    this.setupRealtimeListeners();
-                    
-                    if (this.isAutoSyncEnabled) {
-                        this.startAutoSyncFirebase();
-                    }
-                } else {
-                    console.log('[Firebase] No user logged in');
-                    this.currentUser = null;
-                }
-                this.render();
-            });
-            
-        } catch (error) {
-            console.error('[Firebase] Init error:', error);
-            this.showToast('❌ Gagal init Firebase: ' + error.message);
+    stopAutoSync: function() {
+        if (this.autoSyncInterval) {
+            clearInterval(this.autoSyncInterval);
+            this.autoSyncInterval = null;
+            this.log('INFO', 'Auto Sync stopped');
         }
     },
 
-    setupRealtimeListeners: function() {
-        if (!this.database || !this.currentUser) return;
+    performTwoWaySync: function() {
+        this.log('INFO', 'Auto Sync: Starting 2-way sync');
         
-        const userId = this.currentUser.uid;
-        const dataRef = this.database.ref('users/' + userId + '/data');
-        
-        dataRef.on('value', (snapshot) => {
-            const cloudData = snapshot.val();
-            if (cloudData && cloudData.lastModified) {
-                const localTime = this.lastSyncTime || '1970-01-01';
-                const cloudTime = cloudData.lastModified;
-                
-                if (cloudTime > localTime && cloudData.lastModifiedBy !== this.deviceId) {
-                    this.log('INFO', 'New data from other device detected');
-                    this.mergeCloudData(cloudData, true);
-                }
+        this.uploadData(true, (uploadSuccess) => {
+            if (uploadSuccess) {
+                this.checkAndDownloadIfNeeded();
             }
         });
     },
 
-    firebaseLogin: function(email, password) {
-        if (!this.auth && typeof firebase !== 'undefined' && firebase.auth) {
-            this.auth = firebase.auth();
-        }
-        
-        if (!this.auth) {
-            this.showToast('❌ Firebase belum siap. Cek konfigurasi!');
-            return;
-        }
-        
-        if (!email || !password) {
-            this.showToast('❌ Email dan password wajib diisi!');
-            return;
-        }
-        
-        this.showToast('⏳ Login...');
-        this.auth.signInWithEmailAndPassword(email, password)
-            .then((userCredential) => {
-                this.currentUser = userCredential.user;
-                this.showToast('✅ Login berhasil!');
-                this.render();
-            })
-            .catch((error) => {
-                this.showToast('❌ ' + error.message);
-                console.error('Login error:', error);
-            });
-    },
-
-    firebaseRegister: function(email, password) {
-        if (!this.auth && typeof firebase !== 'undefined' && firebase.auth) {
-            this.auth = firebase.auth();
-        }
-        
-        if (!this.auth) {
-            this.showToast('❌ Firebase belum siap. Cek konfigurasi!');
-            return;
-        }
-        
-        if (!email || !password) {
-            this.showToast('❌ Email dan password wajib diisi!');
-            return;
-        }
-        
-        if (password.length < 6) {
-            this.showToast('❌ Password minimal 6 karakter!');
-            return;
-        }
-        
-        this.showToast('⏳ Mendaftar...');
-        this.auth.createUserWithEmailAndPassword(email, password)
-            .then((userCredential) => {
-                this.currentUser = userCredential.user;
-                this.showToast('✅ Daftar berhasil!');
-                this.uploadDataFirebase(true);
-                this.render();
-            })
-            .catch((error) => {
-                this.showToast('❌ ' + error.message);
-                console.error('Register error:', error);
-            });
-    },
-
-    firebaseLogout: function() {
-        if (!this.auth) return;
-        this.updateDeviceStatus(false);
-        this.auth.signOut().then(() => {
-            this.currentUser = null;
-            this.stopAutoSync();
-            this.showToast('✅ Logout');
-            this.render();
+    checkAndDownloadIfNeeded: function() {
+        this.getCloudTimestamp((cloudTime) => {
+            if (!cloudTime) {
+                this.log('WARN', 'Could not get cloud timestamp');
+                return;
+            }
+            
+            if (cloudTime > this.lastSyncTime) {
+                this.log('INFO', 'Cloud has newer data, auto-downloading...');
+                this.showToast('📥 Data cloud lebih baru, mengunduh...');
+                this.downloadData(true);
+            }
         });
     },
 
-    uploadDataFirebase: function(silent = false, callback) {
-        if (!this.currentUser && this.auth) {
-            this.currentUser = this.auth.currentUser;
-        }
+    getCloudTimestamp: function(callback) {
+        const cb = 'ts_check_' + Date.now();
         
-        if (!this.database || !this.currentUser) {
-            if (!silent) this.showToast('❌ Belum login');
-            if (callback) callback(false);
-            return;
-        }
-        
-        if (!this.isOnline) {
-            this.pendingSync = true;
-            if (!silent) this.showToast('📴 Offline - pending');
-            if (callback) callback(false);
-            return;
-        }
-        
-        if (!silent) this.showToast('⬆️ Upload...');
-        
-        const data = this.getAllData();
-        const userId = this.currentUser.uid;
-        const payload = {
-            ...data,
-            lastModified: new Date().toISOString(),
-            lastModifiedBy: this.deviceId,
-            lastModifiedByName: this.deviceName,
-            version: '1.0'
+        window[cb] = (result) => {
+            if (result && result.success && result.timestamp) {
+                callback(result.timestamp);
+            } else {
+                callback(null);
+            }
+            delete window[cb];
         };
         
-        this.database.ref('users/' + userId + '/data').set(payload)
-            .then(() => {
-                this.lastSyncTime = new Date().toISOString();
-                localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-                this.pendingSync = false;
-                this.updateSyncStatusUI();
-                if (!silent) this.showToast('✅ Upload OK!');
-                this.render();
-                if (callback) callback(true);
-            })
-            .catch((error) => {
-                if (!silent) this.showToast('❌ Upload gagal: ' + error.message);
-                if (callback) callback(false);
-            });
+        const script = document.createElement('script');
+        script.onerror = () => {
+            callback(null);
+            delete window[cb];
+        };
+        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb + '&_t=' + Date.now();
+        document.head.appendChild(script);
+        
+        setTimeout(() => {
+            if (window[cb]) {
+                callback(null);
+                delete window[cb];
+            }
+        }, 10000);
     },
 
-    downloadDataFirebase: function(silent = false) {
-        if (!this.currentUser && this.auth) {
-            this.currentUser = this.auth.currentUser;
-        }
-        
-        if (!this.database || !this.currentUser) {
-            if (!silent) this.showToast('❌ Belum login');
-            return;
-        }
-        
-        if (!silent && !confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) return;
-        
-        if (!silent) this.showToast('⬇️ Download...');
-        
-        const userId = this.currentUser.uid;
-        this.database.ref('users/' + userId + '/data').once('value')
-            .then((snapshot) => {
-                const cloudData = snapshot.val();
-                if (cloudData) {
-                    this.mergeCloudData(cloudData, silent);
-                    if (!silent) setTimeout(() => location.reload(), 2000);
-                } else {
-                    if (!silent) this.showToast('ℹ️ Belum ada data di cloud');
-                }
-            })
-            .catch((error) => {
-                if (!silent) this.showToast('❌ Download gagal: ' + error.message);
-            });
-    },
+    // ==================== UPLOAD / DOWNLOAD ====================
 
-    verifyUploadFirebase: function() {
-        if (!this.database || !this.currentUser) {
-            this.showToast('❌ Belum login ke Firebase');
-            return;
-        }
+    uploadData: function(silent, callback) {
+        this.log('INFO', 'Upload started');
         
-        this.showToast('🔍 Mengecek data di Firebase...');
-        
-        const userId = this.currentUser.uid;
-        this.database.ref('users/' + userId + '/data').once('value')
-            .then((snapshot) => {
-                const data = snapshot.val();
-                
-                if (!data) {
-                    this.showToast('ℹ️ Belum ada data di Firebase');
-                    return;
-                }
-                
-                const stats = {
-                    products: data.products ? data.products.length : 0,
-                    transactions: data.transactions ? data.transactions.length : 0,
-                    categories: data.categories ? data.categories.length : 0,
-                    debts: data.debts ? data.debts.length : 0,
-                    lastModified: data.lastModified ? new Date(data.lastModified).toLocaleString('id-ID') : '-',
-                    device: data.lastModifiedByName || data.lastModifiedBy || '-'
-                };
-                
-                this.showVerifyModal(stats, data);
-            })
-            .catch((error) => {
-                this.showToast('❌ Gagal membaca: ' + error.message);
-            });
-    },
-
-    showVerifyModal: function(stats, fullData) {
-        const modalHTML = `
-            <div class="modal active" id="verifyModal" style="display: flex; z-index: 5000; align-items: flex-start; padding-top: 80px;">
-                <div class="modal-content" style="max-width: 500px; width: 90%; max-height: 85vh; overflow-y: auto;">
-                    <div class="modal-header" style="padding: 15px 20px; border-bottom: 1px solid #eee;">
-                        <span class="modal-title" style="font-size: 16px; font-weight: 600;">✅ Data di Firebase</span>
-                        <button onclick="document.getElementById('verifyModal').remove()" style="background: none; border: none; font-size: 20px; cursor: pointer;">×</button>
-                    </div>
-                    
-                    <div style="padding: 20px;">
-                        <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                            <div style="font-size: 13px; color: #2e7d32; font-weight: 600; margin-bottom: 10px;">
-                                📊 Statistik Data Cloud
-                            </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
-                                <div>📦 Produk: <b>${stats.products}</b></div>
-                                <div>📝 Transaksi: <b>${stats.transactions}</b></div>
-                                <div>📁 Kategori: <b>${stats.categories}</b></div>
-                                <div>💳 Hutang: <b>${stats.debts}</b></div>
-                            </div>
-                        </div>
-                        
-                        <div style="background: #f5f5f5; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 12px; color: #666;">
-                            <div style="margin-bottom: 5px;"><b>🕐 Terakhir Update:</b></div>
-                            <div>${stats.lastModified}</div>
-                            <div style="margin-top: 5px; color: #999;">Device: ${stats.device}</div>
-                        </div>
-                        
-                        <details style="margin-bottom: 15px;">
-                            <summary style="cursor: pointer; font-size: 13px; color: #667eea; font-weight: 600;">
-                                🔍 Lihat Detail Produk & Transaksi
-                            </summary>
-                            <div style="margin-top: 10px;">
-                                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📦 Produk (${stats.products}):</div>
-                                <div style="max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 6px; font-size: 11px; margin-bottom: 15px;">
-                                    ${fullData.products ? fullData.products.map(p => `• ${p.name} - Rp ${p.price}`).join('<br>') : 'Tidak ada produk'}
-                                </div>
-                                
-                                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Transaksi Terakhir (${Math.min(stats.transactions, 5)} dari ${stats.transactions}):</div>
-                                <div style="max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 6px; font-size: 11px;">
-                                    ${fullData.transactions ? fullData.transactions.slice(-5).map(t => `• ${new Date(t.date).toLocaleDateString('id-ID')} - Rp ${t.total}`).join('<br>') : 'Tidak ada transaksi'}
-                                </div>
-                            </div>
-                        </details>
-                        
-                        <details style="margin-bottom: 15px;">
-                            <summary style="cursor: pointer; font-size: 13px; color: #999;">
-                                📝 Lihat JSON Lengkap (Debug)
-                            </summary>
-                            <pre style="background: #f4f4f4; padding: 10px; border-radius: 8px; font-size: 10px; overflow-x: auto; margin-top: 10px; max-height: 200px; overflow-y: auto;">${JSON.stringify(fullData, null, 2)}</pre>
-                        </details>
-                        
-                        <button onclick="backupModule.downloadDataFirebase()" class="btn-primary" style="width: 100%; margin-bottom: 10px; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);">
-                            ⬇️ Download ke Device Ini
-                        </button>
-                        
-                        <button onclick="document.getElementById('verifyModal').remove()" class="btn-secondary" style="width: 100%;">
-                            Tutup
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <style>
-                .btn-secondary { background: #edf2f7; color: #4a5568; border: 1px solid #e2e8f0; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
-                .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
-            </style>
-        `;
-        
-        const existing = document.getElementById('verifyModal');
-        if (existing) existing.remove();
-        
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    checkNewDeviceGAS: function() {
-        const localData = this.getAllData();
-        const hasLocalData = this.hasAnyData(localData);
-        
-        if (!hasLocalData && this.gasUrl) {
-            this.log('INFO', 'New device detected, auto-downloading...');
-            this.showToast('📥 Device baru, mengunduh...');
-            setTimeout(() => this.downloadDataGAS(true), 1000);
-        }
-        
-        if (this.isAutoSyncEnabled && this.gasUrl) {
-            this.startAutoSyncGAS();
-        }
-    },
-
-    uploadDataGAS: function(silent = false, callback) {
         if (!this.gasUrl) {
             if (!silent) this.showToast('❌ URL GAS belum diisi!');
             if (callback) callback(false);
@@ -1021,6 +610,7 @@ const backupModule = {
         }
         
         const data = this.getAllData();
+        
         if (!silent) this.showToast('⬆️ Mengupload...');
         
         const payload = {
@@ -1036,29 +626,24 @@ const backupModule = {
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
         .then(result => {
-            if (result && result.success) {
-                this.lastSyncTime = new Date().toISOString();
-                localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-                this.updateSyncStatusUI();
-                if (!silent) this.showToast('✅ Upload berhasil!');
-                this.render();
-                if (callback) callback(true);
-            } else {
-                if (!silent) this.showToast('❌ Upload gagal');
-                if (callback) callback(false);
-            }
+            this.handleUploadSuccess(result, silent, callback);
         })
         .catch(error => {
-            this.uploadViaJSONP_GAS(payload, silent, callback);
+            this.log('WARN', 'Fetch failed, trying JSONP: ' + error.message);
+            this.uploadViaJSONP(payload, silent, callback);
         });
     },
-
-    uploadViaJSONP_GAS: function(payload, silent, callback) {
+    
+    uploadViaJSONP: function(payload, silent, callback) {
         const jsonStr = JSON.stringify(payload);
+        
         if (jsonStr.length > 8000) {
-            this.uploadViaIframe_GAS(payload, silent, callback);
+            this.uploadViaIframe(payload, silent, callback);
             return;
         }
         
@@ -1066,25 +651,16 @@ const backupModule = {
         const callbackName = 'upload_cb_' + Date.now();
         
         window[callbackName] = (result) => {
-            if (result && result.success) {
-                this.lastSyncTime = new Date().toISOString();
-                localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-                this.updateSyncStatusUI();
-                if (!silent) this.showToast('✅ Upload berhasil!');
-                this.render();
-                if (callback) callback(true);
-            } else {
-                if (!silent) this.showToast('❌ Upload gagal');
-                if (callback) callback(false);
-            }
+            this.handleUploadSuccess(result, silent, callback);
             delete window[callbackName];
         };
         
         const script = document.createElement('script');
         script.onerror = () => {
-            this.uploadViaIframe_GAS(payload, silent, callback);
+            this.uploadViaIframe(payload, silent, callback);
             delete window[callbackName];
         };
+        
         script.src = this.gasUrl + '?callback=' + callbackName + '&data=' + encoded;
         document.head.appendChild(script);
         
@@ -1096,7 +672,7 @@ const backupModule = {
         }, 15000);
     },
 
-    uploadViaIframe_GAS: function(payload, silent, callback) {
+    uploadViaIframe: function(payload, silent, callback) {
         const formId = 'up_form_' + Date.now();
         const iframeId = 'up_ifrm_' + Date.now();
         
@@ -1126,18 +702,10 @@ const backupModule = {
                 const doc = iframe.contentDocument || iframe.contentWindow.document;
                 const text = doc.body.innerText || doc.body.textContent;
                 const result = JSON.parse(text);
-                if (result && result.success) {
-                    this.lastSyncTime = new Date().toISOString();
-                    localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-                    this.updateSyncStatusUI();
-                    if (!silent) this.showToast('✅ Upload selesai');
-                    this.render();
-                    if (callback) callback(true);
-                }
+                this.handleUploadSuccess(result, silent, callback);
             } catch(e) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-                this.updateSyncStatusUI();
                 if (!silent) this.showToast('✅ Upload selesai');
                 this.render();
                 if (callback) callback(true);
@@ -1151,247 +719,329 @@ const backupModule = {
         form.submit();
     },
 
-    downloadDataGAS: function(silent = false) {
-        if (!silent && !confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) return;
+    handleUploadSuccess: function(result, silent, callback) {
+        if (result && result.success) {
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+            
+            const msg = result.counts ? 
+                `✅ Upload OK! P:${result.counts.products} T:${result.counts.transactions}` : 
+                '✅ Upload berhasil!';
+            
+            if (!silent) this.showToast(msg);
+            this.log('INFO', 'Upload success', result.counts);
+            this.render();
+            if (callback) callback(true);
+        } else {
+            this.log('ERROR', 'Upload failed', result);
+            if (!silent) this.showToast('❌ Upload gagal: ' + (result?.message || 'Error'));
+            if (callback) callback(false);
+        }
+    },
+
+    downloadData: function(silent) {
+        if (!silent) {
+            if (!confirm('📥 Download akan mengganti data lokal dengan data dari cloud.\n\nLanjutkan?')) return;
+        }
+        
         if (!this.gasUrl) {
             if (!silent) this.showToast('❌ URL GAS belum diisi!');
             return;
         }
         
-        if (!silent) this.showToast('⬇️ Mengunduh...');
+        if (!silent) this.showToast('⬇️ Mengunduh data...');
+        this.log('INFO', 'Download started');
         
-        fetch(this.gasUrl + '?action=restore&_t=' + Date.now())
-        .then(response => response.json())
+        fetch(this.gasUrl + '?action=restore&_t=' + Date.now(), {
+            method: 'GET',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
         .then(result => {
-            this.handleDownloadResultGAS(result, silent);
+            this.handleDownloadResult(result, silent);
         })
         .catch(error => {
-            this.downloadViaJSONP_GAS(silent);
+            this.log('WARN', 'Fetch download failed: ' + error.message);
+            this.downloadViaJSONP(silent);
         });
     },
-
-    downloadViaJSONP_GAS: function(silent) {
+    
+    downloadViaJSONP: function(silent) {
         const cb = 'dl_cb_' + Date.now();
-        window[cb] = (result) => {
-            this.handleDownloadResultGAS(result, silent);
+        
+        const cleanup = () => {
             delete window[cb];
+        };
+        
+        window[cb] = (result) => {
+            this.handleDownloadResult(result, silent);
+            cleanup();
         };
         
         const script = document.createElement('script');
         script.onerror = () => {
-            if (!silent) this.showToast('❌ Gagal terhubung');
-            delete window[cb];
+            if (!silent) this.showToast('❌ Gagal terhubung ke cloud');
+            cleanup();
         };
+        
         script.src = this.gasUrl + '?action=restore&callback=' + cb + '&_t=' + Date.now();
         document.head.appendChild(script);
         
         setTimeout(() => {
-            if (window[cb]) delete window[cb];
+            if (window[cb]) {
+                if (!silent) this.showToast('❌ Timeout');
+                cleanup();
+            }
         }, 20000);
     },
-
-    handleDownloadResultGAS: function(result, silent) {
+    
+    handleDownloadResult: function(result, silent) {
         if (result && result.success && result.data) {
             this.saveAllData(result.data);
+            
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-            this.updateSyncStatusUI();
+            
+            this.log('INFO', 'Download success');
             
             if (!silent) {
-                this.showToast(`✅ Download berhasil!`);
+                this.showToast(`✅ Download berhasil! P:${result.data.products?.length || 0} T:${result.data.transactions?.length || 0}`);
                 setTimeout(() => location.reload(), 2000);
+            } else {
+                this.showToast('✅ Auto-download selesai');
+                this.render();
+            }
+            
+            if (typeof app !== 'undefined' && app.updateHeader) {
+                app.updateHeader();
             }
         } else {
-            if (!silent) this.showToast('❌ Download gagal');
+            this.log('ERROR', 'Download failed', result);
+            if (!silent) this.showToast('❌ Download gagal: ' + (result?.message || 'Error'));
         }
     },
 
-    startAutoSyncGAS: function() {
-        this.stopAutoSync();
-        this.performTwoWaySyncGAS();
-        this.autoSyncInterval = setInterval(() => {
-            this.performTwoWaySyncGAS();
-        }, 180000);
-        this.log('INFO', 'Auto Sync GAS started');
-    },
-
-    startAutoSyncFirebase: function() {
-        this.stopAutoSync();
-        this.performTwoWaySyncFirebase();
-        this.autoSyncInterval = setInterval(() => {
-            this.performTwoWaySyncFirebase();
-        }, 180000);
-        this.log('INFO', 'Auto Sync Firebase started');
-    },
-
-    stopAutoSync: function() {
-        if (this.autoSyncInterval) {
-            clearInterval(this.autoSyncInterval);
-            this.autoSyncInterval = null;
-            this.log('INFO', 'Auto Sync stopped');
+    saveAllData: function(data) {
+        const keys = this.STORAGE_KEYS;
+        
+        if (data.products) localStorage.setItem(keys.products, JSON.stringify(data.products));
+        if (data.categories) localStorage.setItem(keys.categories, JSON.stringify(data.categories));
+        if (data.transactions) localStorage.setItem(keys.transactions, JSON.stringify(data.transactions));
+        if (data.cashFlow || data.cashTransactions) {
+            localStorage.setItem(keys.cashFlow, JSON.stringify(data.cashFlow || data.cashTransactions || []));
+        }
+        if (data.debts) localStorage.setItem(keys.debts, JSON.stringify(data.debts));
+        if (data.settings) localStorage.setItem(keys.settings, JSON.stringify(data.settings));
+        if (data.kasir) localStorage.setItem(keys.kasir, JSON.stringify(data.kasir));
+        if (data.receipt) localStorage.setItem(keys.receipt, JSON.stringify(data.receipt));
+        
+        if (typeof dataManager !== 'undefined' && dataManager) {
+            dataManager.data = this.getAllData();
+            if (dataManager.save) dataManager.save();
         }
     },
 
-    performTwoWaySyncGAS: function() {
-        this.uploadDataGAS(true, (success) => {
-            if (success) {
-                this.getCloudTimestampGAS((cloudTime) => {
-                    if (cloudTime && cloudTime > this.lastSyncTime) {
-                        this.downloadDataGAS(true);
-                    }
-                });
-            }
+    // ==================== RESET ====================
+
+    resetLocal: function() {
+        if (!confirm('⚠️ HAPUS SEMUA DATA LOKAL?\n\nData di cloud TIDAK terhapus.\n\nLanjutkan?')) return;
+        if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') {
+            this.showToast('Dibatalkan');
+            return;
+        }
+        
+        this.log('INFO', 'Resetting local data');
+        
+        for (let key in this.STORAGE_KEYS) {
+            localStorage.removeItem(this.STORAGE_KEYS[key]);
+        }
+        
+        if (typeof dataManager !== 'undefined' && dataManager) {
+            dataManager.data = this.getAllData();
+            if (dataManager.save) dataManager.save();
+        }
+        
+        this.showToast('✅ Data lokal dihapus!');
+        setTimeout(() => location.reload(), 1500);
+    },
+
+    resetCloud: function() {
+        if (!this.gasUrl) {
+            this.showToast('❌ URL GAS belum diisi!');
+            return;
+        }
+        
+        if (!confirm('⚠️ YAKIN INGIN RESET CLOUD?\n\nSemua data di Google Sheets akan dihapus!\n\nIni tidak bisa dibatalkan.\n\nLanjutkan?')) return;
+        
+        if (prompt('Ketik RESET untuk konfirmasi:') !== 'RESET') {
+            this.showToast('Dibatalkan');
+            return;
+        }
+        
+        this.showToast('🗑️ Mereset cloud...');
+        this.log('INFO', 'Reset cloud started');
+        
+        const payload = {
+            action: 'reset',
+            timestamp: new Date().toISOString(),
+            device: navigator.userAgent
+        };
+        
+        fetch(this.gasUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(result => {
+            this.handleResetCloudResult(result);
+        })
+        .catch(error => {
+            this.log('ERROR', 'Reset cloud failed: ' + error.message);
+            this.resetCloudViaJSONP();
         });
     },
 
-    performTwoWaySyncFirebase: function() {
-        this.uploadDataFirebase(true, (success) => {
-            if (success) {
-                setTimeout(() => this.downloadDataFirebase(true), 2000);
-            }
-        });
-    },
-
-    getCloudTimestampGAS: function(callback) {
-        const cb = 'ts_' + Date.now();
+    resetCloudViaJSONP: function() {
+        const payload = { action: 'reset', timestamp: new Date().toISOString() };
+        const encoded = encodeURIComponent(JSON.stringify(payload));
+        
+        const cb = 'reset_cb_' + Date.now();
+        
         window[cb] = (result) => {
-            if (result && result.success && result.timestamp) {
-                callback(result.timestamp);
+            this.handleResetCloudResult(result);
+            delete window[cb];
+        };
+        
+        const script = document.createElement('script');
+        script.onerror = () => {
+            this.showToast('❌ Gagal reset cloud');
+            delete window[cb];
+        };
+        
+        script.src = this.gasUrl + '?callback=' + cb + '&data=' + encoded;
+        document.head.appendChild(script);
+        
+        setTimeout(() => {
+            if (window[cb]) {
+                this.showToast('❌ Timeout');
+                delete window[cb];
+            }
+        }, 15000);
+    },
+
+    handleResetCloudResult: function(result) {
+        if (result && result.success) {
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
+            this.showToast('✅ Cloud berhasil direset!');
+            this.log('INFO', 'Cloud reset success');
+            this.render();
+        } else {
+            this.log('ERROR', 'Cloud reset failed', result);
+            this.showToast('❌ Gagal reset: ' + (result?.message || 'Error'));
+        }
+    },
+
+    resetBoth: function() {
+        if (!confirm('💀 ANDA YAKIN?\n\nIni akan menghapus:\n1. Semua data di device ini\n2. Semua data di Google Sheets\n\nTIDAK BISA DIBATALKAN!\n\nLanjutkan?')) return;
+        
+        if (prompt('Ketik HAPUS SEMUA untuk konfirmasi:') !== 'HAPUS SEMUA') {
+            this.showToast('Dibatalkan');
+            return;
+        }
+        
+        this.resetCloud();
+        
+        setTimeout(() => {
+            this.resetLocal();
+        }, 3000);
+    },
+
+    // ==================== UTILITIES ====================
+
+    getDebugLogs: function() {
+        return JSON.parse(localStorage.getItem(this.LOGS_KEY) || '[]');
+    },
+
+    clearDebugLogs: function() {
+        localStorage.removeItem(this.LOGS_KEY);
+        this.log('INFO', 'Logs cleared');
+    },
+
+    inspectData: function() {
+        const data = this.getAllData();
+        let info = 'DATA LOKAL:\n\n';
+        
+        info += `• Products: ${data.products?.length || 0}\n`;
+        info += `• Categories: ${data.categories?.length || 0}\n`;
+        info += `• Transactions: ${data.transactions?.length || 0}\n`;
+        info += `• Cash Flow: ${data.cashFlow?.length || 0}\n`;
+        info += `• Debts: ${data.debts?.length || 0}\n`;
+        info += `• Kasir Open: ${data.kasir?.isOpen ? 'Ya' : 'Tidak'}\n\n`;
+        
+        let totalSize = 0;
+        for (let key in this.STORAGE_KEYS) {
+            const stored = localStorage.getItem(this.STORAGE_KEYS[key]);
+            if (stored) totalSize += stored.length;
+        }
+        
+        info += `Total Size: ${(totalSize / 1024).toFixed(2)} KB\n`;
+        info += `GAS URL: ${this.gasUrl ? '✅ Tersimpan' : '❌ Belum diisi'}\n`;
+        info += `Last Sync: ${this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah'}`;
+        
+        alert(info);
+    },
+
+    testConnection: function() {
+        this.checkCloudData();
+    },
+
+    checkCloudData: function() {
+        this.showToast('🔍 Mengecek data di cloud...');
+        
+        const cb = 'check_' + Date.now();
+        
+        window[cb] = (result) => {
+            if (result && result.success) {
+                let info = '📊 Data di Cloud:\n\n';
+                if (result.counts) {
+                    info += `• Produk: ${result.counts.products}\n`;
+                    info += `• Kategori: ${result.counts.categories}\n`;
+                    info += `• Transaksi: ${result.counts.transactions}\n`;
+                    info += `• Arus Kas: ${result.counts.cashFlow}\n`;
+                    info += `• Hutang: ${result.counts.debts}\n`;
+                }
+                info += `\n• Timestamp: ${result.timestamp || 'N/A'}`;
+                info += `\n• Sheets: ${result.sheets ? result.sheets.join(', ') : 'N/A'}`;
+                alert(info);
             } else {
-                callback(null);
+                alert('❌ Gagal: ' + (result?.message || 'Error tidak diketahui'));
             }
             delete window[cb];
         };
         
         const script = document.createElement('script');
         script.onerror = () => {
-            callback(null);
+            this.log('ERROR', 'Check cloud connection failed');
+            alert('❌ Gagal terhubung ke GAS. Pastikan:\n1. URL benar\n2. GAS sudah di-deploy\n3. Access: Anyone');
             delete window[cb];
         };
-        script.src = this.gasUrl + '?action=getTimestamp&callback=' + cb + '&_t=' + Date.now();
+        
+        script.src = this.gasUrl + '?action=ping&callback=' + cb + '&_t=' + Date.now();
         document.head.appendChild(script);
         
         setTimeout(() => {
-            if (window[cb]) {
-                callback(null);
-                delete window[cb];
-            }
+            if (window[cb]) delete window[cb];
         }, 10000);
-    },
-
-    toggleAutoSync: function() {
-        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
-        localStorage.setItem(this.AUTO_SYNC_KEY, this.isAutoSyncEnabled);
-        
-        if (this.isAutoSyncEnabled) {
-            if (this.currentProvider === 'firebase' && this.currentUser) {
-                this.startAutoSyncFirebase();
-            } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-                this.startAutoSyncGAS();
-            }
-            this.showToast('🟢 Auto sync aktif');
-        } else {
-            this.stopAutoSync();
-            this.showToast('⚪ Auto sync mati');
-        }
-        this.render();
-    },
-
-    setupConnectivityListeners: function() {
-        window.addEventListener('online', () => {
-            this.isOnline = true;
-            this.updateSyncStatusUI();
-            this.showToast('🌐 Online');
-            if (this.pendingSync) {
-                if (this.currentProvider === 'firebase' && this.currentUser) {
-                    this.uploadDataFirebase(true);
-                } else if (this.currentProvider === 'googlesheet') {
-                    this.uploadDataGAS(true);
-                }
-            }
-        });
-        
-        window.addEventListener('offline', () => {
-            this.isOnline = false;
-            this.updateSyncStatusUI();
-            this.showToast('📴 Offline');
-        });
-    },
-
-    updateDeviceStatus: function(isOnline) {
-        if (!this.database || !this.currentUser) return;
-        const userId = this.currentUser.uid;
-        this.database.ref('users/' + userId + '/devices/' + this.deviceId).set({
-            name: this.deviceName,
-            isOnline: isOnline,
-            lastSeen: new Date().toISOString()
-        });
-    },
-
-    getConnectedDevices: function(callback) {
-        if (!this.database || !this.currentUser) {
-            callback([]);
-            return;
-        }
-        const userId = this.currentUser.uid;
-        this.database.ref('users/' + userId + '/devices').once('value', (snapshot) => {
-            const devices = [];
-            snapshot.forEach((child) => {
-                devices.push({ id: child.key, ...child.val() });
-            });
-            callback(devices);
-        });
-    },
-
-    mergeCloudData: function(cloudData, silent = false) {
-        const { lastModified, lastModifiedBy, lastModifiedByName, version, ...cleanData } = cloudData;
-        this.saveAllData(cleanData);
-        this.lastSyncTime = new Date().toISOString();
-        localStorage.setItem(this.LAST_SYNC_KEY, this.lastSyncTime);
-        this.updateSyncStatusUI();
-        
-        if (!silent) {
-            const deviceInfo = lastModifiedByName ? ' (dari ' + lastModifiedByName + ')' : '';
-            this.showToast('✅ Data diperbarui' + deviceInfo);
-        }
-        this.render();
-    },
-
-    saveUserToLocal: function(user) {
-        localStorage.setItem(this.USER_KEY, JSON.stringify({
-            uid: user.uid,
-            email: user.email
-        }));
-    },
-
-    updateSyncStatusUI: function() {
-        const syncStatus = document.getElementById('syncStatus');
-        const syncText = document.getElementById('syncText');
-        
-        if (!syncStatus || !syncText) return;
-        
-        if (!this.isOnline) {
-            syncText.textContent = 'Offline';
-            syncStatus.style.opacity = '0.5';
-        } else if (this.isAutoSyncEnabled) {
-            syncText.textContent = 'Auto Sync';
-            syncStatus.style.color = '#48bb78';
-        } else if (this.lastSyncTime) {
-            const time = new Date(this.lastSyncTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-            syncText.textContent = 'Sync ' + time;
-        } else {
-            syncText.textContent = 'Ready';
-        }
-    },
-
-    manualSync: function() {
-        if (this.currentProvider === 'firebase' && this.currentUser) {
-            this.uploadDataFirebase();
-        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-            this.uploadDataGAS();
-        } else {
-            this.showToast('⚠️ Pilih provider dan pastikan sudah login');
-        }
     },
 
     downloadJSON: function() {
@@ -1417,468 +1067,24 @@ const backupModule = {
         }
         
         const reader = new FileReader();
+        
         reader.onload = (e) => {
             try {
                 const d = JSON.parse(e.target.result);
                 this.saveAllData(d);
                 this.showToast('✅ Import berhasil!');
-                
-                if (this.currentProvider === 'firebase' && (this.currentUser || (this.auth && this.auth.currentUser))) {
-                    this.uploadDataFirebase(true);
-                } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-                    this.uploadDataGAS(true);
-                }
-                
                 this.render();
+                
+                if (typeof app !== 'undefined' && app.updateHeader) {
+                    app.updateHeader();
+                }
             } catch(err) {
                 this.showToast('❌ Error: ' + err.message);
             }
         };
+        
         reader.readAsText(file);
         input.value = '';
-    },
-
-    resetLocal: function() {
-        if (!confirm('⚠️ HAPUS SEMUA DATA LOKAL?\n\nLanjutkan?')) return;
-        if (prompt('Ketik HAPUS:') !== 'HAPUS') {
-            this.showToast('Dibatalkan');
-            return;
-        }
-        
-        localStorage.removeItem(this.STORAGE_KEY);
-        
-        const defaults = this.getDefaultData();
-        this.saveAllData(defaults);
-        this.showToast('✅ Data lokal dihapus!');
-        setTimeout(() => location.reload(), 1500);
-    },
-
-    resetCloud: function() {
-        if (this.currentProvider === 'firebase') {
-            if (!this.currentUser && !(this.auth && this.auth.currentUser)) {
-                this.showToast('❌ Belum login');
-                return;
-            }
-            if (!confirm('⚠️ Reset Firebase?')) return;
-            if (prompt('Ketik RESET:') !== 'RESET') return;
-            
-            const userId = (this.currentUser || this.auth.currentUser).uid;
-            this.database.ref('users/' + userId + '/data').remove()
-                .then(() => {
-                    this.showToast('✅ Firebase direset!');
-                    this.render();
-                });
-                
-        } else if (this.currentProvider === 'googlesheet') {
-            if (!this.gasUrl) {
-                this.showToast('❌ URL GAS belum diisi');
-                return;
-            }
-            if (!confirm('⚠️ Reset Google Sheets?')) return;
-            if (prompt('Ketik RESET:') !== 'RESET') return;
-            
-            this.showToast('🗑️ Mereset GAS...');
-        }
-    },
-
-    resetBoth: function() {
-        if (!confirm('💀 HAPUS SEMUA DATA?\n\nLokal + Cloud\n\nTIDAK BISA DIBATALKAN!')) return;
-        if (prompt('Ketik HAPUS SEMUA:') !== 'HAPUS SEMUA') return;
-        
-        this.resetCloud();
-        setTimeout(() => this.resetLocal(), 2000);
-    },
-
-    render: function() {
-        const container = document.getElementById('mainContent');
-        if (!container) return;
-
-        const data = this.getAllData();
-        const stats = {
-            products: data.products ? data.products.length : 0,
-            categories: data.categories ? data.categories.length : 0,
-            transactions: data.transactions ? data.transactions.length : 0,
-            cashFlow: data.cashFlow ? data.cashFlow.length : 0,
-            debts: data.debts ? data.debts.length : 0,
-            currentCash: data.settings?.currentCash || 0,
-            storeName: data.settings?.storeName || 'HIFZI CELL'
-        };
-
-        let isLoggedIn = !!this.currentUser;
-        if (!isLoggedIn && this.auth) {
-            isLoggedIn = !!this.auth.currentUser;
-            if (isLoggedIn) {
-                this.currentUser = this.auth.currentUser;
-            }
-        }
-
-        const isFirebaseConfigured = this.firebaseConfig.apiKey && this.firebaseConfig.databaseURL;
-        const connectionStatus = this.isOnline ? '🟢' : '🔴';
-
-        container.innerHTML = `
-            <div class="content-section active" id="backupSection" style="padding: 16px; max-width: 1200px; margin: 0 auto;">
-                
-                <div class="modern-card status-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <div style="font-size: 14px; opacity: 0.9;">Provider Aktif</div>
-                            <div style="font-size: 20px; font-weight: 600;">
-                                ${this.getProviderDisplayName()}
-                            </div>
-                            <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">
-                                ${connectionStatus} ${this.isOnline ? 'Online' : 'Offline'} 
-                                ${this.isAutoSyncEnabled ? '• Auto Sync ON' : ''}
-                            </div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 12px; opacity: 0.8;">Last Sync</div>
-                            <div style="font-size: 14px; font-weight: 500;">
-                                ${this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleTimeString('id-ID') : 'Belum'}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="modern-card" style="margin-bottom: 20px;">
-                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
-                        ☁️ Pilih Metode Backup
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                        ${this.renderProviderCard('local', '💾', 'Local File', 'Simpan di device')}
-                        ${this.renderProviderCard('googlesheet', '📊', 'Google Sheets', 'Via Google Apps Script')}
-                        ${this.renderProviderCard('firebase', '🔥', 'Firebase', 'Real-time sync')}
-                    </div>
-                </div>
-
-                ${this.currentProvider === 'firebase' ? this.renderFirebaseSection(isLoggedIn, isFirebaseConfigured) : ''}
-                ${this.currentProvider === 'googlesheet' ? this.renderGoogleSheetSection() : ''}
-                ${this.currentProvider === 'local' ? this.renderLocalInfoSection() : ''}
-
-                <div class="modern-card" style="margin-bottom: 20px;">
-                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
-                        📊 Data Lokal: ${stats.storeName}
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
-                        ${this.renderStatCard('📦', 'Produk', stats.products, '#e3f2fd', '#2196F3')}
-                        ${this.renderStatCard('📁', 'Kategori', stats.categories, '#e8f5e9', '#4CAF50')}
-                        ${this.renderStatCard('📝', 'Transaksi', stats.transactions, '#fff3e0', '#FF9800')}
-                        ${this.renderStatCard('💰', 'Arus Kas', stats.cashFlow, '#fce4ec', '#E91E63')}
-                        ${this.renderStatCard('💳', 'Hutang', stats.debts, '#f3e5f5', '#9C27B0')}
-                        ${this.renderStatCard('🏦', 'Kas', this.formatRupiah(stats.currentCash), '#e0f2f1', '#009688')}
-                    </div>
-                </div>
-
-                <div class="modern-card" style="margin-bottom: 20px;">
-                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
-                        💾 Backup Local (JSON)
-                    </div>
-                    <button onclick="backupModule.downloadJSON()" class="btn-primary" style="width: 100%; margin-bottom: 12px;">
-                        ⬇️ Download JSON
-                    </button>
-                    <label style="display: block; padding: 16px; border: 2px dashed #cbd5e0; border-radius: 8px; text-align: center; cursor: pointer;" 
-                           onmouseover="this.style.borderColor='#667eea';this.style.background='#f7fafc'" 
-                           onmouseout="this.style.borderColor='#cbd5e0';this.style.background='transparent'">
-                        <input type="file" accept=".json" onchange="backupModule.importJSON(this)" style="display: none;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">📤</div>
-                        <div style="font-size: 14px; color: #4a5568; font-weight: 500;">Import JSON</div>
-                    </label>
-                </div>
-
-                <div class="modern-card" style="border: 1px solid #feb2b2; background: #fff5f5;">
-                    <div style="font-size: 16px; font-weight: 600; color: #c53030; margin-bottom: 16px;">
-                        🗑️ Zona Bahaya
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 12px;">
-                        <button onclick="backupModule.resetLocal()" class="btn-danger" style="background: #e53e3e;">
-                            🗑️ Hapus Data Lokal
-                        </button>
-                        ${this.currentProvider !== 'local' ? `
-                            <button onclick="backupModule.resetCloud()" class="btn-danger" style="background: #805ad5;">
-                                ☁️ Reset Cloud (${this.currentProvider === 'firebase' ? 'Firebase' : 'GAS'})
-                            </button>
-                            <button onclick="backupModule.resetBoth()" class="btn-danger" style="background: #1a202c;">
-                                💀 Reset Total (Lokal + Cloud)
-                            </button>
-                        ` : ''}
-                    </div>
-                </div>
-
-            </div>
-
-            <style>
-                .modern-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
-                .provider-card { padding: 16px; border: 2px solid #e2e8f0; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s; background: white; position: relative; }
-                .provider-card:hover { border-color: #667eea; transform: translateY(-2px); }
-                .provider-card.active { border-color: #48bb78; background: #f0fff4; }
-                .stat-card { padding: 16px; border-radius: 10px; text-align: center; }
-                .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: opacity 0.2s; }
-                .btn-primary:hover { opacity: 0.9; }
-                .btn-secondary { background: #edf2f7; color: #4a5568; border: 1px solid #e2e8f0; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-                .btn-secondary:hover { background: #e2e8f0; }
-                .btn-danger { color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: opacity 0.2s; }
-                .btn-danger:hover { opacity: 0.9; }
-                .form-input { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; margin-bottom: 12px; box-sizing: border-box; }
-                .form-input:focus { outline: none; border-color: #667eea; }
-                .toggle-switch { position: relative; width: 48px; height: 24px; background: #cbd5e0; border-radius: 12px; cursor: pointer; transition: background 0.3s; }
-                .toggle-switch.active { background: #48bb78; }
-                .toggle-switch::after { content: ''; position: absolute; width: 20px; height: 20px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: transform 0.3s; }
-                .toggle-switch.active::after { transform: translateX(24px); }
-                .config-section { background: #f7fafc; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-                .config-label { font-size: 12px; color: #718096; font-weight: 600; margin-bottom: 4px; text-transform: uppercase; }
-            </style>
-        `;
-        
-        if (this.currentProvider === 'firebase' && isLoggedIn) {
-            this.loadAndRenderDevices();
-        }
-    },
-
-    getProviderDisplayName: function() {
-        switch(this.currentProvider) {
-            case 'local': return '💾 Local File';
-            case 'googlesheet': return '📊 Google Sheets';
-            case 'firebase': return '🔥 Firebase Real-time';
-            default: return '💾 Local File';
-        }
-    },
-
-    renderProviderCard: function(provider, icon, title, desc) {
-        const isActive = this.currentProvider === provider;
-        const activeClass = isActive ? 'active' : '';
-        const checkmark = isActive ? '<div style="position: absolute; top: 8px; right: 8px; background: #48bb78; color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px;">✓</div>' : '';
-        
-        return `
-            <div onclick="backupModule.setProvider('${provider}')" class="provider-card ${activeClass}">
-                ${checkmark}
-                <div style="font-size: 32px; margin-bottom: 8px;">${icon}</div>
-                <div style="font-weight: 600; color: #2d3748; margin-bottom: 4px;">${title}</div>
-                <div style="font-size: 11px; color: #718096;">${desc}</div>
-            </div>
-        `;
-    },
-
-    renderFirebaseSection: function(isLoggedIn, isConfigured) {
-        if (!isConfigured) {
-            return `
-                <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #ff6b35;">
-                    <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
-                        🔥 Konfigurasi Firebase
-                    </div>
-                    <div style="font-size: 13px; color: #718096; margin-bottom: 16px;">
-                        Masukkan konfigurasi dari Firebase Console (Project Settings)
-                    </div>
-                    
-                    <div class="config-section">
-                        <div class="config-label">API Key *</div>
-                        <input type="text" id="fb_apiKey" class="form-input" placeholder="AIzaSy..." value="${this.firebaseConfig.apiKey}">
-                        
-                        <div class="config-label">Auth Domain *</div>
-                        <input type="text" id="fb_authDomain" class="form-input" placeholder="project-id.firebaseapp.com" value="${this.firebaseConfig.authDomain}">
-                        
-                        <div class="config-label">Database URL *</div>
-                        <input type="text" id="fb_databaseURL" class="form-input" placeholder="https://project-id-default-rtdb.firebaseio.com" value="${this.firebaseConfig.databaseURL}">
-                        
-                        <div class="config-label">Project ID</div>
-                        <input type="text" id="fb_projectId" class="form-input" placeholder="project-id" value="${this.firebaseConfig.projectId}">
-                        
-                        <div class="config-label">Storage Bucket</div>
-                        <input type="text" id="fb_storageBucket" class="form-input" placeholder="project-id.appspot.com" value="${this.firebaseConfig.storageBucket}">
-                        
-                        <div class="config-label">Messaging Sender ID</div>
-                        <input type="text" id="fb_messagingSenderId" class="form-input" placeholder="123456789" value="${this.firebaseConfig.messagingSenderId}">
-                        
-                        <div class="config-label">App ID</div>
-                        <input type="text" id="fb_appId" class="form-input" placeholder="1:123456789:web:abcdef" value="${this.firebaseConfig.appId}">
-                    </div>
-                    
-                    <button onclick="backupModule.saveFirebaseConfig()" class="btn-primary" style="width: 100%;">
-                        💾 Simpan Konfigurasi
-                    </button>
-                </div>
-            `;
-        }
-        
-        if (!isLoggedIn) {
-            return `
-                <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #ff6b35;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <div>
-                            <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔥 Firebase Cloud</div>
-                            <div style="font-size: 13px; color: #718096;">${this.firebaseConfig.projectId || 'Project'}</div>
-                        </div>
-                        <button onclick="backupModule.editFirebaseConfig()" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
-                            ⚙️ Edit Config
-                        </button>
-                    </div>
-                    
-                    <div style="font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 12px;">
-                        🔐 Login
-                    </div>
-                    <input type="email" id="authEmail" placeholder="Email" class="form-input">
-                    <input type="password" id="authPassword" placeholder="Password" class="form-input">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <button onclick="backupModule.firebaseLogin(document.getElementById('authEmail').value, document.getElementById('authPassword').value)" 
-                                class="btn-primary">Login</button>
-                        <button onclick="backupModule.firebaseRegister(document.getElementById('authEmail').value, document.getElementById('authPassword').value)" 
-                                class="btn-secondary">Daftar</button>
-                    </div>
-                </div>
-            `;
-        }
-        
-        return `
-            <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #ff6b35;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <div>
-                        <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔥 Firebase Cloud</div>
-                        <div style="font-size: 13px; color: #276749;">✅ ${this.currentUser ? this.currentUser.email : (this.auth && this.auth.currentUser ? this.auth.currentUser.email : 'User')}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="backupModule.editFirebaseConfig()" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
-                            ⚙️ Config
-                        </button>
-                        <button onclick="backupModule.firebaseLogout()" class="btn-danger" style="background: #e53e3e; padding: 8px 16px; font-size: 12px;">Logout</button>
-                    </div>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 16px; background: #fffaf0; border-radius: 8px; border: 2px solid #ed8936;">
-                    <div>
-                        <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔄 Auto Sync</div>
-                        <div style="font-size: 12px; color: #718096; margin-top: 4px;">
-                            ${this.isAutoSyncEnabled ? 'Sinkronisasi otomatis aktif setiap 3 menit' : 'Sinkronisasi manual'}
-                        </div>
-                    </div>
-                    <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}" style="flex-shrink: 0;"></div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                    <button onclick="backupModule.uploadDataFirebase()" class="btn-primary" style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">⬆️ Upload</button>
-                    <button onclick="backupModule.downloadDataFirebase()" class="btn-primary" style="background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);">⬇️ Download</button>
-                </div>
-                
-                <div style="margin-bottom: 16px;">
-                    <button onclick="backupModule.verifyUploadFirebase()" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);">
-                        🔍 Cek Data di Firebase
-                    </button>
-                </div>
-                
-                <div id="devicesList" style="font-size: 12px; color: #718096;"></div>
-            </div>
-        `;
-    },
-
-    editFirebaseConfig: function() {
-        this.firebaseApp = null;
-        this.database = null;
-        this.auth = null;
-        this.currentUser = null;
-        this.stopAutoSync();
-        this.render();
-    },
-
-    renderGoogleSheetSection: function() {
-        const hasUrl = this.gasUrl && this.gasUrl.length > 10;
-        
-        return `
-            <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #34a853;">
-                <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
-                    📊 Google Sheets Configuration
-                </div>
-                
-                <div style="margin-bottom: 16px;">
-                    <input type="text" id="gasUrl" value="${this.gasUrl || ''}" 
-                           placeholder="https://script.google.com/macros/s/.../exec" 
-                           class="form-input">
-                </div>
-                
-                <button onclick="backupModule.saveGasUrl()" class="btn-primary" style="width: 100%; margin-bottom: 16px;">
-                    💾 Simpan URL
-                </button>
-                
-                ${hasUrl ? `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 16px; background: #fffaf0; border-radius: 8px; border: 2px solid #ed8936;">
-                        <div>
-                            <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔄 Auto Sync</div>
-                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">
-                                ${this.isAutoSyncEnabled ? 'Sinkronisasi otomatis aktif setiap 3 menit' : 'Sinkronisasi manual'}
-                            </div>
-                        </div>
-                        <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}" style="flex-shrink: 0;"></div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <button onclick="backupModule.uploadDataGAS()" class="btn-primary" style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">⬆️ Upload</button>
-                        <button onclick="backupModule.downloadDataGAS()" class="btn-primary" style="background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);">⬇️ Download</button>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    },
-
-    renderLocalInfoSection: function() {
-        return `
-            <div class="modern-card" style="margin-bottom: 20px; background: #f0fff4; border: 2px solid #48bb78;">
-                <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 8px;">
-                    💾 Mode Local
-                </div>
-                <div style="font-size: 13px; color: #718096;">
-                    Data hanya tersimpan di device ini. Gunakan menu di bawah untuk backup manual ke file JSON.
-                </div>
-            </div>
-        `;
-    },
-
-    renderStatCard: function(icon, label, value, bgColor, textColor) {
-        return `
-            <div class="stat-card" style="background: ${bgColor};">
-                <div style="font-size: 24px; margin-bottom: 4px;">${icon}</div>
-                <div style="font-size: 11px; color: #718096; text-transform: uppercase; margin-bottom: 4px;">${label}</div>
-                <div style="font-size: 20px; font-weight: 700; color: ${textColor};">${value}</div>
-            </div>
-        `;
-    },
-
-    loadAndRenderDevices: function() {
-        this.getConnectedDevices((devices) => {
-            const container = document.getElementById('devicesList');
-            if (!container) return;
-            
-            if (devices.length === 0) {
-                container.innerHTML = '';
-                return;
-            }
-            
-            container.innerHTML = '<div style="font-weight: 600; margin-bottom: 8px;">Device Online:</div>' +
-                devices.map(device => {
-                    const isOnline = device.isOnline;
-                    const isThisDevice = device.id === this.deviceId;
-                    return `<div style="display: flex; align-items: center; padding: 6px; background: ${isThisDevice ? '#f0fff4' : '#f7fafc'}; border-radius: 6px; margin-bottom: 4px;">
-                        <span style="margin-right: 8px;">${isOnline ? '🟢' : '⚪'}</span>
-                        <span style="flex: 1; font-size: 12px;">${device.name || 'Unknown'}${isThisDevice ? ' (Anda)' : ''}</span>
-                    </div>`;
-                }).join('');
-        });
-    },
-
-    saveGasUrl: function() {
-        const input = document.getElementById('gasUrl');
-        if (!input) return;
-        const url = input.value.trim();
-        
-        if (!url || url.length < 20 || !url.includes('script.google.com')) {
-            this.showToast('❌ URL tidak valid!');
-            return;
-        }
-        
-        this.gasUrl = url;
-        localStorage.setItem(this.GAS_URL_KEY, url);
-        this.showToast('✅ URL tersimpan!');
-        this.render();
-    },
-
-    formatRupiah: function(amount) {
-        if (!amount && amount !== 0) return 'Rp 0';
-        return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     },
 
     showToast: function(msg) {
@@ -1888,716 +1094,7 @@ const backupModule = {
             t.classList.add('show'); 
             setTimeout(() => { t.classList.remove('show'); }, 4000); 
         } else {
-            // Fallback jika toast tidak ada
-            const toast = document.createElement('div');
-            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;';
-            toast.textContent = msg;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            alert(msg);
         }
     }
 };
-
-// ============================================
-// 3. ROUTER SYSTEM
-// ============================================
-const router = {
-    currentPage: null,
-    allowedWhenClosed: ['backup', 'users'],
-
-    navigate(page, element) {
-        // PERBAIKAN: Cek apakah app sudah terinisialisasi dan punya data
-        if (typeof app === 'undefined' || !app.data) {
-            console.error('[Router] App not initialized yet');
-            return;
-        }
-
-        const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
-        const currentUser = dataManager.getCurrentUser();
-
-        if (!isKasirOpen && !this.allowedWhenClosed.includes(page)) {
-            this.showKasirClosedModal();
-            return;
-        }
-
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        if (element) element.classList.add('active');
-
-        const cartBar = document.getElementById('cartBar');
-        if (cartBar) cartBar.style.display = 'none';
-        
-        this.currentPage = page;
-
-        switch(page) {
-            case 'pos':
-                if (typeof posModule !== 'undefined') posModule.init();
-                if (cartBar) cartBar.style.display = 'flex';
-                break;
-            case 'products':
-                if (typeof productsModule !== 'undefined') productsModule.init();
-                break;
-            case 'cash':
-                if (typeof cashModule !== 'undefined') cashModule.init();
-                break;
-            case 'reports':
-                if (typeof reportsModule !== 'undefined') reportsModule.init();
-                break;
-            case 'transactions':
-                if (typeof transactionsModule !== 'undefined') transactionsModule.init();
-                break;
-            case 'receipt':
-                if (typeof receiptModule !== 'undefined') receiptModule.init();
-                break;
-            case 'backup':
-                // PERBAIKAN: Cek dulu backupModule ada sebelum init
-                if (typeof backupModule !== 'undefined') {
-                    backupModule.init();
-                } else {
-                    console.error('[Router] backupModule not defined');
-                }
-                break;
-            case 'debt':
-                if (typeof debtModule !== 'undefined') debtModule.init();
-                break;
-            case 'users':
-                if (typeof usersModule !== 'undefined') usersModule.init();
-                break;
-        }
-        window.scrollTo(0, 0);
-    },
-
-    showKasirClosedModal() {
-        const modalHTML = `
-            <div class="modal active" id="kasirClosedModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">🔒</div>
-                    <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
-                        <span class="modal-title" style="font-size: 18px;">Kasir Sedang Tutup</span>
-                    </div>
-                    <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px; font-size: 14px;">⚠️ Akses Ditolak</div>
-                        <div style="font-size: 13px; color: #666; line-height: 1.5;">
-                            Menu ini tidak dapat diakses saat kasir tutup.<br>
-                            Silakan login dan buka kasir terlebih dahulu.
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="router.closeKasirClosedModal();" style="background: #4caf50; padding: 10px 30px;">
-                        Tutup
-                    </button>
-                </div>
-            </div>
-        `;
-        const existingModal = document.getElementById('kasirClosedModal');
-        if (existingModal) existingModal.remove();
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    closeKasirClosedModal() {
-        const modal = document.getElementById('kasirClosedModal');
-        if (modal) modal.remove();
-    }
-};
-
-// ============================================
-// 4. MAIN APP
-// ============================================
-const app = {
-    data: null,
-    currentUser: null,
-
-    init() {
-        console.log('[App] Initializing...');
-        
-        if (typeof dataManager !== 'undefined') {
-            dataManager.init();
-            this.data = dataManager.data;
-        } else {
-            console.error('[App] dataManager not found!');
-            return;
-        }
-
-        // PERBAIKAN: Init backupModule di sini setelah dataManager
-        if (typeof backupModule !== 'undefined') {
-            backupModule.init();
-        }
-
-        const loginStoreName = document.getElementById('loginStoreName');
-        if (loginStoreName && this.data.settings) {
-            loginStoreName.textContent = this.data.settings.storeName || 'Hifzi Cell';
-        }
-
-        this.currentUser = dataManager.getCurrentUser();
-        console.log('[App] Current user:', this.currentUser);
-
-        if (!this.currentUser) {
-            console.log('[App] No user logged in, showing login');
-            this.showLogin();
-            return;
-        }
-
-        console.log('[App] User logged in, checking kasir status');
-        this.handleLoggedIn();
-    },
-
-    showLogin() {
-        const loginContainer = document.getElementById('loginContainer');
-        const appContainer = document.getElementById('appContainer');
-        
-        if (loginContainer) loginContainer.style.display = 'flex';
-        if (appContainer) appContainer.classList.remove('active');
-        
-        const loginBtn = document.getElementById('loginBtn');
-        const usernameInput = document.getElementById('loginUsername');
-        const passwordInput = document.getElementById('loginPassword');
-        
-        if (loginBtn) {
-            const newBtn = loginBtn.cloneNode(true);
-            loginBtn.parentNode.replaceChild(newBtn, loginBtn);
-            
-            newBtn.addEventListener('click', () => {
-                this.doLogin();
-            });
-        }
-        
-        if (passwordInput) {
-            passwordInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.doLogin();
-                }
-            });
-        }
-        
-        if (usernameInput) {
-            usernameInput.focus();
-        }
-    },
-
-    doLogin() {
-        console.log('[App] doLogin called');
-        
-        const usernameInput = document.getElementById('loginUsername');
-        const passwordInput = document.getElementById('loginPassword');
-        const errorDiv = document.getElementById('loginError');
-        const loginBtn = document.getElementById('loginBtn');
-        
-        if (!usernameInput || !passwordInput) {
-            console.error('[App] Login inputs not found!');
-            return;
-        }
-        
-        const username = usernameInput.value.trim();
-        const password = passwordInput.value;
-        
-        console.log('[App] Attempting login for:', username);
-        
-        if (errorDiv) {
-            errorDiv.textContent = '';
-            errorDiv.classList.remove('show');
-        }
-        
-        if (!username || !password) {
-            if (errorDiv) {
-                errorDiv.textContent = 'Username dan password wajib diisi!';
-                errorDiv.classList.add('show');
-            }
-            return;
-        }
-        
-        if (loginBtn) {
-            loginBtn.disabled = true;
-            loginBtn.textContent = '⏳ Memuat...';
-        }
-        
-        setTimeout(() => {
-            const result = dataManager.login(username, password);
-            console.log('[App] Login result:', result);
-            
-            if (result.success) {
-                console.log('[App] Login successful');
-                this.currentUser = result.user;
-                this.handleLoggedIn();
-            } else {
-                console.log('[App] Login failed:', result.message);
-                if (errorDiv) {
-                    errorDiv.textContent = result.message;
-                    errorDiv.classList.add('show');
-                }
-                if (loginBtn) {
-                    loginBtn.disabled = false;
-                    loginBtn.textContent = '🔓 Login';
-                }
-            }
-        }, 500);
-    },
-
-    handleLoggedIn() {
-        console.log('[App] Handling logged in user');
-        
-        if (typeof dataManager !== 'undefined') {
-            dataManager.init();
-            this.data = dataManager.data;
-        }
-        
-        const loginContainer = document.getElementById('loginContainer');
-        const appContainer = document.getElementById('appContainer');
-        
-        if (loginContainer) loginContainer.style.display = 'none';
-        if (appContainer) appContainer.classList.add('active');
-        
-        this.updateHeader();
-        this.updateKasirStatus();
-        
-        const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
-        console.log('[App] Kasir status:', kasirStatus);
-        
-        if (kasirStatus.reason === 'already_open_same_user') {
-            console.log('[App] Kasir already open, going to POS');
-            this.showToast(`Selamat datang kembali, ${this.currentUser.name}! 👋`);
-            const defaultTab = document.querySelector('.nav-tab');
-            if (defaultTab) defaultTab.classList.add('active');
-            if (typeof posModule !== 'undefined') posModule.init();
-            const cartBar = document.getElementById('cartBar');
-            if (cartBar) cartBar.style.display = 'flex';
-        } else if (kasirStatus.reason === 'new_day_same_user') {
-            console.log('[App] New day, showing confirm modal');
-            this.showNewDayConfirmModal();
-        } else if (kasirStatus.reason === 'different_user') {
-            console.log('[App] Different user using kasir');
-            this.showKasirUsedByOtherModal();
-        } else {
-            console.log('[App] Kasir closed, showing closed page');
-            this.showKasirClosedPage();
-        }
-    },
-
-    showNewDayConfirmModal() {
-        const modalHTML = `
-            <div class="modal active" id="newDayModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">🌅</div>
-                    <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Shift Baru Hari Ini</span>
-                    </div>
-                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Hai <b>${this.currentUser.name}</b>!<br><br>
-                        Kasir terakhir dibuka kemarin.<br>
-                        Modal akan direset ke <b>Rp 0</b> untuk shift hari ini.
-                    </p>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <button class="btn btn-secondary" onclick="app.logout()">Logout</button>
-                        <button class="btn btn-primary" onclick="app.confirmOpenKasir(true)">Buka Kasir</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    showKasirUsedByOtherModal() {
-        const currentKasirUser = this.data.kasir.currentUser;
-        const users = dataManager.getUsers();
-        const userInfo = users.find(u => u.id === currentKasirUser);
-        const userName = userInfo ? userInfo.name : 'User lain';
-
-        const modalHTML = `
-            <div class="modal active" id="kasirUsedModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
-                    <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Kasir Sedang Digunakan</span>
-                    </div>
-                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Kasir saat ini sedang digunakan oleh:<br>
-                        <b>${userName}</b><br><br>
-                        Silakan tunggu atau hubungi admin.
-                    </p>
-                    <button class="btn btn-secondary" onclick="app.logout()" style="width: 100%;">Logout</button>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    confirmOpenKasir(forceReset) {
-        const newDayModal = document.getElementById('newDayModal');
-        if (newDayModal) newDayModal.remove();
-
-        const result = dataManager.openKasir(this.currentUser.userId, forceReset);
-        
-        if (result.success) {
-            this.updateHeader();
-            this.updateKasirStatus();
-            this.showToast(result.message);
-            
-            const defaultTab = document.querySelector('.nav-tab');
-            if (defaultTab) defaultTab.classList.add('active');
-            if (typeof posModule !== 'undefined') posModule.init();
-            const cartBar = document.getElementById('cartBar');
-            if (cartBar) cartBar.style.display = 'flex';
-        }
-    },
-
-    closeKasir() {
-        if (!confirm('🚪 Yakin ingin menutup kasir?\n\nSemua transaksi hari ini akan disimpan.\nAnda perlu login ulang untuk membuka kasir lagi.')) {
-            return;
-        }
-
-        const result = dataManager.closeKasir();
-        if (result.success) {
-            this.showToast(result.message);
-            this.updateHeader();
-            this.updateKasirStatus();
-            
-            setTimeout(() => {
-                this.showKasirClosedPage();
-            }, 1000);
-        }
-    },
-
-    logout() {
-        if (typeof dataManager !== 'undefined') {
-            dataManager.save();
-        }
-        
-        localStorage.removeItem('hifzi_current_user');
-        
-        this.currentUser = null;
-        location.reload();
-    },
-
-    updateHeader() {
-        if (!this.data) return;
-        
-        const headerStoreName = document.getElementById('headerStoreName');
-        const headerStoreAddress = document.getElementById('headerStoreAddress');
-        
-        if (headerStoreName) headerStoreName.textContent = this.data.settings.storeName || 'HIFZI CELL';
-        if (headerStoreAddress) headerStoreAddress.textContent = this.data.settings.address || 'Alamat Belum Diatur';
-        
-        const currentCashEl = document.getElementById('currentCash');
-        const modalAwalEl = document.getElementById('modalAwal');
-        
-        if (currentCashEl) currentCashEl.textContent = 'Rp ' + this.formatNumber(this.data.settings.currentCash || 0);
-        if (modalAwalEl) modalAwalEl.textContent = 'Rp ' + this.formatNumber(this.data.settings.modalAwal || 0);
-        
-        const todayProfit = this.calculateTodayProfit();
-        const headerProfitEl = document.getElementById('headerProfit');
-        if (headerProfitEl) headerProfitEl.textContent = 'Rp ' + this.formatNumber(todayProfit);
-        
-        const todayTransCount = this.calculateTodayTransactionCount();
-        const transCountEl = document.getElementById('headerTransactionCount');
-        if (transCountEl) transCountEl.textContent = todayTransCount;
-
-        const userInfoHeader = document.getElementById('userInfoHeader');
-        const headerUserName = document.getElementById('headerUserName');
-        const headerUserRole = document.getElementById('headerUserRole');
-        
-        if (this.currentUser) {
-            if (userInfoHeader) userInfoHeader.style.display = 'flex';
-            if (headerUserName) headerUserName.textContent = this.currentUser.name;
-            if (headerUserRole) headerUserRole.textContent = this.currentUser.role;
-        } else {
-            if (userInfoHeader) userInfoHeader.style.display = 'none';
-        }
-
-        this.updateKasirButton();
-    },
-
-    updateKasirButton() {
-        const kasirBtn = document.getElementById('kasirToggleBtn');
-        if (!kasirBtn) return;
-
-        const isOpen = this.data.kasir && this.data.kasir.isOpen;
-        if (isOpen) {
-            kasirBtn.innerHTML = '🔒 Tutup Kasir';
-            kasirBtn.style.background = '#ff4757';
-            kasirBtn.onclick = () => this.closeKasir();
-        } else {
-            kasirBtn.innerHTML = '🔓 Buka Kasir';
-            kasirBtn.style.background = '#2ed573';
-            kasirBtn.onclick = () => this.confirmOpenKasir(true);
-        }
-    },
-
-    calculateTodayProfit() {
-        if (!this.data || !this.data.transactions) return 0;
-        const today = new Date().toDateString();
-        return this.data.transactions
-            .filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted' && t.status !== 'voided')
-            .reduce((sum, t) => sum + (t.profit || 0), 0);
-    },
-
-    calculateTodayTransactionCount() {
-        if (!this.data || !this.data.transactions) return 0;
-        const today = new Date().toDateString();
-        return this.data.transactions
-            .filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted' && t.status !== 'voided')
-            .length;
-    },
-
-    updateKasirStatus() {
-        if (!this.data || !this.data.kasir) return;
-        
-        const isOpen = this.data.kasir.isOpen;
-        const dot = document.getElementById('kasirStatusDot');
-        const text = document.getElementById('kasirStatusText');
-        const shiftStatus = document.getElementById('shiftStatus');
-        const indicator = document.getElementById('kasirStatusIndicator');
-
-        if (isOpen) {
-            if (dot) dot.style.background = '#00b894';
-            if (text) text.textContent = '🔓 Kasir Buka';
-            if (shiftStatus) shiftStatus.textContent = this.currentUser ? this.currentUser.name : 'Aktif';
-            if (indicator) indicator.className = 'kasir-indicator open';
-        } else {
-            if (dot) dot.style.background = '#ff4757';
-            if (text) text.textContent = '🔒 Kasir Tutup';
-            if (shiftStatus) shiftStatus.textContent = 'Tutup';
-            if (indicator) indicator.className = 'kasir-indicator closed';
-        }
-
-        this.updateKasirButton();
-    },
-
-    showKasirClosedPage() {
-        const container = document.getElementById('mainContent');
-        if (!container) return;
-
-        container.innerHTML = `
-            <div class="content-section active" style="text-align: center; padding: 40px 20px;">
-                <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
-                <h2 style="color: #c62828; margin-bottom: 15px; font-size: 20px;">Kasir Sedang Tutup</h2>
-                <p style="color: #666; margin-bottom: 30px; line-height: 1.6; font-size: 14px;">
-                    Selamat datang, <b>${this.currentUser ? this.currentUser.name : ''}</b>!<br>
-                    Silakan buka kasir untuk memulai shift kerja.
-                </p>
-
-                <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 16px; padding: 20px; max-width: 350px; margin: 0 auto 20px;">
-                    <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
-                        📅 Hari ini: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    </div>
-                    <div style="font-size: 12px; color: #888;">
-                        ${this.data.kasir.date ? `Shift terakhir: ${new Date(this.data.kasir.date).toLocaleDateString('id-ID')}` : 'Belum ada shift hari ini'}
-                    </div>
-                </div>
-
-                <button onclick="app.confirmOpenKasir(true)" 
-                        style="padding: 12px 30px; font-size: 14px; 
-                               background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
-                               color: white; border: none; border-radius: 10px;
-                               cursor: pointer; font-weight: 600;
-                               box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);">
-                    🔓 Buka Kasir Sekarang
-                </button>
-
-                <div style="margin-top: 20px;">
-                    <a href="#" onclick="app.logout()" style="color: #999; font-size: 13px;">🚪 Logout</a>
-                </div>
-            </div>
-        `;
-    },
-
-    openSettings() {
-        const existingModal = document.getElementById('settingsModal');
-        if (existingModal) existingModal.remove();
-
-        const modalHTML = `
-            <div class="modal active" id="settingsModal" style="display: flex; z-index: 4000; align-items: flex-start; padding-top: 80px;">
-                <div class="modal-content" style="max-width: 380px; width: 90%; max-height: 80vh; overflow-y: auto; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 15px 20px; border-bottom: 1px solid #eee;">
-                        <span class="modal-title" style="font-size: 16px; font-weight: 600;">⚙️ Pengaturan Toko</span>
-                        <button onclick="app.closeSettings()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
-                    </div>
-                    
-                    <div style="padding: 20px;">
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Nama Toko</label>
-                            <input type="text" id="settingStoreName" 
-                                   value="${this.data.settings.storeName || 'Hifzi Cell'}" 
-                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Alamat Toko</label>
-                            <textarea id="settingStoreAddress" 
-                                      style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; min-height: 50px; resize: vertical; font-size: 14px; box-sizing: border-box; font-family: inherit;">${this.data.settings.address || ''}</textarea>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Nomor Telepon</label>
-                            <input type="text" id="settingStorePhone" 
-                                   value="${this.data.settings.phone || ''}" 
-                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                        </div>
-
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Pajak Default (%)</label>
-                            <input type="number" id="settingTax" 
-                                   value="${this.data.settings.tax || 0}" 
-                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                        </div>
-                        
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
-                        
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #d32f2f; font-size: 13px;">⚠️ Zona Berbahaya</label>
-                            <div style="display: grid; gap: 8px;">
-                                <button onclick="app.confirmResetData()" 
-                                        style="padding: 10px; background: #ffebee; color: #c62828; border: 1px solid #ef5350; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
-                                    🗑️ Reset Semua Data
-                                </button>
-                                <button onclick="app.exportData()" 
-                                        style="padding: 10px; background: #e3f2fd; color: #1565c0; border: 1px solid #42a5f5; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
-                                    💾 Export Data (JSON)
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px; justify-content: flex-end; padding: 0 20px 20px;">
-                        <button onclick="app.closeSettings()" 
-                                style="padding: 10px 20px; background: #f5f5f5; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: #666;">Batal</button>
-                        <button onclick="app.saveSettings()" 
-                                style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">Simpan Perubahan</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    closeSettings() {
-        const modal = document.getElementById('settingsModal');
-        if (modal) {
-            modal.remove();
-        }
-    },
-
-    saveSettings() {
-        try {
-            const storeNameInput = document.getElementById('settingStoreName');
-            const addressInput = document.getElementById('settingStoreAddress');
-            const phoneInput = document.getElementById('settingStorePhone');
-            const taxInput = document.getElementById('settingTax');
-
-            if (!storeNameInput || !addressInput || !phoneInput || !taxInput) {
-                console.error('[Settings] Input elements not found!');
-                this.showToast('❌ Error: Form tidak ditemukan!');
-                return;
-            }
-
-            const storeName = storeNameInput.value.trim();
-            const address = addressInput.value.trim();
-            const phone = phoneInput.value.trim();
-            const tax = parseFloat(taxInput.value) || 0;
-
-            this.data.settings.storeName = storeName;
-            this.data.settings.address = address;
-            this.data.settings.phone = phone;
-            this.data.settings.tax = tax;
-
-            if (typeof dataManager !== 'undefined' && dataManager.saveData) {
-                dataManager.saveData();
-            } else if (typeof dataManager !== 'undefined' && dataManager.save) {
-                dataManager.save();
-            }
-
-            this.updateHeader();
-
-            this.showToast('✅ Pengaturan berhasil disimpan!');
-            this.closeSettings();
-        } catch (error) {
-            console.error('[Settings] Error saving:', error);
-            this.showToast('❌ Gagal menyimpan pengaturan!');
-        }
-    },
-
-    confirmResetData() {
-        if (confirm('⚠️ PERINGATAN!\n\nSemua data akan dihapus permanen!\nTransaksi, produk, hutang, dan pengaturan akan hilang.\n\nApakah Anda yakin?')) {
-            const confirmation = prompt('Ketik "HAPUS" untuk konfirmasi:');
-            if (confirmation === 'HAPUS') {
-                localStorage.removeItem('hifzi_data');
-                localStorage.removeItem('hifzi_users');
-                localStorage.removeItem('hifzi_current_user');
-                this.showToast('🗑️ Semua data telah dihapus. Memuat ulang...');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                this.showToast('❌ Penghapusan dibatalkan');
-            }
-        }
-    },
-
-    exportData() {
-        try {
-            const dataStr = JSON.stringify(this.data, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `hifzi_backup_${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            this.showToast('💾 Data berhasil diexport!');
-        } catch (error) {
-            console.error('[Export] Error:', error);
-            this.showToast('❌ Gagal export data!');
-        }
-    },
-
-    showToast(message) {
-        const existingToast = document.getElementById('toast');
-        if (existingToast) existingToast.remove();
-        
-        const toast = document.createElement('div');
-        toast.id = 'toast';
-        toast.style.cssText = `
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-100px);
-            background: rgba(0,0,0,0.85);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-size: 13px;
-            z-index: 10000;
-            opacity: 0;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            max-width: 90%;
-            text-align: center;
-            white-space: nowrap;
-            backdrop-filter: blur(10px);
-        `;
-        toast.textContent = message;
-        document.body.appendChild(toast);
-        
-        requestAnimationFrame(() => {
-            toast.style.transform = 'translateX(-50%) translateY(0)';
-            toast.style.opacity = '1';
-        });
-        
-        setTimeout(() => {
-            toast.style.transform = 'translateX(-50%) translateY(-100px)';
-            toast.style.opacity = '0';
-            setTimeout(() => {
-                if (toast.parentNode) toast.remove();
-            }, 300);
-        }, 2500);
-    },
-
-    formatNumber(num) {
-        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    }
-};
-
-// ============================================
-// 5. INITIALIZATION
-// ============================================
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('[App] DOM Content Loaded');
-    app.init();
-});
