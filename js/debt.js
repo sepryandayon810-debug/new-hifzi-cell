@@ -1,8 +1,8 @@
 /**
  * HIFZI CELL - Debt Module (Hutang/Piutang)
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
- * + Sidebar Autocomplete Nama Pelanggan (Muncul saat focus field nama)
- * + Tambah Nama Manual ke List
+ * + Modal Tambah Nama Pelanggan Baru
+ * + Autocomplete Nama Pelanggan dari daftar yang tersimpan
  */
 
 const debtModule = {
@@ -14,7 +14,6 @@ const debtModule = {
     itemCount: 1,
     isInitialized: false,
     customCustomerNames: [],
-    sidebarVisible: false,
 
     init() {
         console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
@@ -89,7 +88,6 @@ const debtModule = {
             c.name !== name
         );
         this.saveCustomNames();
-        this.renderCustomerSidebar();
     },
 
     saveDebts() {
@@ -139,45 +137,10 @@ const debtModule = {
 
     filterCustomers(query) {
         const all = this.getAllCustomerNames();
-        if (!query) return all;
+        if (!query) return [];
         
         const lowerQuery = query.toLowerCase();
         return all.filter(c => c.name.toLowerCase().includes(lowerQuery));
-    },
-
-    selectCustomerFromSidebar(name, phone) {
-        const nameInput = document.getElementById('addCustomerName');
-        const phoneInput = document.getElementById('addCustomerPhone');
-        
-        if (nameInput) nameInput.value = name;
-        if (phoneInput && phone) phoneInput.value = phone;
-        
-        document.querySelectorAll('.hifzi-debt-sidebar-item').forEach(item => {
-            item.classList.remove('hifzi-selected');
-        });
-        
-        const selectedItem = document.querySelector(`[data-customer-name="${name.replace(/"/g, '&quot;')}"]`);
-        if (selectedItem) selectedItem.classList.add('hifzi-selected');
-        
-        // Sembunyikan sidebar setelah memilih
-        this.hideSidebar();
-    },
-
-    showSidebar() {
-        this.sidebarVisible = true;
-        const sidebar = document.getElementById('customerSidebar');
-        if (sidebar) {
-            sidebar.style.display = 'flex';
-            this.renderCustomerSidebar();
-        }
-    },
-
-    hideSidebar() {
-        this.sidebarVisible = false;
-        const sidebar = document.getElementById('customerSidebar');
-        if (sidebar) {
-            sidebar.style.display = 'none';
-        }
     },
 
     toggleShowPaid() {
@@ -597,7 +560,7 @@ const debtModule = {
     },
 
     // ==========================================
-    // MODAL TAMBAH HUTANG - SIDEBAR MUNCUL SAAT FOCUS
+    // MODAL TAMBAH HUTANG - DENGAN AUTOCOMPLETE
     // ==========================================
     openAddDebtModal() {
         this.itemCount = 1;
@@ -607,117 +570,98 @@ const debtModule = {
         modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'addDebtModal';
         modal.innerHTML = `
-            <div class="hifzi-debt-modal hifzi-debt-modal-with-sidebar">
+            <div class="hifzi-debt-modal">
                 <div class="hifzi-debt-modal-header">
                     <div class="hifzi-debt-modal-title">➕ Tambah Hutang Baru</div>
                     <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
                 
-                <div class="hifzi-debt-modal-content">
-                    <!-- SIDEBAR KANAN: DAFTAR PELANGGAN (SEMBUNYI DEFAULT) -->
-                    <div class="hifzi-debt-customer-sidebar" id="customerSidebar" style="display: none;">
-                        <div class="hifzi-debt-sidebar-header">
-                            <span class="hifzi-debt-sidebar-title">👥 Daftar Pelanggan</span>
-                            <button class="hifzi-debt-sidebar-add-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
-                                ➕
-                            </button>
-                        </div>
-                        
-                        <div class="hifzi-debt-sidebar-search">
-                            <input type="text" 
-                                   id="sidebarCustomerSearch" 
-                                   placeholder="Cari pelanggan..." 
-                                   oninput="debtModule.renderCustomerSidebar()">
-                        </div>
-                        
-                        <div class="hifzi-debt-sidebar-list" id="customerSidebarList">
-                            <!-- Diisi oleh renderCustomerSidebar() -->
-                        </div>
-                        
-                        <div class="hifzi-debt-sidebar-footer">
-                            <small>Klik nama untuk mengisi otomatis</small>
-                        </div>
-                    </div>
-
-                    <!-- FORM UTAMA -->
-                    <div class="hifzi-debt-modal-body" id="modalBody">
-                        <div class="hifzi-debt-section-title">👤 Informasi Pelanggan</div>
-                        
-                        <div class="hifzi-debt-form-group">
-                            <label class="hifzi-debt-form-label">Nama Pelanggan *</label>
+                <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-section-title">👤 Informasi Pelanggan</div>
+                    
+                    <div class="hifzi-debt-form-group" style="position: relative;">
+                        <label class="hifzi-debt-form-label">Nama Pelanggan *</label>
+                        <div class="hifzi-debt-input-with-btn">
                             <input type="text" 
                                    class="hifzi-debt-form-input" 
                                    id="addCustomerName" 
-                                   placeholder="Ketik nama pelanggan atau klik untuk melihat daftar..."
+                                   placeholder="Ketik nama atau pilih dari daftar..."
                                    autocomplete="off"
-                                   onfocus="debtModule.showSidebar()"
-                                   oninput="debtModule.syncSidebarSearch(this.value)">
+                                   oninput="debtModule.handleNameInput(this.value)"
+                                   onfocus="debtModule.handleNameInput(this.value)">
+                            <button type="button" class="hifzi-debt-input-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
+                                ➕
+                            </button>
                         </div>
-
-                        <div class="hifzi-debt-form-group">
-                            <label class="hifzi-debt-form-label">No. Telepon</label>
-                            <input type="text" class="hifzi-debt-form-input" id="addCustomerPhone" placeholder="Opsional">
+                        <!-- Dropdown Autocomplete -->
+                        <div class="hifzi-debt-autocomplete" id="nameAutocomplete" style="display: none;">
+                            <!-- Diisi oleh renderAutocomplete() -->
                         </div>
+                    </div>
 
-                        <div class="hifzi-debt-section-title">📦 Produk yang Dihutangkan</div>
-                        <div id="addDebtItems">
-                            <div class="hifzi-debt-item-input">
-                                <input type="text" class="hifzi-debt-form-input" placeholder="Nama produk" id="itemName0">
-                                <div class="hifzi-debt-item-row">
-                                    <input type="number" class="hifzi-debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
-                                    <input type="number" class="hifzi-debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
-                                </div>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">No. Telepon</label>
+                        <input type="text" class="hifzi-debt-form-input" id="addCustomerPhone" placeholder="Opsional">
+                    </div>
+
+                    <div class="hifzi-debt-section-title">📦 Produk yang Dihutangkan</div>
+                    <div id="addDebtItems">
+                        <div class="hifzi-debt-item-input">
+                            <input type="text" class="hifzi-debt-form-input" placeholder="Nama produk" id="itemName0">
+                            <div class="hifzi-debt-item-row">
+                                <input type="number" class="hifzi-debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
+                                <input type="number" class="hifzi-debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
                             </div>
                         </div>
-                        <button class="hifzi-debt-add-item-btn" onclick="debtModule.addItemField()">
-                            <span>➕</span> Tambah Produk
-                        </button>
+                    </div>
+                    <button class="hifzi-debt-add-item-btn" onclick="debtModule.addItemField()">
+                        <span>➕</span> Tambah Produk
+                    </button>
 
-                        <div class="hifzi-debt-total-section">
-                            <div class="hifzi-debt-total-row">
-                                <span>Total Hutang:</span>
-                                <span id="addDebtTotal" class="hifzi-debt-total-amount">${this.formatRupiah(0)}</span>
-                            </div>
+                    <div class="hifzi-debt-total-section">
+                        <div class="hifzi-debt-total-row">
+                            <span>Total Hutang:</span>
+                            <span id="addDebtTotal" class="hifzi-debt-total-amount">${this.formatRupiah(0)}</span>
                         </div>
+                    </div>
 
-                        <div class="hifzi-debt-form-group">
-                            <label class="hifzi-debt-form-label">DP / Pembayaran Awal</label>
-                            <input type="number" class="hifzi-debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
-                        </div>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">DP / Pembayaran Awal</label>
+                        <input type="number" class="hifzi-debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
+                    </div>
 
-                        <!-- PILIHAN KAS -->
-                        <div class="hifzi-debt-cash-option">
-                            <div class="hifzi-debt-cash-option-title">💰 Pengaruh ke Kas?</div>
-                            <div class="hifzi-debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                            <div class="hifzi-debt-cash-toggle">
-                                <label class="hifzi-debt-cash-radio">
-                                    <input type="radio" name="reduceCash" value="yes" checked>
-                                    <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
-                                    <span class="hifzi-debt-cash-radio-label">
-                                        <strong>Ya, Kurangi Kas</strong>
-                                        <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
-                                    </span>
-                                </label>
-                                <label class="hifzi-debt-cash-radio">
-                                    <input type="radio" name="reduceCash" value="no">
-                                    <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
-                                    <span class="hifzi-debt-cash-radio-label">
-                                        <strong>Tidak, Jangan Kurangi Kas</strong>
-                                        <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
-                                    </span>
-                                </label>
-                            </div>
+                    <!-- PILIHAN KAS -->
+                    <div class="hifzi-debt-cash-option">
+                        <div class="hifzi-debt-cash-option-title">💰 Pengaruh ke Kas?</div>
+                        <div class="hifzi-debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="hifzi-debt-cash-toggle">
+                            <label class="hifzi-debt-cash-radio">
+                                <input type="radio" name="reduceCash" value="yes" checked>
+                                <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                <span class="hifzi-debt-cash-radio-label">
+                                    <strong>Ya, Kurangi Kas</strong>
+                                    <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
+                                </span>
+                            </label>
+                            <label class="hifzi-debt-cash-radio">
+                                <input type="radio" name="reduceCash" value="no">
+                                <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                <span class="hifzi-debt-cash-radio-label">
+                                    <strong>Tidak, Jangan Kurangi Kas</strong>
+                                    <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
+                                </span>
+                            </label>
                         </div>
+                    </div>
 
-                        <div class="hifzi-debt-form-group">
-                            <label class="hifzi-debt-form-label">Tanggal Jatuh Tempo *</label>
-                            <input type="date" class="hifzi-debt-form-input" id="addDueDate">
-                        </div>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Tanggal Jatuh Tempo *</label>
+                        <input type="date" class="hifzi-debt-form-input" id="addDueDate">
+                    </div>
 
-                        <div class="hifzi-debt-form-group">
-                            <label class="hifzi-debt-form-label">Catatan</label>
-                            <textarea class="hifzi-debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
-                        </div>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Catatan</label>
+                        <textarea class="hifzi-debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
                     </div>
                 </div>
                 
@@ -730,7 +674,7 @@ const debtModule = {
 
         document.body.appendChild(modal);
         
-        // Close sidebar when clicking outside
+        // Close autocomplete when clicking outside
         setTimeout(() => {
             modal.classList.add('hifzi-active');
             
@@ -741,79 +685,61 @@ const debtModule = {
             if (dueDateInput) dueDateInput.value = today.toISOString().split('T')[0];
             
             // Add click outside listener
-            document.addEventListener('click', this.handleClickOutside);
+            document.addEventListener('click', this.handleClickOutsideAutocomplete);
         }, 10);
     },
 
-    handleClickOutside(e) {
-        const sidebar = document.getElementById('customerSidebar');
+    handleClickOutsideAutocomplete(e) {
+        const autocomplete = document.getElementById('nameAutocomplete');
         const nameInput = document.getElementById('addCustomerName');
-        const modal = document.getElementById('addDebtModal');
         
-        if (!sidebar || !nameInput || !modal) return;
-        
-        // If click is outside sidebar and outside name input, hide sidebar
-        if (!sidebar.contains(e.target) && e.target !== nameInput && !nameInput.contains(e.target)) {
-            debtModule.hideSidebar();
+        if (autocomplete && !autocomplete.contains(e.target) && e.target !== nameInput) {
+            autocomplete.style.display = 'none';
         }
     },
 
-    renderCustomerSidebar() {
-        const sidebarList = document.getElementById('customerSidebarList');
-        const searchInput = document.getElementById('sidebarCustomerSearch');
-        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
-        
-        if (!sidebarList) return;
+    handleNameInput(value) {
+        const autocomplete = document.getElementById('nameAutocomplete');
+        if (!autocomplete) return;
 
-        const customers = this.filterCustomers(searchQuery);
+        const customers = this.filterCustomers(value);
         
-        if (customers.length === 0) {
-            sidebarList.innerHTML = `
-                <div class="hifzi-debt-sidebar-empty">
-                    <span>📭</span>
-                    <p>Belum ada pelanggan</p>
-                    <small>Klik ➕ untuk tambah nama</small>
-                </div>
-            `;
+        if (customers.length === 0 || value === '') {
+            autocomplete.style.display = 'none';
             return;
         }
 
-        sidebarList.innerHTML = customers.map(cust => {
-            const isCustom = cust.source === 'custom';
-            const hasDebt = cust.source === 'debt';
-            
-            return `
-                <div class="hifzi-debt-sidebar-item ${isCustom ? 'hifzi-custom' : ''}" 
-                     data-customer-name="${cust.name.replace(/"/g, '&quot;')}"
-                     onclick="debtModule.selectCustomerFromSidebar('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
-                    <div class="hifzi-debt-sidebar-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
-                    <div class="hifzi-debt-sidebar-item-info">
-                        <div class="hifzi-debt-sidebar-item-name">${cust.name}</div>
-                        <div class="hifzi-debt-sidebar-item-meta">
-                            ${cust.phone ? `<span>📱 ${cust.phone}</span>` : ''}
-                            ${isCustom ? '<span class="hifzi-debt-sidebar-badge hifzi-custom">Manual</span>' : ''}
-                            ${hasDebt ? '<span class="hifzi-debt-sidebar-badge hifzi-debt">Pernah Hutang</span>' : ''}
-                        </div>
+        autocomplete.innerHTML = customers.map(cust => `
+            <div class="hifzi-debt-autocomplete-item" onclick="debtModule.selectCustomer('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
+                <div class="hifzi-debt-autocomplete-avatar">${cust.name.charAt(0).toUpperCase()}</div>
+                <div class="hifzi-debt-autocomplete-info">
+                    <div class="hifzi-debt-autocomplete-name">${cust.name}</div>
+                    <div class="hifzi-debt-autocomplete-meta">
+                        ${cust.phone ? `<span>📱 ${cust.phone}</span>` : ''}
+                        ${cust.source === 'custom' ? '<span class="hifzi-debt-autocomplete-badge">Manual</span>' : '<span class="hifzi-debt-autocomplete-badge hifzi-debt">Pernah Hutang</span>'}
                     </div>
-                    ${isCustom ? `
-                        <button class="hifzi-debt-sidebar-item-delete" 
-                                onclick="event.stopPropagation(); debtModule.removeCustomCustomerName('${cust.name.replace(/'/g, "\\'")}')" 
-                                title="Hapus dari daftar">✕</button>
-                    ` : ''}
                 </div>
-            `;
-        }).join('');
+            </div>
+        `).join('');
+        
+        autocomplete.style.display = 'block';
     },
 
-    syncSidebarSearch(value) {
-        const sidebarSearch = document.getElementById('sidebarCustomerSearch');
-        if (sidebarSearch) {
-            sidebarSearch.value = value;
-            this.renderCustomerSidebar();
-        }
+    selectCustomer(name, phone) {
+        const nameInput = document.getElementById('addCustomerName');
+        const phoneInput = document.getElementById('addCustomerPhone');
+        const autocomplete = document.getElementById('nameAutocomplete');
+        
+        if (nameInput) nameInput.value = name;
+        if (phoneInput && phone) phoneInput.value = phone;
+        if (autocomplete) autocomplete.style.display = 'none';
     },
 
     openAddCustomerNameModal() {
+        // Hide autocomplete first
+        const autocomplete = document.getElementById('nameAutocomplete');
+        if (autocomplete) autocomplete.style.display = 'none';
+
         const modal = document.createElement('div');
         modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'addCustomerNameModal';
@@ -887,9 +813,11 @@ const debtModule = {
         this.addCustomCustomerName(name, phone);
         this.closeAddCustomerNameModal();
         
-        this.renderCustomerSidebar();
-        
-        this.selectCustomerFromSidebar(name, phone);
+        // Auto fill the name in main form
+        const mainNameInput = document.getElementById('addCustomerName');
+        const mainPhoneInput = document.getElementById('addCustomerPhone');
+        if (mainNameInput) mainNameInput.value = name;
+        if (mainPhoneInput && phone) mainPhoneInput.value = phone;
         
         this.showToast(`Nama "${name}" ditambahkan ke daftar`, 'success');
     },
@@ -1487,7 +1415,7 @@ const debtModule = {
 
     closeModal() {
         // Remove click outside listener
-        document.removeEventListener('click', this.handleClickOutside);
+        document.removeEventListener('click', this.handleClickOutsideAutocomplete);
         
         const modal = document.querySelector('.hifzi-debt-modal-overlay.hifzi-active');
         if (modal) {
