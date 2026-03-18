@@ -1,8 +1,8 @@
 /**
  * HIFZI CELL - Debt Module (Hutang/Piutang)
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
- * + Autocomplete Nama Pelanggan
- * + Pilihan Kas Masuk/Keluar
+ * + Sidebar Autocomplete Nama Pelanggan (Kanan)
+ * + Tambah Nama Manual ke List
  */
 
 const debtModule = {
@@ -13,10 +13,12 @@ const debtModule = {
     showPaidDebts: false,
     itemCount: 1,
     isInitialized: false,
+    customCustomerNames: [], // Nama manual yang ditambahkan user
 
     init() {
         console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
         this.loadDebts();
+        this.loadCustomNames(); // Load nama custom
         this.isInitialized = true;
     },
 
@@ -48,6 +50,51 @@ const debtModule = {
         }
     },
 
+    // Load nama custom dari localStorage
+    loadCustomNames() {
+        const saved = localStorage.getItem('hifzi_custom_customers');
+        if (saved) {
+            try {
+                this.customCustomerNames = JSON.parse(saved);
+            } catch(e) {
+                this.customCustomerNames = [];
+            }
+        }
+    },
+
+    // Simpan nama custom ke localStorage
+    saveCustomNames() {
+        localStorage.setItem('hifzi_custom_customers', JSON.stringify(this.customCustomerNames));
+    },
+
+    // Tambah nama custom baru
+    addCustomCustomerName(name, phone = '') {
+        if (!name.trim()) return;
+        
+        // Cek apakah sudah ada
+        const exists = this.customCustomerNames.find(c => 
+            c.name.toLowerCase() === name.trim().toLowerCase()
+        );
+        
+        if (!exists) {
+            this.customCustomerNames.push({
+                name: name.trim(),
+                phone: phone,
+                addedAt: new Date().toISOString()
+            });
+            this.saveCustomNames();
+        }
+    },
+
+    // Hapus nama custom
+    removeCustomCustomerName(name) {
+        this.customCustomerNames = this.customCustomerNames.filter(c => 
+            c.name !== name
+        );
+        this.saveCustomNames();
+        this.renderCustomerSidebar(); // Refresh sidebar
+    },
+
     saveDebts() {
         if (typeof dataManager !== 'undefined' && dataManager.data) {
             dataManager.data.debts = this.debts;
@@ -67,39 +114,61 @@ const debtModule = {
     },
 
     // ==========================================
-    // AUTOCOMPLETE - AMBIL NAMA YANG SUDAH ADA
+    // AMBIL SEMUA NAMA PELANGGAN (DEBT + CUSTOM)
     // ==========================================
-    getUniqueCustomers() {
-        const customers = {};
+    getAllCustomerNames() {
+        // Ambil dari data hutang yang sudah ada
+        const debtCustomers = {};
         this.debts.forEach(debt => {
-            if (!customers[debt.customerName]) {
-                customers[debt.customerName] = {
+            if (!debtCustomers[debt.customerName]) {
+                debtCustomers[debt.customerName] = {
                     name: debt.customerName,
-                    phone: debt.customerPhone || ''
+                    phone: debt.customerPhone || '',
+                    source: 'debt',
+                    lastTransaction: debt.date
                 };
             }
         });
-        return Object.values(customers);
+
+        // Ambil dari nama custom
+        this.customCustomerNames.forEach(cust => {
+            if (!debtCustomers[cust.name]) {
+                debtCustomers[cust.name] = {
+                    name: cust.name,
+                    phone: cust.phone || '',
+                    source: 'custom',
+                    addedAt: cust.addedAt
+                };
+            }
+        });
+
+        return Object.values(debtCustomers).sort((a, b) => a.name.localeCompare(b.name));
     },
 
-    // Filter customer berdasarkan input
+    // Filter untuk search di sidebar
     filterCustomers(query) {
-        if (!query || query.length < 1) return [];
-        const allCustomers = this.getUniqueCustomers();
-        return allCustomers.filter(c => 
-            c.name.toLowerCase().includes(query.toLowerCase())
-        );
+        const all = this.getAllCustomerNames();
+        if (!query) return all;
+        
+        const lowerQuery = query.toLowerCase();
+        return all.filter(c => c.name.toLowerCase().includes(lowerQuery));
     },
 
-    // Pilih customer dari autocomplete
-    selectCustomer(name, phone) {
+    // Pilih customer dari sidebar
+    selectCustomerFromSidebar(name, phone) {
         const nameInput = document.getElementById('addCustomerName');
         const phoneInput = document.getElementById('addCustomerPhone');
-        const list = document.getElementById('customerAutocompleteList');
         
         if (nameInput) nameInput.value = name;
         if (phoneInput && phone) phoneInput.value = phone;
-        if (list) list.style.display = 'none';
+        
+        // Highlight yang dipilih
+        document.querySelectorAll('.debt-sidebar-item').forEach(item => {
+            item.classList.remove('selected');
+        });
+        
+        const selectedItem = document.querySelector(`[data-customer-name="${name.replace(/"/g, '&quot;')}"]`);
+        if (selectedItem) selectedItem.classList.add('selected');
     },
 
     toggleShowPaid() {
@@ -519,7 +588,7 @@ const debtModule = {
     },
 
     // ==========================================
-    // MODAL TAMBAH HUTANG + AUTOCOMPLETE + KAS
+    // MODAL TAMBAH HUTANG + SIDEBAR CUSTOMER
     // ==========================================
     openAddDebtModal() {
         this.itemCount = 1;
@@ -529,93 +598,119 @@ const debtModule = {
         modal.className = 'debt-modal-overlay';
         modal.id = 'addDebtModal';
         modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 600px;">
+            <div class="debt-modal debt-modal-with-sidebar">
                 <div class="debt-modal-header">
                     <div class="debt-modal-title">➕ Tambah Hutang Baru</div>
                     <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
-                <div class="debt-modal-body" style="max-height: 75vh;">
-                    <div class="debt-section-title">👤 Informasi Pelanggan</div>
-                    
-                    <!-- AUTOCOMPLETE NAMA -->
-                    <div class="debt-form-group" style="position: relative;">
-                        <label class="debt-form-label">Nama Pelanggan *</label>
-                        <input type="text" 
-                               class="debt-form-input" 
-                               id="addCustomerName" 
-                               placeholder="Ketik nama pelanggan..."
-                               autocomplete="off"
-                               oninput="debtModule.handleNameInput(this.value)"
-                               onfocus="debtModule.handleNameInput(this.value)"
-                               onblur="setTimeout(() => debtModule.hideAutocomplete(), 200)">
-                        <div id="customerAutocompleteList" class="debt-autocomplete-list" style="display: none;"></div>
+                
+                <div class="debt-modal-content">
+                    <!-- SIDEBAR KANAN: DAFTAR PELANGGAN -->
+                    <div class="debt-customer-sidebar">
+                        <div class="debt-sidebar-header">
+                            <span class="debt-sidebar-title">👥 Daftar Pelanggan</span>
+                            <button class="debt-sidebar-add-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
+                                ➕
+                            </button>
+                        </div>
+                        
+                        <div class="debt-sidebar-search">
+                            <input type="text" 
+                                   id="sidebarCustomerSearch" 
+                                   placeholder="Cari pelanggan..." 
+                                   oninput="debtModule.renderCustomerSidebar()">
+                        </div>
+                        
+                        <div class="debt-sidebar-list" id="customerSidebarList">
+                            <!-- Diisi oleh renderCustomerSidebar() -->
+                        </div>
+                        
+                        <div class="debt-sidebar-footer">
+                            <small>Klik nama untuk mengisi otomatis</small>
+                        </div>
                     </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">No. Telepon</label>
-                        <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional">
-                    </div>
+                    <!-- FORM UTAMA -->
+                    <div class="debt-modal-body">
+                        <div class="debt-section-title">👤 Informasi Pelanggan</div>
+                        
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Nama Pelanggan *</label>
+                            <input type="text" 
+                                   class="debt-form-input" 
+                                   id="addCustomerName" 
+                                   placeholder="Ketik nama pelanggan atau pilih dari daftar kanan..."
+                                   autocomplete="off"
+                                   oninput="debtModule.syncSidebarSearch(this.value)">
+                        </div>
 
-                    <div class="debt-section-title">📦 Produk yang Dihutangkan</div>
-                    <div id="addDebtItems">
-                        <div class="debt-item-input">
-                            <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName0">
-                            <div class="debt-item-row">
-                                <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
-                                <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">No. Telepon</label>
+                            <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional">
+                        </div>
+
+                        <div class="debt-section-title">📦 Produk yang Dihutangkan</div>
+                        <div id="addDebtItems">
+                            <div class="debt-item-input">
+                                <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName0">
+                                <div class="debt-item-row">
+                                    <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
+                                    <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <button class="debt-add-item-btn" onclick="debtModule.addItemField()">
-                        <span>➕</span> Tambah Produk
-                    </button>
+                        <button class="debt-add-item-btn" onclick="debtModule.addItemField()">
+                            <span>➕</span> Tambah Produk
+                        </button>
 
-                    <div class="debt-total-section">
-                        <div class="debt-total-row">
-                            <span>Total Hutang:</span>
-                            <span id="addDebtTotal" class="debt-total-amount">${this.formatRupiah(0)}</span>
+                        <div class="debt-total-section">
+                            <div class="debt-total-row">
+                                <span>Total Hutang:</span>
+                                <span id="addDebtTotal" class="debt-total-amount">${this.formatRupiah(0)}</span>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">DP / Pembayaran Awal</label>
-                        <input type="number" class="debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
-                    </div>
-
-                    <!-- PILIHAN KAS -->
-                    <div class="debt-cash-option">
-                        <div class="debt-cash-option-title">💰 Pengaruh ke Kas?</div>
-                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                        <div class="debt-cash-toggle">
-                            <label class="debt-cash-radio">
-                                <input type="radio" name="reduceCash" value="yes" checked>
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
-                                    <strong>Ya, Kurangi Kas</strong>
-                                    <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
-                                </span>
-                            </label>
-                            <label class="debt-cash-radio">
-                                <input type="radio" name="reduceCash" value="no">
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
-                                    <strong>Tidak, Jangan Kurangi Kas</strong>
-                                    <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
-                                </span>
-                            </label>
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">DP / Pembayaran Awal</label>
+                            <input type="number" class="debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
                         </div>
-                    </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Tanggal Jatuh Tempo *</label>
-                        <input type="date" class="debt-form-input" id="addDueDate">
-                    </div>
+                        <!-- PILIHAN KAS -->
+                        <div class="debt-cash-option">
+                            <div class="debt-cash-option-title">💰 Pengaruh ke Kas?</div>
+                            <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                            <div class="debt-cash-toggle">
+                                <label class="debt-cash-radio">
+                                    <input type="radio" name="reduceCash" value="yes" checked>
+                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                    <span class="debt-cash-radio-label">
+                                        <strong>Ya, Kurangi Kas</strong>
+                                        <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
+                                    </span>
+                                </label>
+                                <label class="debt-cash-radio">
+                                    <input type="radio" name="reduceCash" value="no">
+                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
+                                    <span class="debt-cash-radio-label">
+                                        <strong>Tidak, Jangan Kurangi Kas</strong>
+                                        <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Catatan</label>
-                        <textarea class="debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Tanggal Jatuh Tempo *</label>
+                            <input type="date" class="debt-form-input" id="addDueDate">
+                        </div>
+
+                        <div class="debt-form-group">
+                            <label class="debt-form-label">Catatan</label>
+                            <textarea class="debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
+                        </div>
                     </div>
                 </div>
+                
                 <div class="debt-modal-footer">
                     <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
                     <button class="debt-btn debt-btn-primary" onclick="debtModule.saveNewDebt()">Simpan Hutang</button>
@@ -624,39 +719,160 @@ const debtModule = {
         `;
 
         document.body.appendChild(modal);
-        const today = new Date();
-        today.setDate(today.getDate() + 30);
+        
+        // Render sidebar setelah modal muncul
         setTimeout(() => {
             modal.classList.add('active');
-            document.getElementById('addDueDate').value = today.toISOString().split('T')[0];
+            this.renderCustomerSidebar();
+            
+            // Set default due date
+            const today = new Date();
+            today.setDate(today.getDate() + 30);
+            const dueDateInput = document.getElementById('addDueDate');
+            if (dueDateInput) dueDateInput.value = today.toISOString().split('T')[0];
         }, 10);
     },
 
-    // Handler autocomplete
-    handleNameInput(value) {
-        const list = document.getElementById('customerAutocompleteList');
-        if (!list) return;
-
-        const filtered = this.filterCustomers(value);
+    // Render sidebar daftar pelanggan
+    renderCustomerSidebar() {
+        const sidebarList = document.getElementById('customerSidebarList');
+        const searchInput = document.getElementById('sidebarCustomerSearch');
+        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
         
-        if (filtered.length === 0 || value.length < 1) {
-            list.style.display = 'none';
+        if (!sidebarList) return;
+
+        const customers = this.filterCustomers(searchQuery);
+        
+        if (customers.length === 0) {
+            sidebarList.innerHTML = `
+                <div class="debt-sidebar-empty">
+                    <span>📭</span>
+                    <p>Belum ada pelanggan</p>
+                    <small>Klik ➕ untuk tambah nama</small>
+                </div>
+            `;
             return;
         }
 
-        list.innerHTML = filtered.map(c => `
-            <div class="debt-autocomplete-item" onclick="debtModule.selectCustomer('${c.name.replace(/'/g, "\\'")}', '${c.phone}')">
-                <div class="debt-autocomplete-name">${c.name}</div>
-                ${c.phone ? `<div class="debt-autocomplete-phone">📱 ${c.phone}</div>` : ''}
-            </div>
-        `).join('');
-        
-        list.style.display = 'block';
+        sidebarList.innerHTML = customers.map(cust => {
+            const isCustom = cust.source === 'custom';
+            const hasDebt = cust.source === 'debt';
+            
+            return `
+                <div class="debt-sidebar-item ${isCustom ? 'custom' : ''}" 
+                     data-customer-name="${cust.name.replace(/"/g, '&quot;')}"
+                     onclick="debtModule.selectCustomerFromSidebar('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
+                    <div class="debt-sidebar-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
+                    <div class="debt-sidebar-item-info">
+                        <div class="debt-sidebar-item-name">${cust.name}</div>
+                        <div class="debt-sidebar-item-meta">
+                            ${cust.phone ? `<span>📱 ${cust.phone}</span>` : ''}
+                            ${isCustom ? '<span class="debt-sidebar-badge custom">Manual</span>' : ''}
+                            ${hasDebt ? '<span class="debt-sidebar-badge debt">Pernah Hutang</span>' : ''}
+                        </div>
+                    </div>
+                    ${isCustom ? `
+                        <button class="debt-sidebar-item-delete" 
+                                onclick="event.stopPropagation(); debtModule.removeCustomCustomerName('${cust.name.replace(/'/g, "\\'")}')" 
+                                title="Hapus dari daftar">✕</button>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
     },
 
-    hideAutocomplete() {
-        const list = document.getElementById('customerAutocompleteList');
-        if (list) list.style.display = 'none';
+    // Sinkronkan search sidebar dengan input nama
+    syncSidebarSearch(value) {
+        const sidebarSearch = document.getElementById('sidebarCustomerSearch');
+        if (sidebarSearch) {
+            sidebarSearch.value = value;
+            this.renderCustomerSidebar();
+        }
+    },
+
+    // Buka modal tambah nama pelanggan manual
+    openAddCustomerNameModal() {
+        const modal = document.createElement('div');
+        modal.className = 'debt-modal-overlay';
+        modal.id = 'addCustomerNameModal';
+        modal.style.zIndex = '2000'; // Lebih tinggi dari modal utama
+        modal.innerHTML = `
+            <div class="debt-modal" style="max-width: 400px;">
+                <div class="debt-modal-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <div class="debt-modal-title">➕ Tambah Nama Pelanggan</div>
+                    <button class="debt-modal-close" onclick="debtModule.closeAddCustomerNameModal()">✕</button>
+                </div>
+                <div class="debt-modal-body">
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">Nama Pelanggan *</label>
+                        <input type="text" 
+                               class="debt-form-input" 
+                               id="newCustomerName" 
+                               placeholder="Masukkan nama pelanggan..."
+                               onkeypress="if(event.key==='Enter') debtModule.saveNewCustomerName()">
+                    </div>
+                    <div class="debt-form-group">
+                        <label class="debt-form-label">No. Telepon (Opsional)</label>
+                        <input type="text" 
+                               class="debt-form-input" 
+                               id="newCustomerPhone" 
+                               placeholder="08xxxxxxxxxx"
+                               onkeypress="if(event.key==='Enter') debtModule.saveNewCustomerName()">
+                    </div>
+                </div>
+                <div class="debt-modal-footer">
+                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeAddCustomerNameModal()">Batal</button>
+                    <button class="debt-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;" onclick="debtModule.saveNewCustomerName()">Simpan</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => {
+            modal.classList.add('active');
+            document.getElementById('newCustomerName')?.focus();
+        }, 10);
+    },
+
+    closeAddCustomerNameModal() {
+        const modal = document.getElementById('addCustomerNameModal');
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        }
+    },
+
+    saveNewCustomerName() {
+        const nameInput = document.getElementById('newCustomerName');
+        const phoneInput = document.getElementById('newCustomerPhone');
+        
+        const name = nameInput?.value.trim();
+        const phone = phoneInput?.value.trim() || '';
+        
+        if (!name) {
+            this.showToast('Nama pelanggan wajib diisi!', 'error');
+            return;
+        }
+
+        // Cek apakah sudah ada
+        const allCustomers = this.getAllCustomerNames();
+        const exists = allCustomers.find(c => c.name.toLowerCase() === name.toLowerCase());
+        
+        if (exists) {
+            this.showToast('Nama pelanggan sudah ada!', 'error');
+            return;
+        }
+
+        this.addCustomCustomerName(name, phone);
+        this.closeAddCustomerNameModal();
+        
+        // Refresh sidebar
+        this.renderCustomerSidebar();
+        
+        // Auto select nama yang baru ditambahkan
+        this.selectCustomerFromSidebar(name, phone);
+        
+        this.showToast(`Nama "${name}" ditambahkan ke daftar`, 'success');
     },
 
     addItemField() {
@@ -699,6 +915,13 @@ const debtModule = {
         if (!customerName || !dueDate) {
             this.showToast('Nama pelanggan dan tanggal jatuh tempo wajib diisi!', 'error');
             return;
+        }
+
+        // Tambahkan ke custom names jika belum ada
+        const allCustomers = this.getAllCustomerNames();
+        const exists = allCustomers.find(c => c.name.toLowerCase() === customerName.toLowerCase());
+        if (!exists) {
+            this.addCustomCustomerName(customerName, customerPhone);
         }
 
         const items = [];
@@ -747,13 +970,13 @@ const debtModule = {
             status: dp >= total ? 'paid' : 'pending',
             paidDate: dp >= total ? new Date().toISOString().split('T')[0] : null,
             notes,
-            reduceCash, // Simpan pilihan kas
+            reduceCash,
             payments: dp > 0 ? [{
                 date: new Date().toISOString(),
                 amount: dp,
                 method: 'cash',
                 note: 'DP/ Pembayaran awal',
-                addToCash: false // DP tidak tambah kas karena reduceCash yang handle
+                addToCash: false
             }] : []
         };
 
@@ -869,7 +1092,6 @@ const debtModule = {
         const remaining = debt.total - debt.paid;
         const returnCash = document.querySelector('input[name="returnCash"]:checked')?.value === 'yes';
 
-        // Kembalikan ke kas jika dipilih dan memang reduceCash
         if (returnCash && remaining > 0 && debt.reduceCash && typeof dataManager !== 'undefined') {
             if (!dataManager.data.settings) dataManager.data.settings = {};
             
@@ -877,7 +1099,6 @@ const debtModule = {
             dataManager.save();
             this.updateCashDisplay();
 
-            // Simpan transaksi kas
             if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
             dataManager.data.cashTransactions.push({
                 id: Date.now(),
@@ -941,7 +1162,6 @@ const debtModule = {
                         <input type="number" class="debt-form-input" id="paymentAmount" value="${remaining}" max="${remaining}" min="1">
                     </div>
 
-                    <!-- PILIHAN TAMBAH KE KAS -->
                     <div class="debt-cash-option">
                         <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
                         <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
@@ -1011,7 +1231,6 @@ const debtModule = {
             addToCash: addToCash
         });
 
-        // Tambah ke kas jika dipilih
         if (addToCash && typeof dataManager !== 'undefined') {
             if (!dataManager.data.settings) dataManager.data.settings = {};
             
@@ -1019,7 +1238,6 @@ const debtModule = {
             dataManager.save();
             this.updateCashDisplay();
 
-            // Simpan transaksi kas
             if (!dataManager.data.cashTransactions) dataManager.data.cashTransactions = [];
             dataManager.data.cashTransactions.push({
                 id: Date.now(),
