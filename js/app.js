@@ -54,7 +54,7 @@ const router = {
     showKasirClosedModal() {
         const modalHTML = `
             <div class="modal active" id="kasirClosedModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 400px; text-align: center;">
+                <div class="modal-content" style="max-width: 350px; text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 15px;">🔒</div>
                     <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
                         <span class="modal-title" style="font-size: 18px;">Kasir Sedang Tutup</span>
@@ -259,7 +259,7 @@ const app = {
     showNewDayConfirmModal() {
         const modalHTML = `
             <div class="modal active" id="newDayModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 400px; text-align: center;">
+                <div class="modal-content" style="max-width: 350px; text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 15px;">🌅</div>
                     <div class="modal-header" style="justify-content: center;">
                         <span class="modal-title" style="font-size: 16px;">Shift Baru Hari Ini</span>
@@ -287,7 +287,7 @@ const app = {
 
         const modalHTML = `
             <div class="modal active" id="kasirUsedModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 400px; text-align: center;">
+                <div class="modal-content" style="max-width: 350px; text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
                     <div class="modal-header" style="justify-content: center;">
                         <span class="modal-title" style="font-size: 16px;">Kasir Sedang Digunakan</span>
@@ -319,6 +319,25 @@ const app = {
             if (defaultTab) defaultTab.classList.add('active');
             posModule.init();
             document.getElementById('cartBar').style.display = 'flex';
+        }
+    },
+
+    // ==================== TUTUP KASIR ====================
+    closeKasir() {
+        if (!confirm('🚪 Yakin ingin menutup kasir?\n\nSemua transaksi hari ini akan disimpan.\nAnda perlu login ulang untuk membuka kasir lagi.')) {
+            return;
+        }
+
+        const result = dataManager.closeKasir();
+        if (result.success) {
+            this.showToast(result.message);
+            this.updateHeader();
+            this.updateKasirStatus();
+            
+            // Redirect ke halaman kasir tutup
+            setTimeout(() => {
+                this.showKasirClosedPage();
+            }, 1000);
         }
     },
 
@@ -367,6 +386,25 @@ const app = {
         } else {
             if (userInfoHeader) userInfoHeader.style.display = 'none';
         }
+
+        // Update tombol buka/tutup kasir
+        this.updateKasirButton();
+    },
+
+    updateKasirButton() {
+        const kasirBtn = document.getElementById('kasirToggleBtn');
+        if (!kasirBtn) return;
+
+        const isOpen = this.data.kasir && this.data.kasir.isOpen;
+        if (isOpen) {
+            kasirBtn.innerHTML = '🔒 Tutup Kasir';
+            kasirBtn.style.background = '#ff4757';
+            kasirBtn.onclick = () => this.closeKasir();
+        } else {
+            kasirBtn.innerHTML = '🔓 Buka Kasir';
+            kasirBtn.style.background = '#2ed573';
+            kasirBtn.onclick = () => this.confirmOpenKasir(true);
+        }
     },
 
     calculateTodayProfit() {
@@ -405,6 +443,9 @@ const app = {
             if (shiftStatus) shiftStatus.textContent = 'Tutup';
             if (indicator) indicator.className = 'kasir-indicator closed';
         }
+
+        // Update tombol kasir
+        this.updateKasirButton();
     },
 
     showKasirClosedPage() {
@@ -445,57 +486,61 @@ const app = {
         `;
     },
 
-    // ==================== SETTINGS FUNCTIONAL ====================
+    // ==================== SETTINGS FUNCTIONAL - PERBAIKAN ====================
     openSettings() {
+        // Hapus modal yang mungkin sudah ada
+        const existingModal = document.getElementById('settingsModal');
+        if (existingModal) existingModal.remove();
+
         const modalHTML = `
-            <div class="modal active" id="settingsModal" style="display: flex; z-index: 4000; align-items: flex-start; padding-top: 50px;">
-                <div class="modal-content" style="max-width: 450px; max-height: 85vh; overflow-y: auto;">
-                    <div class="modal-header">
-                        <span class="modal-title">⚙️ Pengaturan Toko</span>
-                        <button class="close-btn" onclick="app.closeSettings()">×</button>
+            <div class="modal active" id="settingsModal" style="display: flex; z-index: 4000; align-items: flex-start; padding-top: 80px;">
+                <div class="modal-content" style="max-width: 380px; width: 90%; max-height: 80vh; overflow-y: auto; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                    <div class="modal-header" style="padding: 15px 20px; border-bottom: 1px solid #eee;">
+                        <span class="modal-title" style="font-size: 16px; font-weight: 600;">⚙️ Pengaturan Toko</span>
+                        <button onclick="app.closeSettings()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
                     <div style="padding: 20px;">
                         <!-- Info Toko -->
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Nama Toko</label>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Nama Toko</label>
                             <input type="text" id="settingStoreName" 
                                    value="${this.data.settings.storeName || 'Hifzi Cell'}" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box;">
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
                         
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Alamat Toko</label>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Alamat Toko</label>
                             <textarea id="settingStoreAddress" 
-                                      style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; min-height: 60px; resize: vertical; font-size: 14px; box-sizing: border-box; font-family: inherit;">${this.data.settings.address || ''}</textarea>
+                                      style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; min-height: 50px; resize: vertical; font-size: 14px; box-sizing: border-box; font-family: inherit;">${this.data.settings.address || ''}</textarea>
                         </div>
                         
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Nomor Telepon</label>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Nomor Telepon</label>
                             <input type="text" id="settingStorePhone" 
                                    value="${this.data.settings.phone || ''}" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box;">
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
 
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Pajak Default (%)</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Pajak Default (%)</label>
                             <input type="number" id="settingTax" 
                                    value="${this.data.settings.tax || 0}" 
-                                   style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box;">
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
                         
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
                         
                         <!-- Data Management -->
                         <div style="margin-bottom: 10px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #d32f2f; font-size: 14px;">⚠️ Zona Berbahaya</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #d32f2f; font-size: 13px;">⚠️ Zona Berbahaya</label>
                             <div style="display: grid; gap: 8px;">
                                 <button onclick="app.confirmResetData()" 
-                                        style="padding: 10px; background: #ffebee; color: #c62828; border: 1px solid #ef5350; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                        style="padding: 10px; background: #ffebee; color: #c62828; border: 1px solid #ef5350; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
                                     🗑️ Reset Semua Data
                                 </button>
                                 <button onclick="app.exportData()" 
-                                        style="padding: 10px; background: #e3f2fd; color: #1565c0; border: 1px solid #42a5f5; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                        style="padding: 10px; background: #e3f2fd; color: #1565c0; border: 1px solid #42a5f5; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
                                     💾 Export Data (JSON)
                                 </button>
                             </div>
@@ -504,70 +549,98 @@ const app = {
                     
                     <div style="display: flex; gap: 10px; justify-content: flex-end; padding: 0 20px 20px;">
                         <button onclick="app.closeSettings()" 
-                                style="padding: 10px 20px; background: #f5f5f5; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">Batal</button>
+                                style="padding: 10px 20px; background: #f5f5f5; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: #666;">Batal</button>
                         <button onclick="app.saveSettings()" 
-                                style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">Simpan Perubahan</button>
+                                style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">Simpan Perubahan</button>
                     </div>
                 </div>
             </div>
         `;
-        
-        // Remove existing modal
-        const existingModal = document.getElementById('settingsModal');
-        if (existingModal) existingModal.remove();
         
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
     closeSettings() {
         const modal = document.getElementById('settingsModal');
-        if (modal) modal.remove();
+        if (modal) {
+            modal.remove();
+        }
     },
 
     saveSettings() {
-        const storeName = document.getElementById('settingStoreName').value.trim();
-        const address = document.getElementById('settingStoreAddress').value.trim();
-        const phone = document.getElementById('settingStorePhone').value.trim();
-        const tax = parseFloat(document.getElementById('settingTax').value) || 0;
+        try {
+            const storeNameInput = document.getElementById('settingStoreName');
+            const addressInput = document.getElementById('settingStoreAddress');
+            const phoneInput = document.getElementById('settingStorePhone');
+            const taxInput = document.getElementById('settingTax');
 
-        // Update data
-        this.data.settings.storeName = storeName;
-        this.data.settings.address = address;
-        this.data.settings.phone = phone;
-        this.data.settings.tax = tax;
+            if (!storeNameInput || !addressInput || !phoneInput || !taxInput) {
+                console.error('[Settings] Input elements not found!');
+                this.showToast('❌ Error: Form tidak ditemukan!');
+                return;
+            }
 
-        // Save to storage
-        dataManager.saveData();
+            const storeName = storeNameInput.value.trim();
+            const address = addressInput.value.trim();
+            const phone = phoneInput.value.trim();
+            const tax = parseFloat(taxInput.value) || 0;
 
-        // Update header
-        this.updateHeader();
+            // Update data
+            this.data.settings.storeName = storeName;
+            this.data.settings.address = address;
+            this.data.settings.phone = phone;
+            this.data.settings.tax = tax;
 
-        this.showToast('✅ Pengaturan berhasil disimpan!');
-        this.closeSettings();
+            // Save to storage
+            if (typeof dataManager !== 'undefined' && dataManager.saveData) {
+                dataManager.saveData();
+            } else if (typeof dataManager !== 'undefined' && dataManager.save) {
+                dataManager.save();
+            }
+
+            // Update header
+            this.updateHeader();
+
+            this.showToast('✅ Pengaturan berhasil disimpan!');
+            this.closeSettings();
+        } catch (error) {
+            console.error('[Settings] Error saving:', error);
+            this.showToast('❌ Gagal menyimpan pengaturan!');
+        }
     },
 
     confirmResetData() {
         if (confirm('⚠️ PERINGATAN!\n\nSemua data akan dihapus permanen!\nTransaksi, produk, hutang, dan pengaturan akan hilang.\n\nApakah Anda yakin?')) {
-            if (prompt('Ketik "HAPUS" untuk konfirmasi:') === 'HAPUS') {
+            const confirmation = prompt('Ketik "HAPUS" untuk konfirmasi:');
+            if (confirmation === 'HAPUS') {
                 localStorage.removeItem('hifzi_data');
+                localStorage.removeItem('hifzi_users');
+                localStorage.removeItem('hifzi_current_user');
                 this.showToast('🗑️ Semua data telah dihapus. Memuat ulang...');
                 setTimeout(() => location.reload(), 1500);
+            } else {
+                this.showToast('❌ Penghapusan dibatalkan');
             }
         }
     },
 
     exportData() {
-        const dataStr = JSON.stringify(this.data, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `hifzi_backup_${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.showToast('💾 Data berhasil diexport!');
+        try {
+            const dataStr = JSON.stringify(this.data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `hifzi_backup_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            this.showToast('💾 Data berhasil diexport!');
+        } catch (error) {
+            console.error('[Export] Error:', error);
+            this.showToast('❌ Gagal export data!');
+        }
     },
     // ==================== END SETTINGS ====================
 
