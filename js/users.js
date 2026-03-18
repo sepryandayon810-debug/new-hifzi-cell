@@ -51,10 +51,13 @@ const usersModule = {
                 <td>${user.username}</td>
                 <td><span class="badge ${user.role === 'admin' ? 'badge-primary' : 'badge-secondary'}">${user.role}</span></td>
                 <td>
-                    ${currentUser && currentUser.userId !== user.id ? 
-                        `<button class="btn btn-danger btn-sm" onclick="usersModule.deleteUser('${user.id}')">🗑️ Hapus</button>` : 
-                        '<span style="color: #999; font-size: 12px;">(Anda)</span>'
-                    }
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn btn-primary btn-sm" onclick="usersModule.showEditUserModal('${user.id}')">✏️ Edit</button>
+                        ${currentUser && currentUser.userId !== user.id ? 
+                            `<button class="btn btn-danger btn-sm" onclick="usersModule.deleteUser('${user.id}')">🗑️ Hapus</button>` : 
+                            '<span style="color: #999; font-size: 12px;">(Anda)</span>'
+                        }
+                    </div>
                 </td>
             </tr>
         `).join('');
@@ -62,8 +65,8 @@ const usersModule = {
 
     showAddUserModal() {
         const modalHTML = `
-            <div class="modal active" id="addUserModal" style="display: flex; z-index: 2000;">
-                <div class="modal-content" style="max-width: 400px;">
+            <div class="modal active" id="addUserModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
+                <div class="modal-content" style="max-width: 400px; max-height: 80vh; overflow-y: auto;">
                     <div class="modal-header">
                         <span class="modal-title">➕ Tambah Pengguna Baru</span>
                         <button class="close-btn" onclick="document.getElementById('addUserModal').remove()">×</button>
@@ -95,6 +98,54 @@ const usersModule = {
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="document.getElementById('addUserModal').remove()">Batal</button>
                         <button class="btn btn-primary" onclick="usersModule.saveNewUser()">Simpan</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    showEditUserModal(userId) {
+        const users = dataManager.getUsers();
+        const user = users.find(u => u.id === userId);
+        if (!user) return;
+
+        const modalHTML = `
+            <div class="modal active" id="editUserModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
+                <div class="modal-content" style="max-width: 400px; max-height: 80vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <span class="modal-title">✏️ Edit Pengguna</span>
+                        <button class="close-btn" onclick="document.getElementById('editUserModal').remove()">×</button>
+                    </div>
+                    
+                    <input type="hidden" id="editUserId" value="${user.id}">
+                    
+                    <div class="form-group">
+                        <label>Nama Lengkap *</label>
+                        <input type="text" id="editUserName" value="${user.name}" placeholder="Contoh: Budi Santoso">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Username *</label>
+                        <input type="text" id="editUserUsername" value="${user.username}" placeholder="Contoh: budi123">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Password Baru (Kosongkan jika tidak diubah)</label>
+                        <input type="password" id="editUserPassword" placeholder="Minimal 6 karakter">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Role *</label>
+                        <select id="editUserRole" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px;">
+                            <option value="kasir" ${user.role === 'kasir' ? 'selected' : ''}>Kasir</option>
+                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                        </select>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="document.getElementById('editUserModal').remove()">Batal</button>
+                        <button class="btn btn-primary" onclick="usersModule.saveEditUser()">Simpan Perubahan</button>
                     </div>
                 </div>
             </div>
@@ -135,6 +186,47 @@ const usersModule = {
         document.getElementById('addUserModal').remove();
         this.loadUsers();
         app.showToast('✅ User berhasil ditambahkan!');
+    },
+
+    saveEditUser() {
+        const userId = document.getElementById('editUserId').value;
+        const name = document.getElementById('editUserName').value.trim();
+        const username = document.getElementById('editUserUsername').value.trim();
+        const password = document.getElementById('editUserPassword').value;
+        const role = document.getElementById('editUserRole').value;
+
+        if (!name || !username) {
+            app.showToast('❌ Nama dan username wajib diisi!');
+            return;
+        }
+
+        if (password && password.length < 6) {
+            app.showToast('❌ Password minimal 6 karakter!');
+            return;
+        }
+
+        // Cek username sudah ada (kecuali milik user ini sendiri)
+        const users = dataManager.getUsers();
+        const existingUser = users.find(u => u.username === username && u.id !== userId);
+        if (existingUser) {
+            app.showToast('❌ Username sudah digunakan oleh user lain!');
+            return;
+        }
+
+        const updateData = {
+            name,
+            username,
+            role
+        };
+
+        if (password) {
+            updateData.password = password;
+        }
+
+        dataManager.updateUser(userId, updateData);
+        document.getElementById('editUserModal').remove();
+        this.loadUsers();
+        app.showToast('✅ User berhasil diupdate!');
     },
 
     deleteUser(userId) {
