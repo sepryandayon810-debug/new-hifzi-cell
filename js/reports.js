@@ -1,6 +1,7 @@
 const reportsModule = {
     currentRange: 'today',
     salesChart: null,
+    isChartVisible: false,
     
     init() {
         this.renderHTML();
@@ -63,17 +64,27 @@ const reportsModule = {
                     </div>
                 </div>
 
-                <!-- Grafik Section -->
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">Grafik Tren</span>
-                        <div class="chart-toggle">
-                            <button class="toggle-btn active" onclick="reportsModule.toggleChartType('bar')">📊 Bar</button>
-                            <button class="toggle-btn" onclick="reportsModule.toggleChartType('line')">📈 Line</button>
+                <!-- Grafik Section dengan Toggle Collapsible -->
+                <div class="card chart-card">
+                    <div class="chart-header" onclick="reportsModule.toggleChart()">
+                        <div class="chart-header-left">
+                            <span class="chart-icon">📊</span>
+                            <span class="chart-title-text">Grafik Tren</span>
+                        </div>
+                        <div class="chart-toggle-wrapper">
+                            <span class="chart-toggle-text" id="chartToggleText">Tampilkan</span>
+                            <div class="chart-arrow" id="chartArrow">▼</div>
                         </div>
                     </div>
-                    <div class="chart-container">
-                        <canvas id="salesChart"></canvas>
+                    
+                    <div class="chart-content" id="chartContent" style="display: none;">
+                        <div class="chart-type-toggle">
+                            <button class="type-btn active" onclick="event.stopPropagation(); reportsModule.toggleChartType('bar')">📊 Bar</button>
+                            <button class="type-btn" onclick="event.stopPropagation(); reportsModule.toggleChartType('line')">📈 Line</button>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="salesChart"></canvas>
+                        </div>
                     </div>
                 </div>
 
@@ -113,6 +124,40 @@ const reportsModule = {
         document.getElementById('endDate').value = today;
     },
     
+    // Toggle chart visibility dengan animasi
+    toggleChart() {
+        this.isChartVisible = !this.isChartVisible;
+        const content = document.getElementById('chartContent');
+        const arrow = document.getElementById('chartArrow');
+        const text = document.getElementById('chartToggleText');
+        
+        if (this.isChartVisible) {
+            // Buka grafik
+            content.style.display = 'block';
+            // Trigger reflow untuk animasi
+            void content.offsetHeight;
+            content.classList.add('show');
+            arrow.style.transform = 'rotate(180deg)';
+            text.textContent = 'Sembunyikan';
+            
+            // Render chart jika belum ada
+            setTimeout(() => {
+                if (!this.salesChart) {
+                    this.generateReport();
+                }
+            }, 100);
+        } else {
+            // Tutup grafik
+            content.classList.remove('show');
+            arrow.style.transform = 'rotate(0deg)';
+            text.textContent = 'Tampilkan';
+            
+            setTimeout(() => {
+                content.style.display = 'none';
+            }, 300);
+        }
+    },
+    
     setRange(range) {
         this.currentRange = range;
         
@@ -127,7 +172,7 @@ const reportsModule = {
     },
     
     toggleChartType(type) {
-        document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
         event.target.classList.add('active');
         
         if (this.salesChart) {
@@ -185,8 +230,10 @@ const reportsModule = {
             document.getElementById('profitMargin').textContent = margin + '%';
         }
         
-        // Generate Chart Data
-        this.renderChart(transactions, startDate, endDate);
+        // Render chart hanya jika visible
+        if (this.isChartVisible) {
+            this.renderChart(transactions, startDate, endDate);
+        }
         
         // Render Table
         const tbody = document.getElementById('reportTableBody');
@@ -212,7 +259,6 @@ const reportsModule = {
         
         const ctx = document.getElementById('salesChart').getContext('2d');
         
-        // Group data berdasarkan range
         let labels = [];
         let salesData = [];
         let profitData = [];
@@ -220,7 +266,6 @@ const reportsModule = {
         const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
         
         if (this.currentRange === 'today') {
-            // Per jam untuk hari ini
             for (let i = 0; i < 24; i += 2) {
                 labels.push(`${i}:00`);
                 const hourStart = new Date(startDate);
@@ -237,7 +282,6 @@ const reportsModule = {
                 profitData.push(hourTrans.reduce((sum, t) => sum + t.profit, 0));
             }
         } else if (daysDiff <= 7) {
-            // Per hari untuk minggu
             for (let i = 0; i <= daysDiff; i++) {
                 const d = new Date(startDate);
                 d.setDate(d.getDate() + i);
@@ -255,7 +299,6 @@ const reportsModule = {
                 profitData.push(dayTrans.reduce((sum, t) => sum + t.profit, 0));
             }
         } else if (this.currentRange === 'year' || daysDiff > 31) {
-            // Per bulan untuk tahun
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
             const startMonth = startDate.getMonth();
             const endMonth = endDate.getMonth();
@@ -276,7 +319,6 @@ const reportsModule = {
                 profitData.push(monthTrans.reduce((sum, t) => sum + t.profit, 0));
             }
         } else {
-            // Per hari untuk bulan
             const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
             for (let i = 1; i <= daysInMonth; i += 2) {
                 labels.push(i.toString());
