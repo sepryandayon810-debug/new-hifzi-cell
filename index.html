@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="css/reports.css">
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
-    <!-- ✅ PERBAIKAN: Path debt.css diperbaiki -->
+    <!-- PERBAIKAN: Path debt.css -->
     <link rel="stylesheet" href="debt.css">
     
     <!-- Telegram Module CSS -->
@@ -380,7 +380,7 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
-    <!-- TELEGRAM HELPER SCRIPT - PALING AWAL -->
+    <!-- TELEGRAM & DEBT HELPER SCRIPT - PALING AWAL -->
     <script>
         // Fungsi khusus untuk Telegram - dipanggil langsung dari onclick
         function goToTelegram(element) {
@@ -430,7 +430,7 @@
             }
         }
         
-        // ✅ PERBAIKAN: Fungsi khusus untuk Debt Module
+        // PERBAIKAN: Fungsi khusus untuk Debt Module dengan reload
         function goToDebt(element) {
             console.log('[Debt] goToDebt() called');
             
@@ -460,10 +460,9 @@
             }
             
             try {
-                // Init dan Render debt module
-                debtModule.init();
-                debtModule.render();
-                console.log('[Debt] Rendered successfully');
+                // PERBAIKAN: Panggil reload() untuk force re-initialize
+                debtModule.reload();
+                console.log('[Debt] Reloaded successfully');
             } catch (e) {
                 console.error('[Debt] Error:', e);
                 container.innerHTML = 
@@ -496,7 +495,7 @@
                             return;
                         }
                         
-                        // ✅ PERBAIKAN: Handler untuk Debt
+                        // PERBAIKAN: Handler untuk Debt
                         if (page === 'debt') {
                             goToDebt(element);
                             return;
@@ -534,7 +533,7 @@
     <script src="telegram.js"></script>
     
     <script src="js/backup.js"></script>
-    <!-- ✅ PERBAIKAN: Path debt.js diperbaiki -->
+    <!-- PERBAIKAN: Path debt.js -->
     <script src="debt.js"></script>
     
     <!-- Verifikasi module -->
