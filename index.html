@@ -14,15 +14,15 @@
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
     <link rel="stylesheet" href="css/debt.css">
+    <link rel="stylesheet" href="css/backup.css">
     
     <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
     
-    <!-- ==================== FIREBASE SDK - TAMBAHAN BARU ==================== -->
+    <!-- ==================== FIREBASE SDK ==================== -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    <!-- ==================== END FIREBASE SDK ==================== -->
     
     <!-- External Libraries -->
     <script src='https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js'></script>
@@ -265,7 +265,7 @@
             opacity: 1;
         }
 
-        /* ==================== PROFIT HIGHLIGHT STYLE ==================== */
+        /* PROFIT HIGHLIGHT STYLE */
         .cash-card {
             position: relative;
         }
@@ -300,7 +300,7 @@
             font-weight: 700;
         }
 
-        /* ==================== KASIR TOGGLE BUTTON ==================== */
+        /* KASIR TOGGLE BUTTON */
         .kasir-toggle-btn {
             padding: 8px 16px;
             border: none;
@@ -340,7 +340,7 @@
             }
         }
 
-        /* Modal improvements - PERBAIKAN UKURAN */
+        /* Modal improvements */
         .modal {
             align-items: flex-start !important;
             padding-top: 60px !important;
@@ -350,7 +350,300 @@
             max-height: 85vh !important;
             overflow-y: auto !important;
         }
-        /* ==================== END PROFIT HIGHLIGHT ==================== */
+
+        /* ==================== BACKUP PAGE STYLES ==================== */
+        .backup-container {
+            padding: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .backup-status-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .backup-status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .backup-provider {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .backup-status-info {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+
+        .backup-last-sync {
+            text-align: right;
+        }
+
+        .backup-last-sync-label {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        .backup-provider-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .backup-provider-btn {
+            padding: 24px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .backup-provider-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .backup-provider-btn.active {
+            border-color: #48bb78;
+            background: #f0fff4;
+        }
+
+        .backup-provider-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+
+        .backup-provider-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .backup-provider-desc {
+            font-size: 12px;
+            color: #718096;
+        }
+
+        .backup-section {
+            background: white;
+            padding: 24px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .backup-section-title {
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .backup-input-group {
+            margin-bottom: 16px;
+        }
+
+        .backup-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+
+        .backup-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .backup-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .backup-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .backup-btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .backup-btn-danger {
+            background: #e53e3e;
+            color: white;
+        }
+
+        .backup-btn-warning {
+            background: #ed8936;
+            color: white;
+        }
+
+        .backup-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .backup-btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .backup-toggle {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: #f7fafc;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .backup-toggle-switch {
+            width: 52px;
+            height: 28px;
+            background: #cbd5e0;
+            border-radius: 14px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .backup-toggle-switch.active {
+            background: #48bb78;
+        }
+
+        .backup-toggle-knob {
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .backup-toggle-switch.active .backup-toggle-knob {
+            left: 26px;
+        }
+
+        .backup-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .backup-file-drop {
+            border: 2px dashed #cbd5e0;
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .backup-file-drop:hover {
+            border-color: #667eea;
+            background: #f7fafc;
+        }
+
+        .backup-danger-zone {
+            background: #fff5f5;
+            border: 1px solid #feb2b2;
+            padding: 24px;
+            border-radius: 16px;
+        }
+
+        .backup-danger-title {
+            color: #c53030;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .backup-sync-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .backup-provider-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .backup-grid-2 {
+                grid-template-columns: 1fr;
+            }
+            
+            .backup-sync-actions {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Stats Grid */
+        .backup-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .backup-stat-card {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .backup-stat-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .backup-stat-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+
+        .backup-stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #2d3748;
+        }
     </style>
 </head>
 <body>
@@ -361,7 +654,6 @@
             <div class="login-title" id="loginStoreName">Hifzi Cell</div>
             <div class="login-subtitle">Sistem Kasir Pintar</div>
             
-            <!-- Form dengan ID untuk diakses JS -->
             <div id="loginFormContainer">
                 <div class="login-form-group">
                     <label>👤 Username</label>
@@ -407,12 +699,10 @@
                     </div>
                 </div>
                 <div class="header-actions" style="display: flex; align-items: center;">
-                    <!-- TOMBOL BUKA/TUTUP KASIR BARU -->
                     <button id="kasirToggleBtn" class="kasir-toggle-btn" style="background: #2ed573;">
                         🔓 Buka Kasir
                     </button>
                     
-                    <!-- USER INFO HEADER -->
                     <div class="user-info-header" id="userInfoHeader" style="display: none;">
                         <div class="user-avatar">👤</div>
                         <div class="user-details">
@@ -432,7 +722,7 @@
                 </div>
             </div>
             
-            <!-- CASH CARD dengan Total Transaksi dan Laba Highlight -->
+            <!-- CASH CARD -->
             <div class="cash-card">
                 <div class="cash-label">Kas di Tangan</div>
                 <div class="cash-amount" id="currentCash">Rp 0</div>
@@ -451,7 +741,6 @@
                         <span>Shift: <b id="shiftStatus">Tutup</b></span>
                     </div>
                     
-                    <!-- Laba yang di-highlight -->
                     <div class="profit-highlight" id="profitContainer">
                         <div class="profit-icon">📈</div>
                         <div>
@@ -495,44 +784,46 @@
         <div class="toast" id="toast"></div>
     </div>
 
-    <!-- Scripts -->
+    <!-- ==================== SCRIPTS ==================== -->
+    <!-- Utils & Data -->
     <script src="js/utils.js"></script>
     <script src="js/data.js"></script>
+    
+    <!-- Backup Module (WAJIB sebelum app.js) -->
+    <script src="js/backup.js"></script>
+    
+    <!-- App Core -->
     <script src="js/app.js"></script>
+    
+    <!-- Feature Modules -->
     <script src="js/pos.js"></script>
     <script src="js/products.js"></script>
     <script src="js/cash.js"></script>
     <script src="js/reports.js"></script>
     <script src="js/transactions.js"></script>
     <script src="js/receipt.js"></script>
-    <script src="telegram.js"></script>
-    <script src="js/backup.js"></script>
     <script src="js/debt.js"></script>
     <script src="js/users.js"></script>
     
-    <!-- Inline Script untuk Helper Functions -->
+    <!-- Telegram Module -->
+    <script src="telegram.js"></script>
+    
+    <!-- Helper Functions -->
     <script>
         // Fungsi Debt Module
         function openDebtModule(element) {
-            console.log('[Debt] Opening debt module...');
-            
-            document.querySelectorAll('.nav-tab').forEach(function(tab) {
-                tab.classList.remove('active');
-            });
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
             if (element) element.classList.add('active');
             
-            var container = document.getElementById('mainContent');
-            if (!container) {
-                console.error('[Debt] mainContent not found!');
-                return;
-            }
+            const container = document.getElementById('mainContent');
+            if (!container) return;
             
             if (typeof debtModule === 'undefined') {
-                container.innerHTML = 
-                    '<div style="padding:40px;text-align:center;">' +
-                    '<h3>❌ Error</h3>' +
-                    '<p>Module Hutang tidak ditemukan.</p>' +
-                    '</div>';
+                container.innerHTML = `
+                    <div style="padding:40px;text-align:center;">
+                        <h3>❌ Error</h3>
+                        <p>Module Hutang tidak ditemukan.</p>
+                    </div>`;
                 return;
             }
             
@@ -540,29 +831,27 @@
                 debtModule.init();
             } catch (e) {
                 console.error('[Debt] Error:', e);
-                container.innerHTML = 
-                    '<div style="padding:40px;text-align:center;color:red;">' +
-                    '<h3>❌ Error</h3><p>' + e.message + '</p></div>';
+                container.innerHTML = `
+                    <div style="padding:40px;text-align:center;color:red;">
+                        <h3>❌ Error</h3><p>${e.message}</p>
+                    </div>`;
             }
         }
         
         // Fungsi Telegram Module
         function goToTelegram(element) {
-            console.log('[Telegram] goToTelegram() called');
-            
-            document.querySelectorAll('.nav-tab').forEach(function(tab) {
-                tab.classList.remove('active');
-            });
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
             if (element) element.classList.add('active');
             
-            var container = document.getElementById('mainContent');
+            const container = document.getElementById('mainContent');
             if (!container) return;
             
             if (typeof TelegramModule === 'undefined') {
-                container.innerHTML = 
-                    '<div style="padding:40px;text-align:center;">' +
-                    '<h3>❌ Telegram Module Error</h3>' +
-                    '<p>TelegramModule tidak ditemukan.</p></div>';
+                container.innerHTML = `
+                    <div style="padding:40px;text-align:center;">
+                        <h3>❌ Telegram Module Error</h3>
+                        <p>TelegramModule tidak ditemukan.</p>
+                    </div>`;
                 return;
             }
             
