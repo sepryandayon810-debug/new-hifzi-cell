@@ -1,5 +1,6 @@
 const reportsModule = {
     currentRange: 'today',
+    salesChart: null,
     
     init() {
         this.renderHTML();
@@ -33,6 +34,7 @@ const reportsModule = {
                         <button class="filter-btn active" onclick="reportsModule.setRange('today')">Hari Ini</button>
                         <button class="filter-btn" onclick="reportsModule.setRange('week')">Minggu Ini</button>
                         <button class="filter-btn" onclick="reportsModule.setRange('month')">Bulan Ini</button>
+                        <button class="filter-btn" onclick="reportsModule.setRange('year')">Tahun Ini</button>
                         <button class="filter-btn" onclick="reportsModule.setRange('custom')">Kustom</button>
                     </div>
 
@@ -54,6 +56,20 @@ const reportsModule = {
                             <div class="stat-label">Total Laba</div>
                             <div class="stat-value" id="reportProfit">Rp 0</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Grafik Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Grafik Tren</span>
+                        <div class="chart-toggle">
+                            <button class="toggle-btn active" onclick="reportsModule.toggleChartType('bar')">📊 Bar</button>
+                            <button class="toggle-btn" onclick="reportsModule.toggleChartType('line')">📈 Line</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="salesChart"></canvas>
                     </div>
                 </div>
 
@@ -80,6 +96,14 @@ const reportsModule = {
             </div>
         `;
         
+        // Load Chart.js jika belum ada
+        if (!window.Chart) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+            script.onload = () => this.generateReport();
+            document.head.appendChild(script);
+        }
+        
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('startDate').value = today;
         document.getElementById('endDate').value = today;
@@ -95,6 +119,16 @@ const reportsModule = {
         
         if (range !== 'custom') {
             this.generateReport();
+        }
+    },
+    
+    toggleChartType(type) {
+        document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        if (this.salesChart) {
+            this.salesChart.config.type = type;
+            this.salesChart.update();
         }
     },
     
@@ -114,6 +148,10 @@ const reportsModule = {
                 break;
             case 'month':
                 startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date();
+                break;
+            case 'year':
+                startDate = new Date(now.getFullYear(), 0, 1);
                 endDate = new Date();
                 break;
             case 'custom':
@@ -142,6 +180,10 @@ const reportsModule = {
             document.getElementById('profitMargin').textContent = margin + '%';
         }
         
+        // Generate Chart Data
+        this.renderChart(transactions, startDate, endDate);
+        
+        // Render Table
         const tbody = document.getElementById('reportTableBody');
         tbody.innerHTML = '';
         
@@ -157,6 +199,173 @@ const reportsModule = {
                 `;
                 tbody.appendChild(row);
             });
+        });
+    },
+    
+    renderChart(transactions, startDate, endDate) {
+        if (!window.Chart) return;
+        
+        const ctx = document.getElementById('salesChart').getContext('2d');
+        
+        // Group data berdasarkan range
+        let labels = [];
+        let salesData = [];
+        let profitData = [];
+        
+        const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+        
+        if (this.currentRange === 'today') {
+            // Per jam untuk hari ini
+            for (let i = 0; i < 24; i += 2) {
+                labels.push(`${i}:00`);
+                const hourStart = new Date(startDate);
+                hourStart.setHours(i, 0, 0, 0);
+                const hourEnd = new Date(startDate);
+                hourEnd.setHours(i + 2, 0, 0, 0);
+                
+                const hourTrans = transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate >= hourStart && tDate < hourEnd;
+                });
+                
+                salesData.push(hourTrans.reduce((sum, t) => sum + t.total, 0));
+                profitData.push(hourTrans.reduce((sum, t) => sum + t.profit, 0));
+            }
+        } else if (daysDiff <= 7) {
+            // Per hari untuk minggu
+            for (let i = 0; i <= daysDiff; i++) {
+                const d = new Date(startDate);
+                d.setDate(d.getDate() + i);
+                labels.push(d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' }));
+                
+                const dayStart = new Date(d.setHours(0,0,0,0));
+                const dayEnd = new Date(d.setHours(23,59,59,999));
+                
+                const dayTrans = transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate >= dayStart && tDate <= dayEnd;
+                });
+                
+                salesData.push(dayTrans.reduce((sum, t) => sum + t.total, 0));
+                profitData.push(dayTrans.reduce((sum, t) => sum + t.profit, 0));
+            }
+        } else if (this.currentRange === 'year' || daysDiff > 31) {
+            // Per bulan untuk tahun
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+            const startMonth = startDate.getMonth();
+            const endMonth = endDate.getMonth();
+            const startYear = startDate.getFullYear();
+            
+            for (let i = startMonth; i <= endMonth; i++) {
+                labels.push(months[i]);
+                
+                const monthStart = new Date(startYear, i, 1);
+                const monthEnd = new Date(startYear, i + 1, 0, 23, 59, 59);
+                
+                const monthTrans = transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate >= monthStart && tDate <= monthEnd;
+                });
+                
+                salesData.push(monthTrans.reduce((sum, t) => sum + t.total, 0));
+                profitData.push(monthTrans.reduce((sum, t) => sum + t.profit, 0));
+            }
+        } else {
+            // Per hari untuk bulan
+            const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+            for (let i = 1; i <= daysInMonth; i += 2) {
+                labels.push(i.toString());
+                
+                const dayStart = new Date(startDate.getFullYear(), startDate.getMonth(), i, 0, 0, 0);
+                const dayEnd = new Date(startDate.getFullYear(), startDate.getMonth(), i + 1, 23, 59, 59);
+                
+                const dayTrans = transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate >= dayStart && tDate <= dayEnd;
+                });
+                
+                salesData.push(dayTrans.reduce((sum, t) => sum + t.total, 0));
+                profitData.push(dayTrans.reduce((sum, t) => sum + t.profit, 0));
+            }
+        }
+        
+        if (this.salesChart) {
+            this.salesChart.destroy();
+        }
+        
+        this.salesChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Penjualan',
+                        data: salesData,
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Laba',
+                        data: profitData,
+                        backgroundColor: 'rgba(118, 75, 162, 0.8)',
+                        borderColor: 'rgba(118, 75, 162, 1)',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20,
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        padding: 12,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': Rp ' + utils.formatNumber(context.raw);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000000) return 'Rp ' + (value/1000000).toFixed(1) + 'jt';
+                                if (value >= 1000) return 'Rp ' + (value/1000).toFixed(0) + 'k';
+                                return 'Rp ' + value;
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
         });
     },
     
