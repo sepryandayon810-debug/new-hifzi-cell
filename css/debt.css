@@ -1,24 +1,23 @@
+<!-- HIFZI DEBT MODULE CSS - INLINE -->
+<style>
 /* ============================================
-   HIFZI CELL - DEBT MODULE STYLES (LENGKAP)
-   + SIDEBAR CUSTOMER STYLES
+   HIFZI CELL - DEBT MODULE STYLES (INLINE)
    ============================================ */
 
-.debt-container {
+.hifzi-debt-container {
     padding: 20px;
     max-width: 1200px;
     margin: 0 auto;
-    animation: fadeIn 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    animation: hifziFadeIn 0.3s ease;
 }
 
-@keyframes fadeIn {
+@keyframes hifziFadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* ============================================
-   SUMMARY HEADER
-   ============================================ */
-.debt-summary-header {
+.hifzi-debt-summary-header {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 20px;
@@ -26,23 +25,23 @@
 }
 
 @media (max-width: 768px) {
-    .debt-summary-header {
+    .hifzi-debt-summary-header {
         grid-template-columns: 1fr;
     }
 }
 
-.debt-summary-main-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 24px;
-    border-radius: 16px;
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+.hifzi-debt-summary-main-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    padding: 24px !important;
+    border-radius: 16px !important;
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3) !important;
     display: flex;
     flex-direction: column;
     justify-content: center;
 }
 
-.debt-summary-label {
+.hifzi-debt-summary-label {
     font-size: 14px;
     opacity: 0.9;
     margin-bottom: 8px;
@@ -50,25 +49,25 @@
     letter-spacing: 0.5px;
 }
 
-.debt-summary-amount {
+.hifzi-debt-summary-amount {
     font-size: 36px;
     font-weight: 700;
     margin-bottom: 8px;
     text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.debt-summary-detail {
+.hifzi-debt-summary-detail {
     font-size: 13px;
     opacity: 0.85;
 }
 
-.debt-summary-sub-cards {
+.hifzi-debt-summary-sub-cards {
     display: grid;
     grid-template-rows: 1fr 1fr;
     gap: 12px;
 }
 
-.debt-summary-sub-card {
+.hifzi-debt-summary-sub-card {
     padding: 16px 20px;
     border-radius: 12px;
     display: flex;
@@ -77,17 +76,17 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
-.debt-summary-sub-card.success {
-    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-    color: white;
+.hifzi-debt-summary-sub-card.hifzi-success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+    color: white !important;
 }
 
-.debt-summary-sub-card.warning {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
+.hifzi-debt-summary-sub-card.hifzi-warning {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+    color: white !important;
 }
 
-.debt-summary-sub-label {
+.hifzi-debt-summary-sub-label {
     font-size: 12px;
     opacity: 0.9;
     margin-bottom: 4px;
@@ -95,26 +94,23 @@
     letter-spacing: 0.5px;
 }
 
-.debt-summary-sub-amount {
+.hifzi-debt-summary-sub-amount {
     font-size: 24px;
     font-weight: 700;
     margin-bottom: 4px;
 }
 
-.debt-summary-sub-detail {
+.hifzi-debt-summary-sub-detail {
     font-size: 12px;
     opacity: 0.85;
 }
 
-/* ============================================
-   STATS BAR
-   ============================================ */
-.debt-stats-bar {
+.hifzi-debt-stats-bar {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 40px;
-    background: white;
+    background: white !important;
     padding: 16px 24px;
     border-radius: 12px;
     margin-bottom: 20px;
@@ -122,13 +118,13 @@
     border: 1px solid #e2e8f0;
 }
 
-.debt-stat-item {
+.hifzi-debt-stat-item {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.debt-stat-icon {
+.hifzi-debt-stat-icon {
     font-size: 24px;
     width: 44px;
     height: 44px;
@@ -139,50 +135,47 @@
     border-radius: 12px;
 }
 
-.debt-stat-info {
+.hifzi-debt-stat-info {
     display: flex;
     flex-direction: column;
 }
 
-.debt-stat-label {
+.hifzi-debt-stat-label {
     font-size: 12px;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
-.debt-stat-value {
+.hifzi-debt-stat-value {
     font-size: 20px;
     font-weight: 700;
     color: #1e293b;
 }
 
-.debt-stat-value.profit {
+.hifzi-debt-stat-value.hifzi-profit {
     color: #059669;
 }
 
-.debt-stat-divider {
+.hifzi-debt-stat-divider {
     width: 1px;
     height: 40px;
     background: #e2e8f0;
 }
 
 @media (max-width: 640px) {
-    .debt-stats-bar {
+    .hifzi-debt-stats-bar {
         flex-direction: column;
         gap: 16px;
     }
     
-    .debt-stat-divider {
+    .hifzi-debt-stat-divider {
         width: 100%;
         height: 1px;
     }
 }
 
-/* ============================================
-   CONTROLS & FILTERS
-   ============================================ */
-.debt-controls-header {
+.hifzi-debt-controls-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -191,7 +184,7 @@
     flex-wrap: wrap;
 }
 
-.debt-controls {
+.hifzi-debt-controls {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -199,41 +192,44 @@
     min-width: 280px;
 }
 
-.debt-search {
+.hifzi-debt-search {
     position: relative;
     width: 100%;
 }
 
-.debt-search-icon {
+.hifzi-debt-search-icon {
     position: absolute;
     left: 12px;
     top: 50%;
     transform: translateY(-50%);
     color: #94a3b8;
+    font-size: 16px;
 }
 
-.debt-search input {
+.hifzi-debt-search input {
     width: 100%;
     padding: 12px 12px 12px 40px;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
     font-size: 14px;
     transition: all 0.2s;
+    background: white;
+    box-sizing: border-box;
 }
 
-.debt-search input:focus {
+.hifzi-debt-search input:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.debt-filter {
+.hifzi-debt-filter {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
 }
 
-.debt-filter-btn {
+.hifzi-debt-filter-btn {
     padding: 8px 16px;
     border: 1px solid #e2e8f0;
     background: white;
@@ -242,26 +238,27 @@
     cursor: pointer;
     transition: all 0.2s;
     color: #64748b;
+    font-family: inherit;
 }
 
-.debt-filter-btn:hover {
+.hifzi-debt-filter-btn:hover {
     background: #f8fafc;
     border-color: #cbd5e1;
 }
 
-.debt-filter-btn.active {
-    background: #667eea;
-    color: white;
-    border-color: #667eea;
+.hifzi-debt-filter-btn.hifzi-active {
+    background: #667eea !important;
+    color: white !important;
+    border-color: #667eea !important;
 }
 
-.debt-add-btn {
+.hifzi-debt-add-btn {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 12px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     border: none;
     border-radius: 10px;
     font-weight: 600;
@@ -269,31 +266,32 @@
     transition: all 0.2s;
     white-space: nowrap;
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    font-family: inherit;
+    font-size: 14px;
 }
 
-.debt-add-btn:hover {
+.hifzi-debt-add-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
 }
 
-.debt-add-btn-empty {
+.hifzi-debt-add-btn-empty {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 12px 24px;
-    background: #667eea;
-    color: white;
+    background: #667eea !important;
+    color: white !important;
     border: none;
     border-radius: 10px;
     font-weight: 600;
     cursor: pointer;
     margin-top: 16px;
+    font-family: inherit;
+    font-size: 14px;
 }
 
-/* ============================================
-   TOGGLE SHOW PAID
-   ============================================ */
-.debt-toggle-paid {
+.hifzi-debt-toggle-paid {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -305,18 +303,18 @@
     gap: 12px;
 }
 
-.debt-toggle-switch {
+.hifzi-debt-toggle-switch {
     display: flex;
     align-items: center;
     gap: 10px;
     cursor: pointer;
 }
 
-.debt-toggle-switch input {
+.hifzi-debt-toggle-switch input {
     display: none;
 }
 
-.debt-toggle-slider {
+.hifzi-debt-toggle-slider {
     width: 44px;
     height: 24px;
     background: #cbd5e1;
@@ -325,7 +323,7 @@
     transition: all 0.3s;
 }
 
-.debt-toggle-slider::after {
+.hifzi-debt-toggle-slider::after {
     content: '';
     position: absolute;
     width: 20px;
@@ -338,55 +336,52 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
-.debt-toggle-switch input:checked + .debt-toggle-slider {
+.hifzi-debt-toggle-switch input:checked + .hifzi-debt-toggle-slider {
     background: #667eea;
 }
 
-.debt-toggle-switch input:checked + .debt-toggle-slider::after {
+.hifzi-debt-toggle-switch input:checked + .hifzi-debt-toggle-slider::after {
     left: 22px;
 }
 
-.debt-toggle-label {
+.hifzi-debt-toggle-label {
     font-size: 14px;
     color: #475569;
     font-weight: 500;
 }
 
-.debt-toggle-hint {
+.hifzi-debt-toggle-hint {
     font-size: 12px;
     color: #94a3b8;
 }
 
-/* ============================================
-   DEBT GROUPS
-   ============================================ */
-.debt-groups {
+.hifzi-debt-groups {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.debt-group {
-    background: white;
+.hifzi-debt-group {
+    background: white !important;
     border-radius: 12px;
     border: 1px solid #e2e8f0;
     overflow: hidden;
     transition: all 0.2s;
 }
 
-.debt-group:hover {
+.hifzi-debt-group:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
-.debt-group.expanded {
+.hifzi-debt-group.hifzi-expanded {
     border-color: #667eea;
 }
 
-.debt-group.all-paid {
+.hifzi-debt-group.hifzi-all-paid {
     opacity: 0.7;
 }
 
-.debt-group-header {
+.hifzi-debt-group-header {
     display: flex;
     align-items: center;
     padding: 16px;
@@ -395,19 +390,19 @@
     background: white;
 }
 
-.debt-group-info {
+.hifzi-debt-group-info {
     display: flex;
     align-items: center;
     gap: 12px;
     flex: 1;
 }
 
-.debt-avatar {
+.hifzi-debt-avatar {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -416,91 +411,91 @@
     flex-shrink: 0;
 }
 
-.debt-avatar.paid {
-    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+.hifzi-debt-avatar.hifzi-paid {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
 }
 
-.debt-avatar.overdue {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+.hifzi-debt-avatar.hifzi-overdue {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
 }
 
-.debt-group-title {
+.hifzi-debt-group-title {
     flex: 1;
 }
 
-.debt-customer-name {
+.hifzi-debt-customer-name {
     font-weight: 600;
     color: #1e293b;
     font-size: 15px;
     margin-bottom: 4px;
 }
 
-.debt-customer-meta {
+.hifzi-debt-customer-meta {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
 }
 
-.debt-meta-item {
+.hifzi-debt-meta-item {
     font-size: 12px;
     color: #64748b;
 }
 
-.debt-badge {
+.hifzi-debt-badge {
     padding: 3px 8px;
     border-radius: 4px;
     font-size: 11px;
     font-weight: 600;
 }
 
-.debt-badge.paid {
+.hifzi-debt-badge.hifzi-paid {
     background: #d1fae5;
     color: #059669;
 }
 
-.debt-badge.overdue {
+.hifzi-debt-badge.hifzi-overdue {
     background: #fee2e2;
     color: #dc2626;
 }
 
-.debt-badge.pending {
+.hifzi-debt-badge.hifzi-pending {
     background: #fef3c7;
     color: #d97706;
 }
 
-.debt-group-amount {
+.hifzi-debt-group-amount {
     text-align: right;
     margin-right: 12px;
 }
 
-.debt-total-label {
+.hifzi-debt-total-label {
     font-size: 11px;
     color: #94a3b8;
     margin-bottom: 2px;
 }
 
-.debt-total-value {
+.hifzi-debt-total-value {
     font-size: 18px;
     font-weight: 700;
     color: #1e293b;
 }
 
-.debt-total-value.paid {
+.hifzi-debt-total-value.hifzi-paid {
     color: #059669;
 }
 
-.debt-total-value.overdue {
+.hifzi-debt-total-value.hifzi-overdue {
     color: #dc2626;
 }
 
-.debt-group-actions {
+.hifzi-debt-group-actions {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.debt-action-btn {
+.hifzi-debt-action-btn {
     width: 36px;
     height: 36px;
     border: none;
@@ -511,36 +506,37 @@
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
+    background: #f1f5f9;
 }
 
-.debt-action-btn.whatsapp {
+.hifzi-debt-action-btn.hifzi-whatsapp {
     background: #d1fae5;
 }
 
-.debt-action-btn.whatsapp:hover:not(:disabled) {
+.hifzi-debt-action-btn.hifzi-whatsapp:hover:not(:disabled) {
     background: #059669;
     color: white;
 }
 
-.debt-action-btn.pay {
+.hifzi-debt-action-btn.hifzi-pay {
     background: #dbeafe;
 }
 
-.debt-action-btn.pay:hover {
+.hifzi-debt-action-btn.hifzi-pay:hover {
     background: #2563eb;
     color: white;
 }
 
-.debt-action-btn.view {
+.hifzi-debt-action-btn.hifzi-view {
     background: #f3e8ff;
 }
 
-.debt-action-btn.view:hover {
+.hifzi-debt-action-btn.hifzi-view:hover {
     background: #9333ea;
     color: white;
 }
 
-.debt-toggle {
+.hifzi-debt-toggle {
     width: 36px;
     height: 36px;
     border: none;
@@ -551,16 +547,13 @@
     color: #64748b;
 }
 
-/* ============================================
-   DEBT ITEMS (EXPANDED)
-   ============================================ */
-.debt-items {
+.hifzi-debt-items {
     display: none;
     border-top: 1px solid #e2e8f0;
     background: #f8fafc;
 }
 
-.debt-item {
+.hifzi-debt-item {
     display: flex;
     align-items: center;
     padding: 16px;
@@ -568,55 +561,54 @@
     gap: 16px;
 }
 
-.debt-item:last-child {
+.hifzi-debt-item:last-child {
     border-bottom: none;
 }
 
-.debt-item.paid-item {
+.hifzi-debt-item.hifzi-paid-item {
     opacity: 0.7;
     background: #f0fdf4;
 }
 
-.debt-item-info {
+.hifzi-debt-item-info {
     flex: 1;
 }
 
-.debt-item-header {
+.hifzi-debt-item-header {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 6px;
 }
 
-.debt-item-id {
+.hifzi-debt-item-id {
     font-weight: 600;
     color: #667eea;
     font-size: 13px;
 }
 
-.debt-item-status-badge {
+.hifzi-debt-item-status-badge {
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 10px;
     font-weight: 600;
 }
 
-.debt-item-status-badge.paid {
+.hifzi-debt-item-status-badge.hifzi-paid {
     background: #d1fae5;
     color: #059669;
 }
 
-.debt-item-status-badge.overdue {
+.hifzi-debt-item-status-badge.hifzi-overdue {
     background: #fee2e2;
     color: #dc2626;
 }
 
-/* CASH INDICATOR DI LIST ITEM */
-.debt-item-cash-status {
+.hifzi-debt-item-cash-status {
     margin-bottom: 6px;
 }
 
-.debt-cash-indicator {
+.hifzi-debt-cash-indicator {
     font-size: 11px;
     padding: 2px 8px;
     border-radius: 4px;
@@ -625,19 +617,19 @@
     text-transform: uppercase;
 }
 
-.debt-cash-indicator.reduce {
+.hifzi-debt-cash-indicator.hifzi-reduce {
     background: #fee2e2;
     color: #dc2626;
     border: 1px solid #fecaca;
 }
 
-.debt-cash-indicator.normal {
+.hifzi-debt-cash-indicator.hifzi-normal {
     background: #e0e7ff;
     color: #4338ca;
     border: 1px solid #c7d2fe;
 }
 
-.debt-item-date {
+.hifzi-debt-item-date {
     display: flex;
     gap: 16px;
     font-size: 12px;
@@ -645,7 +637,7 @@
     margin-bottom: 4px;
 }
 
-.debt-item-products {
+.hifzi-debt-item-products {
     font-size: 13px;
     color: #475569;
     white-space: nowrap;
@@ -654,36 +646,36 @@
     max-width: 300px;
 }
 
-.debt-item-amount {
+.hifzi-debt-item-amount {
     text-align: right;
     min-width: 120px;
 }
 
-.debt-item-total {
+.hifzi-debt-item-total {
     font-weight: 700;
     color: #1e293b;
     font-size: 15px;
 }
 
-.debt-item-paid {
+.hifzi-debt-item-paid {
     font-size: 12px;
     color: #059669;
     margin-top: 2px;
 }
 
-.debt-item-remaining {
+.hifzi-debt-item-remaining {
     font-size: 12px;
     color: #dc2626;
     font-weight: 600;
     margin-top: 2px;
 }
 
-.debt-item-actions {
+.hifzi-debt-item-actions {
     display: flex;
     gap: 6px;
 }
 
-.debt-item-btn {
+.hifzi-debt-item-btn {
     padding: 8px 14px;
     border: none;
     border-radius: 6px;
@@ -691,66 +683,61 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    font-family: inherit;
 }
 
-.debt-item-btn.detail {
+.hifzi-debt-item-btn.hifzi-detail {
     background: #f1f5f9;
     color: #475569;
 }
 
-.debt-item-btn.detail:hover {
+.hifzi-debt-item-btn.hifzi-detail:hover {
     background: #e2e8f0;
 }
 
-.debt-item-btn.pay {
-    background: #667eea;
-    color: white;
+.hifzi-debt-item-btn.hifzi-pay {
+    background: #667eea !important;
+    color: white !important;
 }
 
-.debt-item-btn.pay:hover {
-    background: #5568d3;
+.hifzi-debt-item-btn.hifzi-pay:hover {
+    background: #5568d3 !important;
 }
 
-.debt-item-btn.delete {
+.hifzi-debt-item-btn.hifzi-delete {
     background: #fee2e2;
     color: #dc2626;
     padding: 8px 10px;
 }
 
-.debt-item-btn.delete:hover {
+.hifzi-debt-item-btn.hifzi-delete:hover {
     background: #fecaca;
 }
 
-/* ============================================
-   EMPTY STATE
-   ============================================ */
-.debt-empty {
+.hifzi-debt-empty {
     text-align: center;
     padding: 60px 20px;
     color: #64748b;
 }
 
-.debt-empty-icon {
+.hifzi-debt-empty-icon {
     font-size: 64px;
     margin-bottom: 16px;
 }
 
-.debt-empty-title {
+.hifzi-debt-empty-title {
     font-size: 18px;
     font-weight: 600;
     color: #1e293b;
     margin-bottom: 8px;
 }
 
-.debt-empty-text {
+.hifzi-debt-empty-text {
     font-size: 14px;
     margin-bottom: 24px;
 }
 
-/* ============================================
-   MODAL STYLES
-   ============================================ */
-.debt-modal-overlay {
+.hifzi-debt-modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -767,13 +754,13 @@
     padding: 20px;
 }
 
-.debt-modal-overlay.active {
+.hifzi-debt-modal-overlay.hifzi-active {
     opacity: 1;
     visibility: visible;
 }
 
-.debt-modal {
-    background: white;
+.hifzi-debt-modal {
+    background: white !important;
     border-radius: 16px;
     width: 100%;
     max-width: 500px;
@@ -785,40 +772,39 @@
     transition: all 0.3s;
 }
 
-.debt-modal-overlay.active .debt-modal {
+.hifzi-debt-modal-overlay.hifzi-active .hifzi-debt-modal {
     transform: scale(1);
 }
 
-/* Modal dengan sidebar */
-.debt-modal-with-sidebar {
+.hifzi-debt-modal-with-sidebar {
     max-width: 900px;
     flex-direction: column;
 }
 
-.debt-modal-content {
+.hifzi-debt-modal-content {
     display: flex;
     flex: 1;
     overflow: hidden;
     min-height: 0;
 }
 
-.debt-modal-header {
+.hifzi-debt-modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 20px;
     border-bottom: 1px solid #e2e8f0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     flex-shrink: 0;
 }
 
-.debt-modal-title {
+.hifzi-debt-modal-title {
     font-size: 18px;
     font-weight: 700;
 }
 
-.debt-modal-close {
+.hifzi-debt-modal-close {
     width: 32px;
     height: 32px;
     border: none;
@@ -830,20 +816,21 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    font-family: inherit;
 }
 
-.debt-modal-close:hover {
+.hifzi-debt-modal-close:hover {
     background: rgba(255,255,255,0.3);
 }
 
-.debt-modal-body {
+.hifzi-debt-modal-body {
     padding: 20px;
     overflow-y: auto;
     flex: 1;
     min-height: 0;
 }
 
-.debt-modal-footer {
+.hifzi-debt-modal-footer {
     display: flex;
     gap: 12px;
     padding: 16px 20px;
@@ -852,10 +839,7 @@
     flex-shrink: 0;
 }
 
-/* ============================================
-   SIDEBAR CUSTOMER STYLES
-   ============================================ */
-.debt-customer-sidebar {
+.hifzi-debt-customer-sidebar {
     width: 280px;
     background: #f8fafc;
     border-right: 1px solid #e2e8f0;
@@ -864,7 +848,7 @@
     flex-shrink: 0;
 }
 
-.debt-sidebar-header {
+.hifzi-debt-sidebar-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -873,18 +857,18 @@
     background: white;
 }
 
-.debt-sidebar-title {
+.hifzi-debt-sidebar-title {
     font-weight: 700;
     color: #1e293b;
     font-size: 14px;
 }
 
-.debt-sidebar-add-btn {
+.hifzi-debt-sidebar-add-btn {
     width: 28px;
     height: 28px;
     border: none;
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: white !important;
     border-radius: 6px;
     cursor: pointer;
     font-size: 16px;
@@ -892,40 +876,43 @@
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
+    font-family: inherit;
 }
 
-.debt-sidebar-add-btn:hover {
+.hifzi-debt-sidebar-add-btn:hover {
     transform: scale(1.1);
     box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
-.debt-sidebar-search {
+.hifzi-debt-sidebar-search {
     padding: 12px;
     border-bottom: 1px solid #e2e8f0;
 }
 
-.debt-sidebar-search input {
+.hifzi-debt-sidebar-search input {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     font-size: 13px;
     transition: all 0.2s;
+    background: white;
+    box-sizing: border-box;
 }
 
-.debt-sidebar-search input:focus {
+.hifzi-debt-sidebar-search input:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.debt-sidebar-list {
+.hifzi-debt-sidebar-list {
     flex: 1;
     overflow-y: auto;
     padding: 8px;
 }
 
-.debt-sidebar-item {
+.hifzi-debt-sidebar-item {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -935,27 +922,28 @@
     transition: all 0.2s;
     margin-bottom: 4px;
     position: relative;
+    background: white;
 }
 
-.debt-sidebar-item:hover {
+.hifzi-debt-sidebar-item:hover {
     background: #e0e7ff;
 }
 
-.debt-sidebar-item.selected {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+.hifzi-debt-sidebar-item.hifzi-selected {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
 }
 
-.debt-sidebar-item.custom {
+.hifzi-debt-sidebar-item.hifzi-custom {
     border-left: 3px solid #10b981;
 }
 
-.debt-sidebar-item-avatar {
+.hifzi-debt-sidebar-item-avatar {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -964,24 +952,25 @@
     flex-shrink: 0;
 }
 
-.debt-sidebar-item.selected .debt-sidebar-item-avatar {
-    background: rgba(255,255,255,0.2);
+.hifzi-debt-sidebar-item.hifzi-selected .hifzi-debt-sidebar-item-avatar {
+    background: rgba(255,255,255,0.2) !important;
 }
 
-.debt-sidebar-item-info {
+.hifzi-debt-sidebar-item-info {
     flex: 1;
     min-width: 0;
 }
 
-.debt-sidebar-item-name {
+.hifzi-debt-sidebar-item-name {
     font-weight: 600;
     font-size: 14px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: inherit;
 }
 
-.debt-sidebar-item-meta {
+.hifzi-debt-sidebar-item-meta {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -990,29 +979,29 @@
     opacity: 0.8;
 }
 
-.debt-sidebar-badge {
+.hifzi-debt-sidebar-badge {
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 10px;
     font-weight: 600;
 }
 
-.debt-sidebar-badge.custom {
+.hifzi-debt-sidebar-badge.hifzi-custom {
     background: #d1fae5;
     color: #059669;
 }
 
-.debt-sidebar-badge.debt {
+.hifzi-debt-sidebar-badge.hifzi-debt {
     background: #dbeafe;
     color: #2563eb;
 }
 
-.debt-sidebar-item.selected .debt-sidebar-badge {
-    background: rgba(255,255,255,0.2);
-    color: white;
+.hifzi-debt-sidebar-item.hifzi-selected .hifzi-debt-sidebar-badge {
+    background: rgba(255,255,255,0.2) !important;
+    color: white !important;
 }
 
-.debt-sidebar-item-delete {
+.hifzi-debt-sidebar-item-delete {
     width: 24px;
     height: 24px;
     border: none;
@@ -1026,18 +1015,19 @@
     justify-content: center;
     opacity: 0;
     transition: all 0.2s;
+    font-family: inherit;
 }
 
-.debt-sidebar-item:hover .debt-sidebar-item-delete {
+.hifzi-debt-sidebar-item:hover .hifzi-debt-sidebar-item-delete {
     opacity: 1;
 }
 
-.debt-sidebar-item-delete:hover {
-    background: #dc2626;
-    color: white;
+.hifzi-debt-sidebar-item-delete:hover {
+    background: #dc2626 !important;
+    color: white !important;
 }
 
-.debt-sidebar-footer {
+.hifzi-debt-sidebar-footer {
     padding: 12px;
     border-top: 1px solid #e2e8f0;
     text-align: center;
@@ -1046,7 +1036,7 @@
     background: white;
 }
 
-.debt-sidebar-empty {
+.hifzi-debt-sidebar-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1056,35 +1046,34 @@
     text-align: center;
 }
 
-.debt-sidebar-empty span {
+.hifzi-debt-sidebar-empty span {
     font-size: 48px;
     margin-bottom: 12px;
 }
 
-.debt-sidebar-empty p {
+.hifzi-debt-sidebar-empty p {
     font-size: 14px;
     margin-bottom: 4px;
 }
 
-/* Responsive untuk modal dengan sidebar */
 @media (max-width: 768px) {
-    .debt-modal-with-sidebar {
+    .hifzi-debt-modal-with-sidebar {
         max-width: 100%;
         max-height: 95vh;
     }
     
-    .debt-modal-content {
+    .hifzi-debt-modal-content {
         flex-direction: column;
     }
     
-    .debt-customer-sidebar {
+    .hifzi-debt-customer-sidebar {
         width: 100%;
         max-height: 200px;
         border-right: none;
         border-bottom: 1px solid #e2e8f0;
     }
     
-    .debt-sidebar-list {
+    .hifzi-debt-sidebar-list {
         display: flex;
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -1092,21 +1081,18 @@
         padding: 12px;
     }
     
-    .debt-sidebar-item {
+    .hifzi-debt-sidebar-item {
         flex-shrink: 0;
         min-width: 150px;
         margin-bottom: 0;
     }
     
-    .debt-sidebar-item-delete {
+    .hifzi-debt-sidebar-item-delete {
         opacity: 1;
     }
 }
 
-/* ============================================
-   FORM STYLES
-   ============================================ */
-.debt-section-title {
+.hifzi-debt-section-title {
     font-size: 14px;
     font-weight: 700;
     color: #1e293b;
@@ -1115,15 +1101,15 @@
     border-bottom: 2px solid #e2e8f0;
 }
 
-.debt-section-title:first-child {
+.hifzi-debt-section-title:first-child {
     margin-top: 0;
 }
 
-.debt-form-group {
+.hifzi-debt-form-group {
     margin-bottom: 16px;
 }
 
-.debt-form-label {
+.hifzi-debt-form-label {
     display: block;
     font-size: 13px;
     font-weight: 600;
@@ -1131,24 +1117,27 @@
     margin-bottom: 6px;
 }
 
-.debt-form-input,
-.debt-form-select {
+.hifzi-debt-form-input,
+.hifzi-debt-form-select {
     width: 100%;
     padding: 12px;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     font-size: 14px;
     transition: all 0.2s;
+    background: white;
+    box-sizing: border-box;
+    font-family: inherit;
 }
 
-.debt-form-input:focus,
-.debt-form-select:focus {
+.hifzi-debt-form-input:focus,
+.hifzi-debt-form-select:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.debt-item-input {
+.hifzi-debt-item-input {
     background: #f8fafc;
     padding: 12px;
     border-radius: 8px;
@@ -1156,19 +1145,19 @@
     border: 1px solid #e2e8f0;
 }
 
-.debt-item-header-row {
+.hifzi-debt-item-header-row {
     display: flex;
     gap: 8px;
     margin-bottom: 8px;
 }
 
-.debt-item-row {
+.hifzi-debt-item-row {
     display: grid;
     grid-template-columns: 80px 1fr;
     gap: 8px;
 }
 
-.debt-remove-item {
+.hifzi-debt-remove-item {
     width: 32px;
     height: 32px;
     border: none;
@@ -1177,9 +1166,10 @@
     border-radius: 6px;
     cursor: pointer;
     font-size: 14px;
+    font-family: inherit;
 }
 
-.debt-add-item-btn {
+.hifzi-debt-add-item-btn {
     width: 100%;
     padding: 12px;
     border: 2px dashed #cbd5e1;
@@ -1194,47 +1184,49 @@
     gap: 8px;
     margin-bottom: 16px;
     transition: all 0.2s;
+    font-family: inherit;
+    font-size: 14px;
 }
 
-.debt-add-item-btn:hover {
+.hifzi-debt-add-item-btn:hover {
     border-color: #667eea;
     color: #667eea;
     background: #f5f3ff;
 }
 
-.debt-total-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+.hifzi-debt-total-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     padding: 16px;
     border-radius: 12px;
     margin-bottom: 16px;
 }
 
-.debt-total-row {
+.hifzi-debt-total-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-.debt-total-amount {
+.hifzi-debt-total-amount {
     font-size: 24px;
     font-weight: 700;
 }
 
-.debt-amount-display {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+.hifzi-debt-amount-display {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     padding: 20px;
     border-radius: 12px;
     text-align: center;
     margin-bottom: 20px;
 }
 
-.debt-amount-display.success {
-    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+.hifzi-debt-amount-display.hifzi-success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
 }
 
-.debt-amount-label {
+.hifzi-debt-amount-label {
     font-size: 12px;
     opacity: 0.9;
     margin-bottom: 4px;
@@ -1242,12 +1234,12 @@
     letter-spacing: 0.5px;
 }
 
-.debt-amount-value {
+.hifzi-debt-amount-value {
     font-size: 28px;
     font-weight: 700;
 }
 
-.debt-btn {
+.hifzi-debt-btn {
     flex: 1;
     padding: 12px 20px;
     border: none;
@@ -1255,31 +1247,30 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    font-family: inherit;
+    font-size: 14px;
 }
 
-.debt-btn-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+.hifzi-debt-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
 }
 
-.debt-btn-primary:hover {
+.hifzi-debt-btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-.debt-btn-secondary {
+.hifzi-debt-btn-secondary {
     background: #f1f5f9;
     color: #475569;
 }
 
-.debt-btn-secondary:hover {
+.hifzi-debt-btn-secondary:hover {
     background: #e2e8f0;
 }
 
-/* ============================================
-   CASH OPTION - PILIHAN KAS
-   ============================================ */
-.debt-cash-option {
+.hifzi-debt-cash-option {
     background: #f8fafc;
     border: 2px solid #e2e8f0;
     border-radius: 12px;
@@ -1287,7 +1278,7 @@
     margin: 20px 0;
 }
 
-.debt-cash-option-title {
+.hifzi-debt-cash-option-title {
     font-size: 14px;
     font-weight: 700;
     color: #1e293b;
@@ -1297,7 +1288,7 @@
     gap: 8px;
 }
 
-.debt-cash-current {
+.hifzi-debt-cash-current {
     background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
     border-left: 4px solid #667eea;
     padding: 12px 16px;
@@ -1307,19 +1298,19 @@
     color: #1e293b;
 }
 
-.debt-cash-current strong {
+.hifzi-debt-cash-current strong {
     color: #667eea;
     font-size: 16px;
     font-weight: 700;
 }
 
-.debt-cash-toggle {
+.hifzi-debt-cash-toggle {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.debt-cash-radio {
+.hifzi-debt-cash-radio {
     display: flex;
     align-items: flex-start;
     gap: 12px;
@@ -1331,16 +1322,16 @@
     transition: all 0.3s ease;
 }
 
-.debt-cash-radio:hover {
+.hifzi-debt-cash-radio:hover {
     border-color: #667eea;
     background: #f5f3ff;
 }
 
-.debt-cash-radio input {
+.hifzi-debt-cash-radio input {
     display: none;
 }
 
-.debt-cash-radio-box {
+.hifzi-debt-cash-radio-box {
     width: 24px;
     height: 24px;
     border: 2px solid #cbd5e1;
@@ -1353,7 +1344,7 @@
     margin-top: 2px;
 }
 
-.debt-cash-radio-icon {
+.hifzi-debt-cash-radio-icon {
     font-size: 12px;
     color: white;
     opacity: 0;
@@ -1361,62 +1352,40 @@
     transition: all 0.3s ease;
 }
 
-.debt-cash-radio input:checked + .debt-cash-radio-box {
+.hifzi-debt-cash-radio input:checked + .hifzi-debt-cash-radio-box {
     background: #667eea;
     border-color: #667eea;
 }
 
-.debt-cash-radio input:checked + .debt-cash-radio-box .debt-cash-radio-icon {
+.hifzi-debt-cash-radio input:checked + .hifzi-debt-cash-radio-box .hifzi-debt-cash-radio-icon {
     opacity: 1;
     transform: scale(1);
 }
 
-.debt-cash-radio-label {
+.hifzi-debt-cash-radio-label {
     display: flex;
     flex-direction: column;
     gap: 2px;
     flex: 1;
 }
 
-.debt-cash-radio-label strong {
+.hifzi-debt-cash-radio-label strong {
     font-size: 14px;
     color: #1e293b;
     font-weight: 600;
 }
 
-.debt-cash-radio-label small {
+.hifzi-debt-cash-radio-label small {
     font-size: 12px;
     color: #64748b;
     line-height: 1.4;
 }
 
-.debt-cash-radio input:checked ~ .debt-cash-radio-label strong {
+.hifzi-debt-cash-radio input:checked ~ .hifzi-debt-cash-radio-label strong {
     color: #667eea;
 }
 
-/* Warning state untuk cash option */
-.debt-cash-option.warning {
-    border-color: #fca5a5;
-    background: #fef2f2;
-}
-
-.debt-cash-option.warning .debt-cash-option-title {
-    color: #dc2626;
-}
-
-.debt-cash-option.warning .debt-cash-current {
-    background: #fee2e2;
-    border-left-color: #dc2626;
-}
-
-.debt-cash-option.warning .debt-cash-current strong {
-    color: #dc2626;
-}
-
-/* ============================================
-   CASH INFO DI MODAL DETAIL
-   ============================================ */
-.debt-cash-info {
+.hifzi-debt-cash-info {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1427,22 +1396,19 @@
     font-weight: 600;
 }
 
-.debt-cash-info.reduce {
+.hifzi-debt-cash-info.hifzi-reduce {
     background: #fef2f2;
     color: #dc2626;
     border: 1px solid #fecaca;
 }
 
-.debt-cash-info.normal {
+.hifzi-debt-cash-info.hifzi-normal {
     background: #f0fdf4;
     color: #059669;
     border: 1px solid #bbf7d0;
 }
 
-/* ============================================
-   REDUCE BADGE DI RIWAYAT
-   ============================================ */
-.debt-reduce-badge {
+.hifzi-debt-reduce-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1456,53 +1422,20 @@
     border: 1px solid #fecaca;
 }
 
-/* ============================================
-   PAYMENT HISTORY
-   ============================================ */
-.debt-payment-history-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    background: #f0fdf4;
-    border-radius: 8px;
-    margin-bottom: 8px;
-    border-left: 3px solid #059669;
-}
-
-.debt-payment-info {
-    flex: 1;
-}
-
-.debt-payment-date {
-    font-size: 12px;
-    color: #64748b;
-}
-
-.debt-payment-method {
-    font-size: 11px;
-    color: #059669;
-}
-
-.debt-payment-amount {
-    font-weight: 700;
-    color: #059669;
-}
-
-.debt-history-list {
+.hifzi-debt-history-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.debt-history-item {
+.hifzi-debt-history-item {
     background: #f8fafc;
     padding: 12px;
     border-radius: 8px;
     border: 1px solid #e2e8f0;
 }
 
-.debt-history-header {
+.hifzi-debt-history-header {
     display: flex;
     justify-content: space-between;
     font-size: 12px;
@@ -1510,67 +1443,52 @@
     margin-bottom: 4px;
 }
 
-.debt-history-amount {
+.hifzi-debt-history-amount {
     font-weight: 700;
     color: #1e293b;
     font-size: 16px;
 }
 
-/* ============================================
-   DELETE MODAL SPECIAL
-   ============================================ */
-#deleteModal .debt-modal-header {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+#deleteModal .hifzi-debt-modal-header {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
 }
 
-#deleteModal .debt-cash-option {
-    background: #fffbeb;
-    border-color: #fbbf24;
-}
-
-#deleteModal .debt-cash-option-title {
-    color: #d97706;
-}
-
-/* ============================================
-   RESPONSIVE
-   ============================================ */
 @media (max-width: 640px) {
-    .debt-container {
+    .hifzi-debt-container {
         padding: 12px;
     }
     
-    .debt-summary-amount {
+    .hifzi-debt-summary-amount {
         font-size: 28px;
     }
     
-    .debt-summary-sub-amount {
+    .hifzi-debt-summary-sub-amount {
         font-size: 20px;
     }
     
-    .debt-item {
+    .hifzi-debt-item {
         flex-direction: column;
         align-items: flex-start;
         gap: 12px;
     }
     
-    .debt-item-amount {
+    .hifzi-debt-item-amount {
         text-align: left;
         width: 100%;
         display: flex;
         gap: 16px;
     }
     
-    .debt-item-actions {
+    .hifzi-debt-item-actions {
         width: 100%;
         justify-content: flex-end;
     }
     
-    .debt-group-header {
+    .hifzi-debt-group-header {
         flex-wrap: wrap;
     }
     
-    .debt-group-amount {
+    .hifzi-debt-group-amount {
         order: 3;
         width: 100%;
         text-align: left;
@@ -1578,13 +1496,14 @@
         margin-right: 0;
     }
     
-    .debt-modal {
+    .hifzi-debt-modal {
         max-width: 100%;
         max-height: 95vh;
         margin: 10px;
     }
     
-    .debt-modal-body {
+    .hifzi-debt-modal-body {
         padding: 16px;
     }
 }
+</style>
