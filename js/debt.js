@@ -1,8 +1,8 @@
 /**
  * HIFZI CELL - Debt Module (Hutang/Piutang)
  * Terintegrasi dengan DATABASE HIFZI APPS (dataManager)
+ * + Modal Pilih Pelanggan (Muncul saat klik ikon profil)
  * + Modal Tambah Nama Pelanggan Baru
- * + Autocomplete Nama Pelanggan dari daftar yang tersimpan
  */
 
 const debtModule = {
@@ -88,6 +88,7 @@ const debtModule = {
             c.name !== name
         );
         this.saveCustomNames();
+        this.renderCustomerList();
     },
 
     saveDebts() {
@@ -137,7 +138,7 @@ const debtModule = {
 
     filterCustomers(query) {
         const all = this.getAllCustomerNames();
-        if (!query) return [];
+        if (!query) return all;
         
         const lowerQuery = query.toLowerCase();
         return all.filter(c => c.name.toLowerCase().includes(lowerQuery));
@@ -560,7 +561,7 @@ const debtModule = {
     },
 
     // ==========================================
-    // MODAL TAMBAH HUTANG - DENGAN AUTOCOMPLETE
+    // MODAL TAMBAH HUTANG - DENGAN ICON PROFIL
     // ==========================================
     openAddDebtModal() {
         this.itemCount = 1;
@@ -579,23 +580,20 @@ const debtModule = {
                 <div class="hifzi-debt-modal-body">
                     <div class="hifzi-debt-section-title">👤 Informasi Pelanggan</div>
                     
-                    <div class="hifzi-debt-form-group" style="position: relative;">
+                    <div class="hifzi-debt-form-group">
                         <label class="hifzi-debt-form-label">Nama Pelanggan *</label>
-                        <div class="hifzi-debt-input-with-btn">
+                        <div class="hifzi-debt-input-with-icon">
                             <input type="text" 
                                    class="hifzi-debt-form-input" 
                                    id="addCustomerName" 
-                                   placeholder="Ketik nama atau pilih dari daftar..."
-                                   autocomplete="off"
-                                   oninput="debtModule.handleNameInput(this.value)"
-                                   onfocus="debtModule.handleNameInput(this.value)">
-                            <button type="button" class="hifzi-debt-input-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
-                                ➕
+                                   placeholder="Ketik nama pelanggan..."
+                                   autocomplete="off">
+                            <button type="button" class="hifzi-debt-profile-btn" onclick="debtModule.openCustomerListModal()" title="Pilih dari Daftar">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
                             </button>
-                        </div>
-                        <!-- Dropdown Autocomplete -->
-                        <div class="hifzi-debt-autocomplete" id="nameAutocomplete" style="display: none;">
-                            <!-- Diisi oleh renderAutocomplete() -->
                         </div>
                     </div>
 
@@ -674,7 +672,6 @@ const debtModule = {
 
         document.body.appendChild(modal);
         
-        // Close autocomplete when clicking outside
         setTimeout(() => {
             modal.classList.add('hifzi-active');
             
@@ -683,63 +680,124 @@ const debtModule = {
             today.setDate(today.getDate() + 30);
             const dueDateInput = document.getElementById('addDueDate');
             if (dueDateInput) dueDateInput.value = today.toISOString().split('T')[0];
-            
-            // Add click outside listener
-            document.addEventListener('click', this.handleClickOutsideAutocomplete);
         }, 10);
     },
 
-    handleClickOutsideAutocomplete(e) {
-        const autocomplete = document.getElementById('nameAutocomplete');
-        const nameInput = document.getElementById('addCustomerName');
-        
-        if (autocomplete && !autocomplete.contains(e.target) && e.target !== nameInput) {
-            autocomplete.style.display = 'none';
-        }
-    },
-
-    handleNameInput(value) {
-        const autocomplete = document.getElementById('nameAutocomplete');
-        if (!autocomplete) return;
-
-        const customers = this.filterCustomers(value);
-        
-        if (customers.length === 0 || value === '') {
-            autocomplete.style.display = 'none';
-            return;
-        }
-
-        autocomplete.innerHTML = customers.map(cust => `
-            <div class="hifzi-debt-autocomplete-item" onclick="debtModule.selectCustomer('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
-                <div class="hifzi-debt-autocomplete-avatar">${cust.name.charAt(0).toUpperCase()}</div>
-                <div class="hifzi-debt-autocomplete-info">
-                    <div class="hifzi-debt-autocomplete-name">${cust.name}</div>
-                    <div class="hifzi-debt-autocomplete-meta">
-                        ${cust.phone ? `<span>📱 ${cust.phone}</span>` : ''}
-                        ${cust.source === 'custom' ? '<span class="hifzi-debt-autocomplete-badge">Manual</span>' : '<span class="hifzi-debt-autocomplete-badge hifzi-debt">Pernah Hutang</span>'}
+    // ==========================================
+    // MODAL LIST PELANGGAN (Muncul saat klik ikon profil)
+    // ==========================================
+    openCustomerListModal() {
+        const modal = document.createElement('div');
+        modal.className = 'hifzi-debt-modal-overlay';
+        modal.id = 'customerListModal';
+        modal.style.zIndex = '2000';
+        modal.innerHTML = `
+            <div class="hifzi-debt-modal" style="max-width: 450px;">
+                <div class="hifzi-debt-modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <div class="hifzi-debt-modal-title">👥 Pilih Pelanggan</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeCustomerListModal()">✕</button>
+                </div>
+                <div class="hifzi-debt-modal-body" style="padding: 0;">
+                    <!-- Search di atas list -->
+                    <div class="hifzi-debt-list-search">
+                        <span class="hifzi-debt-list-search-icon">🔍</span>
+                        <input type="text" 
+                               id="customerListSearch" 
+                               placeholder="Cari pelanggan..." 
+                               oninput="debtModule.filterCustomerList(this.value)">
+                    </div>
+                    
+                    <!-- Tombol Tambah Baru -->
+                    <div class="hifzi-debt-list-add-new" onclick="debtModule.openAddCustomerNameModalFromList()">
+                        <div class="hifzi-debt-list-add-icon">➕</div>
+                        <div class="hifzi-debt-list-add-text">
+                            <strong>Tambah Pelanggan Baru</strong>
+                            <small>Klik untuk menambahkan nama baru</small>
+                        </div>
+                    </div>
+                    
+                    <!-- List Pelanggan -->
+                    <div class="hifzi-debt-customer-list" id="customerListContainer">
+                        ${this.renderCustomerListHTML()}
                     </div>
                 </div>
             </div>
-        `).join('');
-        
-        autocomplete.style.display = 'block';
+        `;
+
+        document.body.appendChild(modal);
+        setTimeout(() => {
+            modal.classList.add('hifzi-active');
+        }, 10);
     },
 
-    selectCustomer(name, phone) {
+    closeCustomerListModal() {
+        const modal = document.getElementById('customerListModal');
+        if (modal) {
+            modal.classList.remove('hifzi-active');
+            setTimeout(() => modal.remove(), 300);
+        }
+    },
+
+    renderCustomerListHTML(filterQuery = '') {
+        const customers = this.filterCustomers(filterQuery);
+        
+        if (customers.length === 0) {
+            return `
+                <div class="hifzi-debt-list-empty">
+                    <span>📭</span>
+                    <p>Belum ada pelanggan</p>
+                    <small>Tambahkan pelanggan baru dengan mengklik tombol di atas</small>
+                </div>
+            `;
+        }
+
+        return customers.map(cust => {
+            const isCustom = cust.source === 'custom';
+            const hasDebt = cust.source === 'debt';
+            
+            return `
+                <div class="hifzi-debt-customer-list-item" 
+                     onclick="debtModule.selectCustomerFromList('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
+                    <div class="hifzi-debt-list-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
+                    <div class="hifzi-debt-list-item-info">
+                        <div class="hifzi-debt-list-item-name">${cust.name}</div>
+                        <div class="hifzi-debt-list-item-meta">
+                            ${cust.phone ? `<span>📱 ${cust.phone}</span>` : '<span>📱 -</span>'}
+                        </div>
+                    </div>
+                    <div class="hifzi-debt-list-item-badge ${isCustom ? 'hifzi-custom' : 'hifzi-debt'}">
+                        ${isCustom ? 'Baru' : 'Pernah Hutang'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    filterCustomerList(query) {
+        const container = document.getElementById('customerListContainer');
+        if (container) {
+            container.innerHTML = this.renderCustomerListHTML(query);
+        }
+    },
+
+    selectCustomerFromList(name, phone) {
         const nameInput = document.getElementById('addCustomerName');
         const phoneInput = document.getElementById('addCustomerPhone');
-        const autocomplete = document.getElementById('nameAutocomplete');
         
         if (nameInput) nameInput.value = name;
-        if (phoneInput && phone) phoneInput.value = phone;
-        if (autocomplete) autocomplete.style.display = 'none';
+        if (phoneInput) phoneInput.value = phone;
+        
+        this.closeCustomerListModal();
+    },
+
+    openAddCustomerNameModalFromList() {
+        this.closeCustomerListModal();
+        setTimeout(() => {
+            this.openAddCustomerNameModal();
+        }, 300);
     },
 
     openAddCustomerNameModal() {
-        // Hide autocomplete first
-        const autocomplete = document.getElementById('nameAutocomplete');
-        if (autocomplete) autocomplete.style.display = 'none';
-
         const modal = document.createElement('div');
         modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'addCustomerNameModal';
@@ -1414,9 +1472,6 @@ const debtModule = {
     },
 
     closeModal() {
-        // Remove click outside listener
-        document.removeEventListener('click', this.handleClickOutsideAutocomplete);
-        
         const modal = document.querySelector('.hifzi-debt-modal-overlay.hifzi-active');
         if (modal) {
             modal.classList.remove('hifzi-active');
