@@ -1,0 +1,111 @@
+/* Cash Module Styles */
+.cash-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.cash-btn {
+    padding: 15px;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.cash-btn:active {
+    transform: scale(0.95);
+}
+
+.cash-btn.in {
+    background: #e8f5e9;
+    color: var(--success);
+}
+
+.cash-btn.out {
+    background: #ffebee;
+    color: var(--danger);
+}
+
+.cash-btn.tarik-tunai {
+    background: #e1f5fe;
+    color: var(--info);
+}
+
+.cash-btn.topup {
+    background: #f3e5f5;
+    color: #9c27b0;
+}
+
+.cash-btn.modal-awal {
+    background: #fff8e1;
+    color: #f57c00;
+    border: 2px dashed #ffd54f;
+}
+
+.cash-btn.history {
+    background: #e3f2fd;
+    color: var(--primary);
+}
+
+/* Delete button for cash transactions */
+.delete-cash-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #ffebee;
+    border: none;
+    color: var(--danger);
+    font-size: 14px;
+    cursor: pointer;
+    margin-left: 8px;
+}
+
+/* Calculation box */
+.calculation-box {
+    background: #f5f5f5;
+    border-radius: 12px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.calc-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px dashed #ddd;
+}
+
+.calc-row:last-child {
+    border-bottom: none;
+    font-weight: 700;
+    font-size: 16px;
+}
+
+/* Info box */
+.info-box {
+    background: #e3f2fd;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-left: 4px solid var(--info);
+}
+
+.info-title {
+    font-weight: 700;
+    margin-bottom: 5px;
+    color: #1565c0;
+    font-size: 14px;
+}
+
+.info-text {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+}
