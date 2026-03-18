@@ -221,11 +221,17 @@ const app = {
     handleLoggedIn() {
         console.log('[App] Handling logged in user');
         
+        // Re-init dataManager untuk memastikan data terbaru (termasuk auto-close midnight)
+        if (typeof dataManager !== 'undefined') {
+            dataManager.init();
+            this.data = dataManager.data;
+        }
+        
         // Sembunyikan login, tampilkan app
         document.getElementById('loginContainer').style.display = 'none';
         document.getElementById('appContainer').classList.add('active');
         
-        // Update header
+        // Update header dengan data terbaru
         this.updateHeader();
         this.updateKasirStatus();
         
@@ -341,8 +347,16 @@ const app = {
         }
     },
 
+    // ==================== LOGOUT - PERBAIKAN: JANGAN RESET DATA ====================
     logout() {
-        dataManager.logout();
+        // Simpan data terlebih dahulu sebelum logout
+        if (typeof dataManager !== 'undefined') {
+            dataManager.save();
+        }
+        
+        // Hapus session user saja, jangan tutup kasir atau reset data
+        localStorage.removeItem('hifzi_current_user');
+        
         this.currentUser = null;
         location.reload();
     },
@@ -486,7 +500,7 @@ const app = {
         `;
     },
 
-    // ==================== SETTINGS FUNCTIONAL - PERBAIKAN ====================
+    // ==================== SETTINGS FUNCTIONAL ====================
     openSettings() {
         // Hapus modal yang mungkin sudah ada
         const existingModal = document.getElementById('settingsModal');
@@ -644,13 +658,51 @@ const app = {
     },
     // ==================== END SETTINGS ====================
 
+    // ==================== TOAST NOTIFICATION - PERBAIKAN UKURAN ====================
     showToast(message) {
-        const toast = document.getElementById('toast');
-        if (!toast) return;
+        // Hapus toast yang sudah ada
+        const existingToast = document.getElementById('toast');
+        if (existingToast) existingToast.remove();
         
+        // Buat toast baru
+        const toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 13px;
+            z-index: 10000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            max-width: 90%;
+            text-align: center;
+            white-space: nowrap;
+            backdrop-filter: blur(10px);
+        `;
         toast.textContent = message;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3000);
+        document.body.appendChild(toast);
+        
+        // Animasi masuk
+        requestAnimationFrame(() => {
+            toast.style.transform = 'translateX(-50%) translateY(0)';
+            toast.style.opacity = '1';
+        });
+        
+        // Hilangkan setelah 2.5 detik
+        setTimeout(() => {
+            toast.style.transform = 'translateX(-50%) translateY(-100px)';
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                if (toast.parentNode) toast.remove();
+            }, 300);
+        }, 2500);
     },
 
     formatNumber(num) {
