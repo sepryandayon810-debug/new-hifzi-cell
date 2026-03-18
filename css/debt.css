@@ -1011,12 +1011,22 @@
     color: #64748b;
 }
 
+/* ============================================
+   LIST ITEM ACTIONS & DELETE BUTTON
+   ============================================ */
+
+.hifzi-debt-list-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
 .hifzi-debt-list-item-badge {
     padding: 4px 10px;
     border-radius: 20px;
     font-size: 11px;
     font-weight: 600;
-    flex-shrink: 0;
 }
 
 .hifzi-debt-list-item-badge.hifzi-custom {
@@ -1027,6 +1037,35 @@
 .hifzi-debt-list-item-badge.hifzi-debt {
     background: #dbeafe;
     color: #2563eb;
+}
+
+.hifzi-debt-list-item-delete {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    opacity: 0;
+}
+
+.hifzi-debt-list-item-delete svg {
+    width: 16px;
+    height: 16px;
+}
+
+.hifzi-debt-customer-list-item:hover .hifzi-debt-list-item-delete {
+    opacity: 1;
+}
+
+.hifzi-debt-list-item-delete:hover {
+    background: #dc2626;
+    color: white;
 }
 
 .hifzi-debt-list-empty {
@@ -1498,6 +1537,11 @@
     
     .hifzi-debt-customer-list {
         max-height: 350px;
+    }
+    
+    /* Tombol hapus selalu terlihat di mobile */
+    .hifzi-debt-list-item-delete {
+        opacity: 1;
     }
 }
 
