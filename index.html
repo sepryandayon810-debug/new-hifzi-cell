@@ -14,7 +14,8 @@
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
     <link rel="stylesheet" href="css/debt.css">
-    <link rel="stylesheet" href="css/users.css">
+    <!-- Hapus users.css jika tidak ada, atau buat file kosong -->
+    <!-- <link rel="stylesheet" href="css/users.css"> -->
     
     <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
@@ -110,14 +111,21 @@
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
         }
         
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .login-error {
             color: #f44336;
             font-size: 14px;
-            margin-top: 15px;
-            padding: 10px;
+            margin: 15px 0;
+            padding: 12px;
             background: #ffebee;
             border-radius: 8px;
             display: none;
+            border-left: 4px solid #f44336;
         }
         
         .login-error.show {
@@ -185,334 +193,6 @@
             background: rgba(255,255,255,0.5);
         }
         
-        /* KASIR CLOSED PAGE */
-        .kasir-closed-container {
-            text-align: center;
-            padding: 60px 20px;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        
-        .kasir-closed-icon {
-            font-size: 80px;
-            margin-bottom: 20px;
-        }
-        
-        .kasir-closed-title {
-            color: #c62828;
-            margin-bottom: 15px;
-            font-size: 24px;
-        }
-        
-        .kasir-closed-text {
-            color: #666;
-            margin-bottom: 30px;
-            line-height: 1.6;
-        }
-        
-        .kasir-info-box {
-            background: #e8f5e9;
-            border: 2px solid #4caf50;
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 30px;
-        }
-        
-        .kasir-open-btn {
-            padding: 18px 50px;
-            font-size: 18px;
-            font-weight: 600;
-            background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
-            color: white;
-            border: none;
-            border-radius: 16px;
-            cursor: pointer;
-            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
-            transition: all 0.3s;
-        }
-        
-        .kasir-open-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
-        }
-        
-        /* OCR Styles */
-        .ocr-upload-area {
-            border: 3px dashed #ccc;
-            border-radius: 16px;
-            padding: 40px 20px;
-            text-align: center;
-            background: #fafafa;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-bottom: 20px;
-        }
-        
-        .ocr-upload-area:hover, .ocr-upload-area.dragover {
-            border-color: var(--primary);
-            background: #f0f8ff;
-        }
-        
-        .ocr-preview-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        @media (max-width: 768px) {
-            .ocr-preview-container {
-                grid-template-columns: 1fr;
-            }
-            
-            .user-info-header {
-                display: none; /* Sembunyikan di mobile untuk hemat space */
-            }
-        }
-        
-        .ocr-image-preview {
-            width: 100%;
-            border-radius: 12px;
-            border: 2px solid #eee;
-            max-height: 300px;
-            object-fit: contain;
-        }
-        
-        .ocr-parsed-data {
-            background: #f0f8ff;
-            border: 1px solid #4a90e2;
-            border-radius: 12px;
-            padding: 15px;
-            font-size: 13px;
-            line-height: 1.6;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .ocr-data-row {
-            margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .ocr-data-row:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-        
-        .ocr-data-label {
-            color: #666;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
-        }
-        
-        .ocr-data-value {
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-        }
-        
-        .ocr-bank-badge {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        
-        .ocr-bank-bri { background: #0056b3; color: white; }
-        .ocr-bank-bni { background: #ff6600; color: white; }
-        .ocr-bank-bca { background: #0066cc; color: white; }
-        .ocr-bank-mandiri { background: #ffd700; color: #333; }
-        .ocr-bank-bsi { background: #009900; color: white; }
-        .ocr-bank-dana { background: #008ceb; color: white; }
-        .ocr-bank-gopay { background: #00aed6; color: white; }
-        .ocr-bank-ovo { background: #4c3494; color: white; }
-        .ocr-bank-linkaja { background: #e31e24; color: white; }
-        .ocr-bank-shopeepay { background: #ee4d2d; color: white; }
-        
-        .ocr-confidence-bar {
-            height: 6px;
-            background: #e0e0e0;
-            border-radius: 3px;
-            margin-top: 8px;
-            overflow: hidden;
-        }
-        
-        .ocr-confidence-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #ff4444 0%, #ffaa00 50%, #00c851 100%);
-            transition: width 0.5s ease;
-        }
-        
-        .ocr-loading {
-            text-align: center;
-            padding: 40px;
-        }
-        
-        .ocr-spinner {
-            width: 60px;
-            height: 60px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .ocr-action-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .ocr-action-buttons button {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .ocr-amount-box {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-            border-radius: 12px;
-            padding: 15px;
-            text-align: center;
-            margin-top: 15px;
-        }
-        
-        .ocr-amount-label {
-            font-size: 12px;
-            opacity: 0.9;
-            margin-bottom: 5px;
-        }
-        
-        .ocr-amount-value {
-            font-size: 22px;
-            font-weight: 700;
-        }
-        
-        .ocr-warning {
-            margin-top: 10px;
-            padding: 10px;
-            background: #fff3cd;
-            border-radius: 8px;
-            font-size: 12px;
-            color: #856404;
-            border-left: 4px solid #ffc107;
-        }
-        
-        .ocr-success {
-            margin-top: 10px;
-            padding: 10px;
-            background: #d4edda;
-            border-radius: 8px;
-            font-size: 12px;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-        
-        .ocr-filled {
-            background-color: #e8f5e9 !important;
-            border-color: #4caf50 !important;
-            transition: all 0.3s;
-        }
-        
-        .info-box {
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-        }
-        
-        .info-box.info {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
-        }
-        
-        .info-box.warning {
-            background: #fff3e0;
-            border-left: 4px solid #ff9800;
-        }
-        
-        .info-title {
-            font-weight: 600;
-            margin-bottom: 5px;
-            color: #333;
-        }
-        
-        .info-text {
-            font-size: 13px;
-            color: #666;
-            line-height: 1.5;
-        }
-        
-        .receipt-type-tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            background: #f5f5f5;
-            padding: 5px;
-            border-radius: 12px;
-        }
-        
-        .receipt-type-tab {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            background: transparent;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            color: #666;
-            transition: all 0.3s;
-        }
-        
-        .receipt-type-tab.active {
-            background: white;
-            color: var(--primary);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        /* Saldo Module Additional Styles */
-        .tg-saldo-section {
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .tg-btn-saldo:hover {
-            background: #2196f3 !important;
-            color: white !important;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
-        }
-
-        .tg-btn-saldo:active {
-            transform: translateY(0);
-        }
-
-        #saldoNominal:focus {
-            outline: none;
-            border-color: #4caf50 !important;
-            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
-        }
-        
         /* App Container States */
         #appContainer {
             display: none;
@@ -550,6 +230,11 @@
             animation: spin 1s linear infinite;
         }
         
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
         .loading-text {
             margin-top: 15px;
             color: #666;
@@ -585,7 +270,8 @@
             <div class="login-title" id="loginStoreName">Hifzi Cell</div>
             <div class="login-subtitle">Sistem Kasir Pintar</div>
             
-            <form id="loginForm" onsubmit="return false;">
+            <!-- Form dengan ID untuk diakses JS -->
+            <div id="loginFormContainer">
                 <div class="login-form-group">
                     <label>👤 Username</label>
                     <input type="text" id="loginUsername" class="login-input" placeholder="Masukkan username" autocomplete="username">
@@ -598,8 +284,8 @@
                 
                 <div id="loginError" class="login-error"></div>
                 
-                <button type="button" class="login-btn" onclick="app.doLogin()">🔓 Login</button>
-            </form>
+                <button type="button" id="loginBtn" class="login-btn">🔓 Login</button>
+            </div>
             
             <div class="login-info">
                 <div>Default Login:</div>
@@ -640,11 +326,11 @@
                         <button class="logout-btn" onclick="app.logout()">Logout</button>
                     </div>
                     
-                    <div class="sync-status" id="syncStatus" onclick="if(typeof backupModule !== 'undefined') backupModule.manualSync()">
+                    <div class="sync-status" id="syncStatus" onclick="backupModule.manualSync()">
                         <span>☁️</span>
                         <span id="syncText">Ready</span>
                     </div>
-                    <button class="icon-btn" onclick="if(typeof app !== 'undefined') app.openSettings()" title="Pengaturan" style="cursor: pointer;">
+                    <button class="icon-btn" onclick="app.openSettings()" title="Pengaturan" style="cursor: pointer;">
                         ⚙️
                     </button>
                 </div>
@@ -677,16 +363,16 @@
 
         <!-- Navigation -->
         <div class="nav-tabs" id="navTabs">
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('pos', this)">🏪 Kasir</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('products', this)">📦 Produk</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('cash', this)">💵 Kas</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('reports', this)">📊 Laporan</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('transactions', this)">📝 Transaksi</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('receipt', this)">🧾 Struk</button>
+            <button class="nav-tab" onclick="router.navigate('pos', this)">🏪 Kasir</button>
+            <button class="nav-tab" onclick="router.navigate('products', this)">📦 Produk</button>
+            <button class="nav-tab" onclick="router.navigate('cash', this)">💵 Kas</button>
+            <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
+            <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
+            <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
             <button class="nav-tab" onclick="openDebtModule(this)">💳 Hutang</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('users', this)">👥 User</button>
+            <button class="nav-tab" onclick="router.navigate('users', this)">👥 User</button>
             <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
-            <button class="nav-tab" onclick="if(typeof router !== 'undefined') router.navigate('backup', this)">☁️ Cloud</button>
+            <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
         </div>
 
         <!-- Content Container -->
@@ -698,7 +384,7 @@
                 <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
                 <div class="cart-total" id="cartTotal">Rp 0</div>
             </div>
-            <button class="btn-checkout" onclick="if(typeof posModule !== 'undefined') posModule.openCheckout()" id="checkoutBtn">
+            <button class="btn-checkout" onclick="posModule.openCheckout()" id="checkoutBtn">
                 Bayar →
             </button>
         </div>
@@ -707,7 +393,22 @@
         <div class="toast" id="toast"></div>
     </div>
 
-    <!-- Script helper untuk Debt dan Telegram -->
+    <!-- Scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/pos.js"></script>
+    <script src="js/products.js"></script>
+    <script src="js/cash.js"></script>
+    <script src="js/reports.js"></script>
+    <script src="js/transactions.js"></script>
+    <script src="js/receipt.js"></script>
+    <script src="telegram.js"></script>
+    <script src="js/backup.js"></script>
+    <script src="js/debt.js"></script>
+    <script src="js/users.js"></script>
+    
+    <!-- Inline Script untuk Helper Functions -->
     <script>
         // Fungsi Debt Module
         function openDebtModule(element) {
@@ -728,7 +429,7 @@
                 container.innerHTML = 
                     '<div style="padding:40px;text-align:center;">' +
                     '<h3>❌ Error</h3>' +
-                    '<p>Module Hutang tidak ditemukan.<br>Silakan refresh halaman.</p>' +
+                    '<p>Module Hutang tidak ditemukan.</p>' +
                     '</div>';
                 return;
             }
@@ -772,30 +473,6 @@
                 console.error('[Telegram] Error:', e);
             }
         }
-    </script>
-
-    <!-- Scripts -->
-    <script src="js/utils.js"></script>
-    <script src="js/data.js"></script>
-    <script src="js/app.js"></script>
-    <script src="js/pos.js"></script>
-    <script src="js/products.js"></script>
-    <script src="js/cash.js"></script>
-    <script src="js/reports.js"></script>
-    <script src="js/transactions.js"></script>
-    <script src="js/receipt.js"></script>
-    <script src="telegram.js"></script>
-    <script src="js/backup.js"></script>
-    <script src="js/debt.js"></script>
-    <script src="js/users.js"></script>
-    
-    <!-- Verifikasi module -->
-    <script>
-        console.log('=== CEK MODULE ===');
-        console.log('utils:', typeof utils);
-        console.log('dataManager:', typeof dataManager);
-        console.log('app:', typeof app);
-        console.log('router:', typeof router);
     </script>
 </body>
 </html>
