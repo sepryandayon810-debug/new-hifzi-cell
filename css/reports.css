@@ -1,4 +1,6 @@
-/* Reports Module Styles */
+/* Reports Module Styles - FULL */
+
+/* Profit Card */
 .profit-card {
     background: linear-gradient(135deg, var(--success) 0%, #00a884 100%);
     color: white;
@@ -9,12 +11,12 @@
 }
 
 .profit-label {
-    font-size: 16px; /* Dibesarkan dari 14px agar sama dengan "Kas di Tangan" */
+    font-size: 16px;
     opacity: 0.9;
     margin-bottom: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    font-weight: 600; /* Ditambahkan agar lebih tebal */
+    font-weight: 600;
 }
 
 .profit-amount {
@@ -108,7 +110,66 @@
     border-color: var(--primary);
 }
 
-/* Chart Section */
+/* Chart Card Collapsible Styles */
+.chart-card {
+    overflow: hidden;
+}
+
+.chart-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.chart-header:hover {
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    margin: -10px;
+    padding: 10px;
+}
+
+.chart-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border: 2px solid #e0e0e0;
+    background: white;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.chart-toggle-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.toggle-arrow {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    font-size: 10px;
+}
+
+.toggle-text {
+    white-space: nowrap;
+}
+
+.chart-wrapper {
+    overflow: hidden;
+    transform-origin: top;
+    margin-top: 15px;
+}
+
+/* Chart Container */
 .chart-container {
     position: relative;
     height: 320px;
@@ -119,6 +180,8 @@
 .chart-toggle {
     display: flex;
     gap: 8px;
+    margin-bottom: 10px;
+    padding: 0 15px;
 }
 
 .toggle-btn {
@@ -147,7 +210,34 @@
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-/* Stats Grid Enhancement */
+/* Animations */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 500px;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 500px;
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+        max-height: 0;
+    }
+}
+
+/* Stats Grid */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -268,7 +358,7 @@ tr:active {
     background: #e9ecef;
 }
 
-/* Card Header Enhancement */
+/* Card Header */
 .card-header {
     display: flex;
     justify-content: space-between;
@@ -330,6 +420,15 @@ tr:active {
     .chart-container {
         height: 250px;
         padding: 10px;
+    }
+    
+    .chart-toggle {
+        padding: 0 10px;
+    }
+    
+    .chart-toggle-btn {
+        padding: 6px 12px;
+        font-size: 11px;
     }
     
     .filter-btn {
