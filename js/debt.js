@@ -164,12 +164,12 @@ const debtModule = {
         if (phoneInput && phone) phoneInput.value = phone;
         
         // Highlight yang dipilih
-        document.querySelectorAll('.debt-sidebar-item').forEach(item => {
-            item.classList.remove('selected');
+        document.querySelectorAll('.hifzi-debt-sidebar-item').forEach(item => {
+            item.classList.remove('hifzi-selected');
         });
         
         const selectedItem = document.querySelector(`[data-customer-name="${name.replace(/"/g, '&quot;')}"]`);
-        if (selectedItem) selectedItem.classList.add('selected');
+        if (selectedItem) selectedItem.classList.add('hifzi-selected');
     },
 
     toggleShowPaid() {
@@ -346,102 +346,102 @@ const debtModule = {
         const groupedDebts = this.getGroupedDebts();
 
         container.innerHTML = `
-            <div class="debt-container">
-                <div class="debt-summary-header">
-                    <div class="debt-summary-main-card">
-                        <div class="debt-summary-label">Total Piutang Aktif</div>
-                        <div class="debt-summary-amount">${this.formatRupiah(summary.activeRemaining)}</div>
-                        <div class="debt-summary-detail">
+            <div class="hifzi-debt-container">
+                <div class="hifzi-debt-summary-header">
+                    <div class="hifzi-debt-summary-main-card">
+                        <div class="hifzi-debt-summary-label">Total Piutang Aktif</div>
+                        <div class="hifzi-debt-summary-amount">${this.formatRupiah(summary.activeRemaining)}</div>
+                        <div class="hifzi-debt-summary-detail">
                             <span>👥 ${summary.customerCount} pelanggan aktif</span>
                         </div>
                     </div>
                     
-                    <div class="debt-summary-sub-cards">
-                        <div class="debt-summary-sub-card success">
-                            <div class="debt-summary-sub-label">Sudah Dibayar</div>
-                            <div class="debt-summary-sub-amount">${this.formatRupiah(summary.totalPaid)}</div>
-                            <div class="debt-summary-sub-detail">${summary.paidCount} lunas</div>
+                    <div class="hifzi-debt-summary-sub-cards">
+                        <div class="hifzi-debt-summary-sub-card hifzi-success">
+                            <div class="hifzi-debt-summary-sub-label">Sudah Dibayar</div>
+                            <div class="hifzi-debt-summary-sub-amount">${this.formatRupiah(summary.totalPaid)}</div>
+                            <div class="hifzi-debt-summary-sub-detail">${summary.paidCount} lunas</div>
                         </div>
                         
-                        <div class="debt-summary-sub-card warning">
-                            <div class="debt-summary-sub-label">Sisa Piutang</div>
-                            <div class="debt-summary-sub-amount">${this.formatRupiah(summary.totalRemaining)}</div>
-                            <div class="debt-summary-sub-detail">${summary.overdueCount} overdue</div>
+                        <div class="hifzi-debt-summary-sub-card hifzi-warning">
+                            <div class="hifzi-debt-summary-sub-label">Sisa Piutang</div>
+                            <div class="hifzi-debt-summary-sub-amount">${this.formatRupiah(summary.totalRemaining)}</div>
+                            <div class="hifzi-debt-summary-sub-detail">${summary.overdueCount} overdue</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="debt-stats-bar">
-                    <div class="debt-stat-item">
-                        <span class="debt-stat-icon">📝</span>
-                        <div class="debt-stat-info">
-                            <span class="debt-stat-label">Total Transaksi</span>
-                            <span class="debt-stat-value">${summary.totalTransactions}</span>
+                <div class="hifzi-debt-stats-bar">
+                    <div class="hifzi-debt-stat-item">
+                        <span class="hifzi-debt-stat-icon">📝</span>
+                        <div class="hifzi-debt-stat-info">
+                            <span class="hifzi-debt-stat-label">Total Transaksi</span>
+                            <span class="hifzi-debt-stat-value">${summary.totalTransactions}</span>
                         </div>
                     </div>
-                    <div class="debt-stat-divider"></div>
-                    <div class="debt-stat-item">
-                        <span class="debt-stat-icon">📈</span>
-                        <div class="debt-stat-info">
-                            <span class="debt-stat-label">Total Laba</span>
-                            <span class="debt-stat-value profit">${this.formatRupiah(summary.totalProfit)}</span>
+                    <div class="hifzi-debt-stat-divider"></div>
+                    <div class="hifzi-debt-stat-item">
+                        <span class="hifzi-debt-stat-icon">📈</span>
+                        <div class="hifzi-debt-stat-info">
+                            <span class="hifzi-debt-stat-label">Total Laba</span>
+                            <span class="hifzi-debt-stat-value hifzi-profit">${this.formatRupiah(summary.totalProfit)}</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="debt-controls-header">
-                    <div class="debt-controls">
-                        <div class="debt-search">
-                            <span class="debt-search-icon">🔍</span>
+                <div class="hifzi-debt-controls-header">
+                    <div class="hifzi-debt-controls">
+                        <div class="hifzi-debt-search">
+                            <span class="hifzi-debt-search-icon">🔍</span>
                             <input type="text" id="debtSearch" placeholder="Cari nama, no HP, atau kode..." 
                                    value="${this.searchQuery}" oninput="debtModule.handleSearch(this.value)">
                         </div>
-                        <div class="debt-filter">
-                            <button class="debt-filter-btn ${this.currentFilter === 'all' ? 'active' : ''}" 
+                        <div class="hifzi-debt-filter">
+                            <button class="hifzi-debt-filter-btn ${this.currentFilter === 'all' ? 'hifzi-active' : ''}" 
                                     onclick="debtModule.setFilter('all')">Semua</button>
-                            <button class="debt-filter-btn ${this.currentFilter === 'pending' ? 'active' : ''}" 
+                            <button class="hifzi-debt-filter-btn ${this.currentFilter === 'pending' ? 'hifzi-active' : ''}" 
                                     onclick="debtModule.setFilter('pending')">Pending</button>
-                            <button class="debt-filter-btn ${this.currentFilter === 'overdue' ? 'active' : ''}" 
+                            <button class="hifzi-debt-filter-btn ${this.currentFilter === 'overdue' ? 'hifzi-active' : ''}" 
                                     onclick="debtModule.setFilter('overdue')">Overdue</button>
-                            <button class="debt-filter-btn ${this.currentFilter === 'paid' ? 'active' : ''}" 
+                            <button class="hifzi-debt-filter-btn ${this.currentFilter === 'paid' ? 'hifzi-active' : ''}" 
                                     onclick="debtModule.setFilter('paid')">Lunas</button>
                         </div>
                     </div>
 
-                    <button class="debt-add-btn" onclick="debtModule.openAddDebtModal()">
+                    <button class="hifzi-debt-add-btn" onclick="debtModule.openAddDebtModal()">
                         <span>➕</span>
                         <span>Tambah Hutang</span>
                     </button>
                 </div>
 
-                <div class="debt-toggle-paid">
-                    <label class="debt-toggle-switch">
+                <div class="hifzi-debt-toggle-paid">
+                    <label class="hifzi-debt-toggle-switch">
                         <input type="checkbox" ${this.showPaidDebts ? 'checked' : ''} 
                                onchange="debtModule.toggleShowPaid()">
-                        <span class="debt-toggle-slider"></span>
-                        <span class="debt-toggle-label">
+                        <span class="hifzi-debt-toggle-slider"></span>
+                        <span class="hifzi-debt-toggle-label">
                             ${this.showPaidDebts ? '🔓 Sembunyikan hutang lunas' : '🔒 Tampilkan hutang lunas'}
                         </span>
                     </label>
-                    <span class="debt-toggle-hint">
+                    <span class="hifzi-debt-toggle-hint">
                         ${!this.showPaidDebts ? `( ${summary.paidCount} hutang lunas disembunyikan )` : ''}
                     </span>
                 </div>
 
-                <div class="debt-groups" id="debtGroups">
+                <div class="hifzi-debt-groups" id="debtGroups">
                     ${this.renderGroupsHTML(groupedDebts)}
                 </div>
 
                 ${groupedDebts.length === 0 ? `
-                    <div class="debt-empty">
-                        <div class="debt-empty-icon">📋</div>
-                        <div class="debt-empty-title">Tidak ada data hutang</div>
-                        <div class="debt-empty-text">
+                    <div class="hifzi-debt-empty">
+                        <div class="hifzi-debt-empty-icon">📋</div>
+                        <div class="hifzi-debt-empty-title">Tidak ada data hutang</div>
+                        <div class="hifzi-debt-empty-text">
                             ${!this.showPaidDebts && summary.paidCount > 0 
                                 ? 'Semua hutang sudah lunas. Aktifkan toggle di atas untuk melihat riwayat.' 
                                 : 'Belum ada catatan hutang yang sesuai dengan filter'}
                         </div>
-                        <button class="debt-add-btn-empty" onclick="debtModule.openAddDebtModal()">
+                        <button class="hifzi-debt-add-btn-empty" onclick="debtModule.openAddDebtModal()">
                             <span>➕</span> Tambah Hutang Baru
                         </button>
                     </div>
@@ -469,57 +469,57 @@ const debtModule = {
             const avatarLetter = group.customerName.charAt(0).toUpperCase();
 
             let avatarClass = '';
-            if (group.allPaid) avatarClass = 'paid';
-            else if (group.hasOverdue) avatarClass = 'overdue';
+            if (group.allPaid) avatarClass = 'hifzi-paid';
+            else if (group.hasOverdue) avatarClass = 'hifzi-overdue';
 
             let statusBadge = '';
             if (group.allPaid) {
-                statusBadge = '<span class="debt-badge paid">✓ Lunas</span>';
+                statusBadge = '<span class="hifzi-debt-badge hifzi-paid">✓ Lunas</span>';
             } else if (group.hasOverdue) {
-                statusBadge = '<span class="debt-badge overdue">⚠ Overdue</span>';
+                statusBadge = '<span class="hifzi-debt-badge hifzi-overdue">⚠ Overdue</span>';
             } else {
-                statusBadge = '<span class="debt-badge pending">⏳ Pending</span>';
+                statusBadge = '<span class="hifzi-debt-badge hifzi-pending">⏳ Pending</span>';
             }
 
             let amountClass = '';
-            if (group.allPaid) amountClass = 'paid';
-            else if (group.hasOverdue) amountClass = 'overdue';
+            if (group.allPaid) amountClass = 'hifzi-paid';
+            else if (group.hasOverdue) amountClass = 'hifzi-overdue';
 
             if (group.allPaid && !this.showPaidDebts) return '';
 
             return `
-                <div class="debt-group ${isExpanded ? 'expanded' : ''} ${group.allPaid ? 'all-paid' : ''}" data-customer="${group.customerName}">
-                    <div class="debt-group-header" onclick="debtModule.toggleGroup('${group.customerName}')">
-                        <div class="debt-group-info">
-                            <div class="debt-avatar ${avatarClass}">${avatarLetter}</div>
-                            <div class="debt-group-title">
-                                <div class="debt-customer-name">${group.customerName}</div>
-                                <div class="debt-customer-meta">
+                <div class="hifzi-debt-group ${isExpanded ? 'hifzi-expanded' : ''} ${group.allPaid ? 'hifzi-all-paid' : ''}" data-customer="${group.customerName}">
+                    <div class="hifzi-debt-group-header" onclick="debtModule.toggleGroup('${group.customerName}')">
+                        <div class="hifzi-debt-group-info">
+                            <div class="hifzi-debt-avatar ${avatarClass}">${avatarLetter}</div>
+                            <div class="hifzi-debt-group-title">
+                                <div class="hifzi-debt-customer-name">${group.customerName}</div>
+                                <div class="hifzi-debt-customer-meta">
                                     ${statusBadge}
-                                    <span class="debt-meta-item">📱 ${group.customerPhone || '-'}</span>
-                                    <span class="debt-meta-item">📝 ${group.count} transaksi</span>
+                                    <span class="hifzi-debt-meta-item">📱 ${group.customerPhone || '-'}</span>
+                                    <span class="hifzi-debt-meta-item">📝 ${group.count} transaksi</span>
                                 </div>
                             </div>
                         </div>
-                        <div class="debt-group-amount">
-                            <div class="debt-total-label">${group.allPaid ? 'Total' : 'Sisa Hutang'}</div>
-                            <div class="debt-total-value ${amountClass}">${this.formatRupiah(remaining)}</div>
+                        <div class="hifzi-debt-group-amount">
+                            <div class="hifzi-debt-total-label">${group.allPaid ? 'Total' : 'Sisa Hutang'}</div>
+                            <div class="hifzi-debt-total-value ${amountClass}">${this.formatRupiah(remaining)}</div>
                         </div>
-                        <div class="debt-group-actions" onclick="event.stopPropagation()">
+                        <div class="hifzi-debt-group-actions" onclick="event.stopPropagation()">
                             ${!group.allPaid ? `
-                                <button class="debt-action-btn whatsapp" onclick="debtModule.sendWhatsApp('${group.customerPhone}', '${group.customerName}', ${remaining})" 
+                                <button class="hifzi-debt-action-btn hifzi-whatsapp" onclick="debtModule.sendWhatsApp('${group.customerPhone}', '${group.customerName}', ${remaining})" 
                                         title="Kirim WA" ${!group.customerPhone ? 'disabled style="opacity:0.5"' : ''}>💬</button>
-                                <button class="debt-action-btn pay" onclick="debtModule.payAll('${group.customerName}')" 
+                                <button class="hifzi-debt-action-btn hifzi-pay" onclick="debtModule.payAll('${group.customerName}')" 
                                         title="Bayar Semua">💰</button>
                             ` : `
-                                <button class="debt-action-btn view" onclick="debtModule.viewPaidHistory('${group.customerName}')" 
+                                <button class="hifzi-debt-action-btn hifzi-view" onclick="debtModule.viewPaidHistory('${group.customerName}')" 
                                         title="Lihat Riwayat">📋</button>
                             `}
-                            <button class="debt-toggle">${isExpanded ? '▲' : '▼'}</button>
+                            <button class="hifzi-debt-toggle">${isExpanded ? '▲' : '▼'}</button>
                         </div>
                     </div>
 
-                    <div class="debt-items" style="${isExpanded ? 'display: block;' : 'display: none;'}">
+                    <div class="hifzi-debt-items" style="${isExpanded ? 'display: block;' : 'display: none;'}">
                         ${group.debts.map(debt => this.renderDebtItem(debt)).join('')}
                     </div>
                 </div>
@@ -545,44 +545,44 @@ const debtModule = {
         if (isPaid && !this.showPaidDebts) return '';
 
         const cashIndicator = debt.reduceCash 
-            ? '<span class="debt-cash-indicator reduce">📉 Kurangi Kas</span>' 
-            : '<span class="debt-cash-indicator normal">📋 Tidak Kurangi Kas</span>';
+            ? '<span class="hifzi-debt-cash-indicator hifzi-reduce">📉 Kurangi Kas</span>' 
+            : '<span class="hifzi-debt-cash-indicator hifzi-normal">📋 Tidak Kurangi Kas</span>';
 
         return `
-            <div class="debt-item ${isPaid ? 'paid-item' : ''}" data-debt-id="${debt.id}">
-                <div class="debt-item-info">
-                    <div class="debt-item-header">
-                        <span class="debt-item-id">#${debt.id}</span>
-                        ${isPaid ? '<span class="debt-item-status-badge paid">✓ LUNAS</span>' : ''}
-                        ${isOverdue ? '<span class="debt-item-status-badge overdue">⚠ OVERDUE</span>' : ''}
+            <div class="hifzi-debt-item ${isPaid ? 'hifzi-paid-item' : ''}" data-debt-id="${debt.id}">
+                <div class="hifzi-debt-item-info">
+                    <div class="hifzi-debt-item-header">
+                        <span class="hifzi-debt-item-id">#${debt.id}</span>
+                        ${isPaid ? '<span class="hifzi-debt-item-status-badge hifzi-paid">✓ LUNAS</span>' : ''}
+                        ${isOverdue ? '<span class="hifzi-debt-item-status-badge hifzi-overdue">⚠ OVERDUE</span>' : ''}
                     </div>
-                    <div class="debt-item-cash-status">
+                    <div class="hifzi-debt-item-cash-status">
                         ${cashIndicator}
                     </div>
-                    <div class="debt-item-date">
+                    <div class="hifzi-debt-item-date">
                         <span>📅 ${this.formatDate(debt.date)}</span>
                         ${isPaid 
                             ? `<span>✅ Lunas: ${this.formatDate(debt.paidDate)}</span>`
                             : `<span>⏰ Jatuh tempo: ${this.formatDate(debt.dueDate)}</span>`
                         }
                     </div>
-                    <div class="debt-item-products">${productSummary}</div>
+                    <div class="hifzi-debt-item-products">${productSummary}</div>
                 </div>
-                <div class="debt-item-amount">
-                    <div class="debt-item-total">${this.formatRupiah(debt.total)}</div>
+                <div class="hifzi-debt-item-amount">
+                    <div class="hifzi-debt-item-total">${this.formatRupiah(debt.total)}</div>
                     ${debt.paid > 0 && !isPaid ? `
-                        <div class="debt-item-paid">Dibayar: ${this.formatRupiah(debt.paid)}</div>
+                        <div class="hifzi-debt-item-paid">Dibayar: ${this.formatRupiah(debt.paid)}</div>
                     ` : ''}
                     ${!isPaid ? `
-                        <div class="debt-item-remaining">Sisa: ${this.formatRupiah(remaining)}</div>
+                        <div class="hifzi-debt-item-remaining">Sisa: ${this.formatRupiah(remaining)}</div>
                     ` : ''}
                 </div>
-                <div class="debt-item-actions">
-                    <button class="debt-item-btn detail" onclick="debtModule.viewDetail('${debt.id}')">Detail</button>
+                <div class="hifzi-debt-item-actions">
+                    <button class="hifzi-debt-item-btn hifzi-detail" onclick="debtModule.viewDetail('${debt.id}')">Detail</button>
                     ${!isPaid ? `
-                        <button class="debt-item-btn pay" onclick="debtModule.openPaymentModal('${debt.id}')">Bayar</button>
+                        <button class="hifzi-debt-item-btn hifzi-pay" onclick="debtModule.openPaymentModal('${debt.id}')">Bayar</button>
                     ` : ''}
-                    <button class="debt-item-btn delete" onclick="debtModule.confirmDelete('${debt.id}')" title="Hapus">🗑️</button>
+                    <button class="hifzi-debt-item-btn hifzi-delete" onclick="debtModule.confirmDelete('${debt.id}')" title="Hapus">🗑️</button>
                 </div>
             </div>
         `;
@@ -596,103 +596,103 @@ const debtModule = {
         const currentCash = this.getCurrentCash();
 
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'addDebtModal';
         modal.innerHTML = `
-            <div class="debt-modal debt-modal-with-sidebar">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">➕ Tambah Hutang Baru</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+            <div class="hifzi-debt-modal hifzi-debt-modal-with-sidebar">
+                <div class="hifzi-debt-modal-header">
+                    <div class="hifzi-debt-modal-title">➕ Tambah Hutang Baru</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
                 
-                <div class="debt-modal-content">
+                <div class="hifzi-debt-modal-content">
                     <!-- SIDEBAR KANAN: DAFTAR PELANGGAN -->
-                    <div class="debt-customer-sidebar">
-                        <div class="debt-sidebar-header">
-                            <span class="debt-sidebar-title">👥 Daftar Pelanggan</span>
-                            <button class="debt-sidebar-add-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
+                    <div class="hifzi-debt-customer-sidebar">
+                        <div class="hifzi-debt-sidebar-header">
+                            <span class="hifzi-debt-sidebar-title">👥 Daftar Pelanggan</span>
+                            <button class="hifzi-debt-sidebar-add-btn" onclick="debtModule.openAddCustomerNameModal()" title="Tambah Nama Baru">
                                 ➕
                             </button>
                         </div>
                         
-                        <div class="debt-sidebar-search">
+                        <div class="hifzi-debt-sidebar-search">
                             <input type="text" 
                                    id="sidebarCustomerSearch" 
                                    placeholder="Cari pelanggan..." 
                                    oninput="debtModule.renderCustomerSidebar()">
                         </div>
                         
-                        <div class="debt-sidebar-list" id="customerSidebarList">
+                        <div class="hifzi-debt-sidebar-list" id="customerSidebarList">
                             <!-- Diisi oleh renderCustomerSidebar() -->
                         </div>
                         
-                        <div class="debt-sidebar-footer">
+                        <div class="hifzi-debt-sidebar-footer">
                             <small>Klik nama untuk mengisi otomatis</small>
                         </div>
                     </div>
 
                     <!-- FORM UTAMA -->
-                    <div class="debt-modal-body">
-                        <div class="debt-section-title">👤 Informasi Pelanggan</div>
+                    <div class="hifzi-debt-modal-body">
+                        <div class="hifzi-debt-section-title">👤 Informasi Pelanggan</div>
                         
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">Nama Pelanggan *</label>
+                        <div class="hifzi-debt-form-group">
+                            <label class="hifzi-debt-form-label">Nama Pelanggan *</label>
                             <input type="text" 
-                                   class="debt-form-input" 
+                                   class="hifzi-debt-form-input" 
                                    id="addCustomerName" 
                                    placeholder="Ketik nama pelanggan atau pilih dari daftar kanan..."
                                    autocomplete="off"
                                    oninput="debtModule.syncSidebarSearch(this.value)">
                         </div>
 
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">No. Telepon</label>
-                            <input type="text" class="debt-form-input" id="addCustomerPhone" placeholder="Opsional">
+                        <div class="hifzi-debt-form-group">
+                            <label class="hifzi-debt-form-label">No. Telepon</label>
+                            <input type="text" class="hifzi-debt-form-input" id="addCustomerPhone" placeholder="Opsional">
                         </div>
 
-                        <div class="debt-section-title">📦 Produk yang Dihutangkan</div>
+                        <div class="hifzi-debt-section-title">📦 Produk yang Dihutangkan</div>
                         <div id="addDebtItems">
-                            <div class="debt-item-input">
-                                <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName0">
-                                <div class="debt-item-row">
-                                    <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
-                                    <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
+                            <div class="hifzi-debt-item-input">
+                                <input type="text" class="hifzi-debt-form-input" placeholder="Nama produk" id="itemName0">
+                                <div class="hifzi-debt-item-row">
+                                    <input type="number" class="hifzi-debt-form-input" placeholder="Qty" id="itemQty0" value="1" min="1" onchange="debtModule.calculateTotal()">
+                                    <input type="number" class="hifzi-debt-form-input" placeholder="Harga" id="itemPrice0" onchange="debtModule.calculateTotal()">
                                 </div>
                             </div>
                         </div>
-                        <button class="debt-add-item-btn" onclick="debtModule.addItemField()">
+                        <button class="hifzi-debt-add-item-btn" onclick="debtModule.addItemField()">
                             <span>➕</span> Tambah Produk
                         </button>
 
-                        <div class="debt-total-section">
-                            <div class="debt-total-row">
+                        <div class="hifzi-debt-total-section">
+                            <div class="hifzi-debt-total-row">
                                 <span>Total Hutang:</span>
-                                <span id="addDebtTotal" class="debt-total-amount">${this.formatRupiah(0)}</span>
+                                <span id="addDebtTotal" class="hifzi-debt-total-amount">${this.formatRupiah(0)}</span>
                             </div>
                         </div>
 
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">DP / Pembayaran Awal</label>
-                            <input type="number" class="debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
+                        <div class="hifzi-debt-form-group">
+                            <label class="hifzi-debt-form-label">DP / Pembayaran Awal</label>
+                            <input type="number" class="hifzi-debt-form-input" id="addDP" placeholder="0" value="0" onchange="debtModule.calculateTotal()">
                         </div>
 
                         <!-- PILIHAN KAS -->
-                        <div class="debt-cash-option">
-                            <div class="debt-cash-option-title">💰 Pengaruh ke Kas?</div>
-                            <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                            <div class="debt-cash-toggle">
-                                <label class="debt-cash-radio">
+                        <div class="hifzi-debt-cash-option">
+                            <div class="hifzi-debt-cash-option-title">💰 Pengaruh ke Kas?</div>
+                            <div class="hifzi-debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                            <div class="hifzi-debt-cash-toggle">
+                                <label class="hifzi-debt-cash-radio">
                                     <input type="radio" name="reduceCash" value="yes" checked>
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
+                                    <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                    <span class="hifzi-debt-cash-radio-label">
                                         <strong>Ya, Kurangi Kas</strong>
                                         <small>Barang keluar, uang belum masuk (Kas berkurang)</small>
                                     </span>
                                 </label>
-                                <label class="debt-cash-radio">
+                                <label class="hifzi-debt-cash-radio">
                                     <input type="radio" name="reduceCash" value="no">
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
+                                    <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                    <span class="hifzi-debt-cash-radio-label">
                                         <strong>Tidak, Jangan Kurangi Kas</strong>
                                         <small>Barang keluar, tapi kas tetap (DP sudah masuk/piutang luar)</small>
                                     </span>
@@ -700,21 +700,21 @@ const debtModule = {
                             </div>
                         </div>
 
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">Tanggal Jatuh Tempo *</label>
-                            <input type="date" class="debt-form-input" id="addDueDate">
+                        <div class="hifzi-debt-form-group">
+                            <label class="hifzi-debt-form-label">Tanggal Jatuh Tempo *</label>
+                            <input type="date" class="hifzi-debt-form-input" id="addDueDate">
                         </div>
 
-                        <div class="debt-form-group">
-                            <label class="debt-form-label">Catatan</label>
-                            <textarea class="debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
+                        <div class="hifzi-debt-form-group">
+                            <label class="hifzi-debt-form-label">Catatan</label>
+                            <textarea class="hifzi-debt-form-input" id="addNotes" rows="2" placeholder="Tambahkan catatan..."></textarea>
                         </div>
                     </div>
                 </div>
                 
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.saveNewDebt()">Simpan Hutang</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="hifzi-debt-btn hifzi-debt-btn-primary" onclick="debtModule.saveNewDebt()">Simpan Hutang</button>
                 </div>
             </div>
         `;
@@ -723,7 +723,7 @@ const debtModule = {
         
         // Render sidebar setelah modal muncul
         setTimeout(() => {
-            modal.classList.add('active');
+            modal.classList.add('hifzi-active');
             this.renderCustomerSidebar();
             
             // Set default due date
@@ -746,7 +746,7 @@ const debtModule = {
         
         if (customers.length === 0) {
             sidebarList.innerHTML = `
-                <div class="debt-sidebar-empty">
+                <div class="hifzi-debt-sidebar-empty">
                     <span>📭</span>
                     <p>Belum ada pelanggan</p>
                     <small>Klik ➕ untuk tambah nama</small>
@@ -760,20 +760,20 @@ const debtModule = {
             const hasDebt = cust.source === 'debt';
             
             return `
-                <div class="debt-sidebar-item ${isCustom ? 'custom' : ''}" 
+                <div class="hifzi-debt-sidebar-item ${isCustom ? 'hifzi-custom' : ''}" 
                      data-customer-name="${cust.name.replace(/"/g, '&quot;')}"
                      onclick="debtModule.selectCustomerFromSidebar('${cust.name.replace(/'/g, "\\'")}', '${cust.phone || ''}')">
-                    <div class="debt-sidebar-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
-                    <div class="debt-sidebar-item-info">
-                        <div class="debt-sidebar-item-name">${cust.name}</div>
-                        <div class="debt-sidebar-item-meta">
+                    <div class="hifzi-debt-sidebar-item-avatar">${cust.name.charAt(0).toUpperCase()}</div>
+                    <div class="hifzi-debt-sidebar-item-info">
+                        <div class="hifzi-debt-sidebar-item-name">${cust.name}</div>
+                        <div class="hifzi-debt-sidebar-item-meta">
                             ${cust.phone ? `<span>📱 ${cust.phone}</span>` : ''}
-                            ${isCustom ? '<span class="debt-sidebar-badge custom">Manual</span>' : ''}
-                            ${hasDebt ? '<span class="debt-sidebar-badge debt">Pernah Hutang</span>' : ''}
+                            ${isCustom ? '<span class="hifzi-debt-sidebar-badge hifzi-custom">Manual</span>' : ''}
+                            ${hasDebt ? '<span class="hifzi-debt-sidebar-badge hifzi-debt">Pernah Hutang</span>' : ''}
                         </div>
                     </div>
                     ${isCustom ? `
-                        <button class="debt-sidebar-item-delete" 
+                        <button class="hifzi-debt-sidebar-item-delete" 
                                 onclick="event.stopPropagation(); debtModule.removeCustomCustomerName('${cust.name.replace(/'/g, "\\'")}')" 
                                 title="Hapus dari daftar">✕</button>
                     ` : ''}
@@ -794,43 +794,43 @@ const debtModule = {
     // Buka modal tambah nama pelanggan manual
     openAddCustomerNameModal() {
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'addCustomerNameModal';
         modal.style.zIndex = '2000'; // Lebih tinggi dari modal utama
         modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 400px;">
-                <div class="debt-modal-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                    <div class="debt-modal-title">➕ Tambah Nama Pelanggan</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeAddCustomerNameModal()">✕</button>
+            <div class="hifzi-debt-modal" style="max-width: 400px;">
+                <div class="hifzi-debt-modal-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <div class="hifzi-debt-modal-title">➕ Tambah Nama Pelanggan</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeAddCustomerNameModal()">✕</button>
                 </div>
-                <div class="debt-modal-body">
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Nama Pelanggan *</label>
+                <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Nama Pelanggan *</label>
                         <input type="text" 
-                               class="debt-form-input" 
+                               class="hifzi-debt-form-input" 
                                id="newCustomerName" 
                                placeholder="Masukkan nama pelanggan..."
                                onkeypress="if(event.key==='Enter') debtModule.saveNewCustomerName()">
                     </div>
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">No. Telepon (Opsional)</label>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">No. Telepon (Opsional)</label>
                         <input type="text" 
-                               class="debt-form-input" 
+                               class="hifzi-debt-form-input" 
                                id="newCustomerPhone" 
                                placeholder="08xxxxxxxxxx"
                                onkeypress="if(event.key==='Enter') debtModule.saveNewCustomerName()">
                     </div>
                 </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeAddCustomerNameModal()">Batal</button>
-                    <button class="debt-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;" onclick="debtModule.saveNewCustomerName()">Simpan</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeAddCustomerNameModal()">Batal</button>
+                    <button class="hifzi-debt-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;" onclick="debtModule.saveNewCustomerName()">Simpan</button>
                 </div>
             </div>
         `;
 
         document.body.appendChild(modal);
         setTimeout(() => {
-            modal.classList.add('active');
+            modal.classList.add('hifzi-active');
             document.getElementById('newCustomerName')?.focus();
         }, 10);
     },
@@ -838,7 +838,7 @@ const debtModule = {
     closeAddCustomerNameModal() {
         const modal = document.getElementById('addCustomerNameModal');
         if (modal) {
-            modal.classList.remove('active');
+            modal.classList.remove('hifzi-active');
             setTimeout(() => modal.remove(), 300);
         }
     },
@@ -880,15 +880,15 @@ const debtModule = {
         const container = document.getElementById('addDebtItems');
         const index = this.itemCount++;
         const div = document.createElement('div');
-        div.className = 'debt-item-input';
+        div.className = 'hifzi-debt-item-input';
         div.innerHTML = `
-            <div class="debt-item-header-row">
-                <input type="text" class="debt-form-input" placeholder="Nama produk" id="itemName${index}">
-                <button class="debt-remove-item" onclick="this.closest('.debt-item-input').remove(); debtModule.calculateTotal();">✕</button>
+            <div class="hifzi-debt-item-header-row">
+                <input type="text" class="hifzi-debt-form-input" placeholder="Nama produk" id="itemName${index}">
+                <button class="hifzi-debt-remove-item" onclick="this.closest('.hifzi-debt-item-input').remove(); debtModule.calculateTotal();">✕</button>
             </div>
-            <div class="debt-item-row">
-                <input type="number" class="debt-form-input" placeholder="Qty" id="itemQty${index}" value="1" min="1" onchange="debtModule.calculateTotal()">
-                <input type="number" class="debt-form-input" placeholder="Harga" id="itemPrice${index}" onchange="debtModule.calculateTotal()">
+            <div class="hifzi-debt-item-row">
+                <input type="number" class="hifzi-debt-form-input" placeholder="Qty" id="itemQty${index}" value="1" min="1" onchange="debtModule.calculateTotal()">
+                <input type="number" class="hifzi-debt-form-input" placeholder="Harga" id="itemPrice${index}" onchange="debtModule.calculateTotal()">
             </div>
         `;
         container.appendChild(div);
@@ -1025,15 +1025,15 @@ const debtModule = {
         const showCashOption = remaining > 0 && debt.reduceCash;
 
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'deleteModal';
         modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 450px;">
-                <div class="debt-modal-header" style="background: #fee2e2;">
-                    <div class="debt-modal-title" style="color: #dc2626;">⚠️ Hapus Hutang</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+            <div class="hifzi-debt-modal" style="max-width: 450px;">
+                <div class="hifzi-debt-modal-header" style="background: #fee2e2;">
+                    <div class="hifzi-debt-modal-title" style="color: #dc2626;">⚠️ Hapus Hutang</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
-                <div class="debt-modal-body">
+                <div class="hifzi-debt-modal-body">
                     <div style="text-align: center; padding: 20px 0;">
                         <div style="font-size: 64px; margin-bottom: 16px;">🗑️</div>
                         <p style="font-size: 16px; color: #1e293b; margin-bottom: 8px;">
@@ -1047,22 +1047,22 @@ const debtModule = {
                     </div>
 
                     ${showCashOption ? `
-                        <div class="debt-cash-option" style="margin-top: 16px; background: #fef3c7; border-color: #fbbf24;">
-                            <div class="debt-cash-option-title">💰 Kembalikan ke Kas?</div>
-                            <div class="debt-cash-current">Sisa hutang: <strong>${this.formatRupiah(remaining)}</strong></div>
-                            <div class="debt-cash-toggle">
-                                <label class="debt-cash-radio">
+                        <div class="hifzi-debt-cash-option" style="margin-top: 16px; background: #fef3c7; border-color: #fbbf24;">
+                            <div class="hifzi-debt-cash-option-title">💰 Kembalikan ke Kas?</div>
+                            <div class="hifzi-debt-cash-current">Sisa hutang: <strong>${this.formatRupiah(remaining)}</strong></div>
+                            <div class="hifzi-debt-cash-toggle">
+                                <label class="hifzi-debt-cash-radio">
                                     <input type="radio" name="returnCash" value="yes" checked>
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
+                                    <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                    <span class="hifzi-debt-cash-radio-label">
                                         <strong>Ya, Kembalikan ke Kas</strong>
                                         <small>Kas bertambah ${this.formatRupiah(remaining)}</small>
                                     </span>
                                 </label>
-                                <label class="debt-cash-radio">
+                                <label class="hifzi-debt-cash-radio">
                                     <input type="radio" name="returnCash" value="no">
-                                    <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                    <span class="debt-cash-radio-label">
+                                    <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                    <span class="hifzi-debt-cash-radio-label">
                                         <strong>Tidak, Hanya Hapus Data</strong>
                                         <small>Kas tidak berubah (untuk trial/test)</small>
                                     </span>
@@ -1075,15 +1075,15 @@ const debtModule = {
                         </div>
                     `}
                 </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn" style="background: #dc2626; color: white;" onclick="debtModule.deleteDebt('${debtId}')">Ya, Hapus</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="hifzi-debt-btn" style="background: #dc2626; color: white;" onclick="debtModule.deleteDebt('${debtId}')">Ya, Hapus</button>
                 </div>
             </div>
         `;
 
         document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
+        setTimeout(() => modal.classList.add('hifzi-active'), 10);
     },
 
     deleteDebt(debtId) {
@@ -1139,46 +1139,46 @@ const debtModule = {
         const currentCash = this.getCurrentCash();
 
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'paymentModal';
         modal.innerHTML = `
-            <div class="debt-modal">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">💰 Pembayaran Hutang</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+            <div class="hifzi-debt-modal">
+                <div class="hifzi-debt-modal-header">
+                    <div class="hifzi-debt-modal-title">💰 Pembayaran Hutang</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
-                <div class="debt-modal-body">
-                    <div class="debt-amount-display">
-                        <div class="debt-amount-label">Sisa Hutang</div>
-                        <div class="debt-amount-value">${this.formatRupiah(remaining)}</div>
+                <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-amount-display">
+                        <div class="hifzi-debt-amount-label">Sisa Hutang</div>
+                        <div class="hifzi-debt-amount-value">${this.formatRupiah(remaining)}</div>
                     </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Nama Pelanggan</label>
-                        <input type="text" class="debt-form-input" value="${debt.customerName}" readonly>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Nama Pelanggan</label>
+                        <input type="text" class="hifzi-debt-form-input" value="${debt.customerName}" readonly>
                     </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Jumlah Pembayaran</label>
-                        <input type="number" class="debt-form-input" id="paymentAmount" value="${remaining}" max="${remaining}" min="1">
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Jumlah Pembayaran</label>
+                        <input type="number" class="hifzi-debt-form-input" id="paymentAmount" value="${remaining}" max="${remaining}" min="1">
                     </div>
 
-                    <div class="debt-cash-option">
-                        <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
-                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                        <div class="debt-cash-toggle">
-                            <label class="debt-cash-radio">
+                    <div class="hifzi-debt-cash-option">
+                        <div class="hifzi-debt-cash-option-title">💰 Tambah ke Kas?</div>
+                        <div class="hifzi-debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="hifzi-debt-cash-toggle">
+                            <label class="hifzi-debt-cash-radio">
                                 <input type="radio" name="addToCash" value="yes" checked>
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
+                                <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                <span class="hifzi-debt-cash-radio-label">
                                     <strong>Ya, Tambah ke Kas</strong>
                                     <small>Uang masuk ke laci/kas toko</small>
                                 </span>
                             </label>
-                            <label class="debt-cash-radio">
+                            <label class="hifzi-debt-cash-radio">
                                 <input type="radio" name="addToCash" value="no">
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
+                                <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                <span class="hifzi-debt-cash-radio-label">
                                     <strong>Tidak, Hanya Catat</strong>
                                     <small>Uang tidak masuk kas (sudah masuk sebelumnya/dll)</small>
                                 </span>
@@ -1186,20 +1186,20 @@ const debtModule = {
                         </div>
                     </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Catatan (Opsional)</label>
-                        <input type="text" class="debt-form-input" id="paymentNote" placeholder="Tambahkan catatan...">
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Catatan (Opsional)</label>
+                        <input type="text" class="hifzi-debt-form-input" id="paymentNote" placeholder="Tambahkan catatan...">
                     </div>
                 </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayment('${debtId}')">Konfirmasi Pembayaran</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="hifzi-debt-btn hifzi-debt-btn-primary" onclick="debtModule.processPayment('${debtId}')">Konfirmasi Pembayaran</button>
                 </div>
             </div>
         `;
 
         document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
+        setTimeout(() => modal.classList.add('hifzi-active'), 10);
     },
 
     processPayment(debtId) {
@@ -1270,41 +1270,41 @@ const debtModule = {
         const currentCash = this.getCurrentCash();
 
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'payAllModal';
         modal.innerHTML = `
-            <div class="debt-modal">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">💰 Bayar Semua Hutang</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+            <div class="hifzi-debt-modal">
+                <div class="hifzi-debt-modal-header">
+                    <div class="hifzi-debt-modal-title">💰 Bayar Semua Hutang</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
-                <div class="debt-modal-body">
-                    <div class="debt-amount-display">
-                        <div class="debt-amount-label">Total Hutang ${customerName}</div>
-                        <div class="debt-amount-value">${this.formatRupiah(totalRemaining)}</div>
+                <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-amount-display">
+                        <div class="hifzi-debt-amount-label">Total Hutang ${customerName}</div>
+                        <div class="hifzi-debt-amount-value">${this.formatRupiah(totalRemaining)}</div>
                     </div>
 
-                    <div class="debt-form-group">
-                        <label class="debt-form-label">Jumlah Transaksi</label>
-                        <input type="text" class="debt-form-input" value="${customerDebts.length} transaksi" readonly>
+                    <div class="hifzi-debt-form-group">
+                        <label class="hifzi-debt-form-label">Jumlah Transaksi</label>
+                        <input type="text" class="hifzi-debt-form-input" value="${customerDebts.length} transaksi" readonly>
                     </div>
 
-                    <div class="debt-cash-option">
-                        <div class="debt-cash-option-title">💰 Tambah ke Kas?</div>
-                        <div class="debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
-                        <div class="debt-cash-toggle">
-                            <label class="debt-cash-radio">
+                    <div class="hifzi-debt-cash-option">
+                        <div class="hifzi-debt-cash-option-title">💰 Tambah ke Kas?</div>
+                        <div class="hifzi-debt-cash-current">Kas saat ini: <strong>${this.formatRupiah(currentCash)}</strong></div>
+                        <div class="hifzi-debt-cash-toggle">
+                            <label class="hifzi-debt-cash-radio">
                                 <input type="radio" name="payAllAddToCash" value="yes" checked>
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
+                                <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                <span class="hifzi-debt-cash-radio-label">
                                     <strong>Ya, Tambah ke Kas</strong>
                                     <small>Kas bertambah ${this.formatRupiah(totalRemaining)}</small>
                                 </span>
                             </label>
-                            <label class="debt-cash-radio">
+                            <label class="hifzi-debt-cash-radio">
                                 <input type="radio" name="payAllAddToCash" value="no">
-                                <span class="debt-cash-radio-box"><span class="debt-cash-radio-icon">✓</span></span>
-                                <span class="debt-cash-radio-label">
+                                <span class="hifzi-debt-cash-radio-box"><span class="hifzi-debt-cash-radio-icon">✓</span></span>
+                                <span class="hifzi-debt-cash-radio-label">
                                     <strong>Tidak, Hanya Catat</strong>
                                     <small>Kas tidak berubah</small>
                                 </span>
@@ -1312,15 +1312,15 @@ const debtModule = {
                         </div>
                     </div>
                 </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
-                    <button class="debt-btn debt-btn-primary" onclick="debtModule.processPayAll('${customerName}')">Bayar Semua</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeModal()">Batal</button>
+                    <button class="hifzi-debt-btn hifzi-debt-btn-primary" onclick="debtModule.processPayAll('${customerName}')">Bayar Semua</button>
                 </div>
             </div>
         `;
 
         document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
+        setTimeout(() => modal.classList.add('hifzi-active'), 10);
     },
 
     processPayAll(customerName) {
@@ -1383,41 +1383,41 @@ const debtModule = {
         const totalPaid = customerDebts.reduce((sum, d) => sum + d.total, 0);
 
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'paidHistoryModal';
         modal.innerHTML = `
-            <div class="debt-modal" style="max-width: 600px;">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">📋 Riwayat Lunas - ${customerName}</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+            <div class="hifzi-debt-modal" style="max-width: 600px;">
+                <div class="hifzi-debt-modal-header">
+                    <div class="hifzi-debt-modal-title">📋 Riwayat Lunas - ${customerName}</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
-                <div class="debt-modal-body">
-                    <div class="debt-amount-display success">
-                        <div class="debt-amount-label">Total Sudah Dibayar</div>
-                        <div class="debt-amount-value">${this.formatRupiah(totalPaid)}</div>
+                <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-amount-display hifzi-success">
+                        <div class="hifzi-debt-amount-label">Total Sudah Dibayar</div>
+                        <div class="hifzi-debt-amount-value">${this.formatRupiah(totalPaid)}</div>
                     </div>
-                    <div class="debt-history-list">
+                    <div class="hifzi-debt-history-list">
                         ${customerDebts.map(debt => `
-                            <div class="debt-history-item">
-                                <div class="debt-history-header">
-                                    <span class="debt-history-id">#${debt.id}</span>
-                                    <span class="debt-history-date">Lunas: ${this.formatDate(debt.paidDate)}</span>
+                            <div class="hifzi-debt-history-item">
+                                <div class="hifzi-debt-history-header">
+                                    <span class="hifzi-debt-history-id">#${debt.id}</span>
+                                    <span class="hifzi-debt-history-date">Lunas: ${this.formatDate(debt.paidDate)}</span>
                                 </div>
-                                <div class="debt-history-products">${debt.items.map(i => i.name).join(', ')}</div>
-                                <div class="debt-history-amount">${this.formatRupiah(debt.total)}</div>
-                                ${debt.reduceCash ? '<span class="debt-reduce-badge">📉 Kurangi Kas</span>' : ''}
+                                <div class="hifzi-debt-history-products">${debt.items.map(i => i.name).join(', ')}</div>
+                                <div class="hifzi-debt-history-amount">${this.formatRupiah(debt.total)}</div>
+                                ${debt.reduceCash ? '<span class="hifzi-debt-reduce-badge">📉 Kurangi Kas</span>' : ''}
                             </div>
                         `).join('')}
                     </div>
                 </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
                 </div>
             </div>
         `;
 
         document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
+        setTimeout(() => modal.classList.add('hifzi-active'), 10);
     },
 
     viewDetail(debtId) {
@@ -1425,46 +1425,46 @@ const debtModule = {
         if (!debt) return;
         
         const modal = document.createElement('div');
-        modal.className = 'debt-modal-overlay';
+        modal.className = 'hifzi-debt-modal-overlay';
         modal.id = 'detailModal';
         modal.innerHTML = `
-            <div class="debt-modal">
-                <div class="debt-modal-header">
-                    <div class="debt-modal-title">Detail Hutang #${debt.id}</div>
-                    <button class="debt-modal-close" onclick="debtModule.closeModal()">✕</button>
+            <div class="hifzi-debt-modal">
+                <div class="hifzi-debt-modal-header">
+                    <div class="hifzi-debt-modal-title">Detail Hutang #${debt.id}</div>
+                    <button class="hifzi-debt-modal-close" onclick="debtModule.closeModal()">✕</button>
                 </div>
-                <div class="debt-modal-body">
-                    <div class="debt-cash-info ${debt.reduceCash ? 'reduce' : 'normal'}">
+                <div class="hifzi-debt-modal-body">
+                    <div class="hifzi-debt-cash-info ${debt.reduceCash ? 'hifzi-reduce' : 'hifzi-normal'}">
                         ${debt.reduceCash ? '📉 Hutang ini mengurangi kas' : '📋 Hutang ini tidak mengurangi kas'}
                     </div>
-                    <div class="debt-form-group">
+                    <div class="hifzi-debt-form-group">
                         <label>Pelanggan: <strong>${debt.customerName}</strong></label>
                     </div>
-                    <div class="debt-form-group">
+                    <div class="hifzi-debt-form-group">
                         <label>Total: <strong>${this.formatRupiah(debt.total)}</strong></label>
                     </div>
-                    <div class="debt-form-group">
+                    <div class="hifzi-debt-form-group">
                         <label>Dibayar: <strong style="color: #059669;">${this.formatRupiah(debt.paid)}</strong></label>
                     </div>
-                    <div class="debt-form-group">
+                    <div class="hifzi-debt-form-group">
                         <label>Sisa: <strong style="color: ${debt.total - debt.paid > 0 ? '#dc2626' : '#059669'};">${this.formatRupiah(debt.total - debt.paid)}</strong></label>
                     </div>
                     ${debt.notes ? `
-                        <div class="debt-form-group">
+                        <div class="hifzi-debt-form-group">
                             <label>Catatan: ${debt.notes}</label>
                         </div>
                     ` : ''}
                 </div>
-                <div class="debt-modal-footer">
-                    <button class="debt-btn debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
+                <div class="hifzi-debt-modal-footer">
+                    <button class="hifzi-debt-btn hifzi-debt-btn-secondary" onclick="debtModule.closeModal()">Tutup</button>
                     ${debt.status !== 'paid' ? `
-                        <button class="debt-btn debt-btn-primary" onclick="debtModule.closeModal(); setTimeout(() => debtModule.openPaymentModal('${debt.id}'), 300)">Bayar</button>
+                        <button class="hifzi-debt-btn hifzi-debt-btn-primary" onclick="debtModule.closeModal(); setTimeout(() => debtModule.openPaymentModal('${debt.id}'), 300)">Bayar</button>
                     ` : ''}
                 </div>
             </div>
         `;
         document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('active'), 10);
+        setTimeout(() => modal.classList.add('hifzi-active'), 10);
     },
 
     sendWhatsApp(phone, name, amount) {
@@ -1478,9 +1478,9 @@ const debtModule = {
     },
 
     closeModal() {
-        const modal = document.querySelector('.debt-modal-overlay.active');
+        const modal = document.querySelector('.hifzi-debt-modal-overlay.hifzi-active');
         if (modal) {
-            modal.classList.remove('active');
+            modal.classList.remove('hifzi-active');
             setTimeout(() => modal.remove(), 300);
         }
     },
