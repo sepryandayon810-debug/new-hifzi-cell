@@ -14,8 +14,6 @@
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
     <link rel="stylesheet" href="css/debt.css">
-    <!-- Hapus users.css jika tidak ada, atau buat file kosong -->
-    <!-- <link rel="stylesheet" href="css/users.css"> -->
     
     <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
@@ -260,6 +258,88 @@
             transform: translateX(-50%) translateY(0);
             opacity: 1;
         }
+
+        /* ==================== PROFIT HIGHLIGHT STYLE ==================== */
+        .cash-card {
+            position: relative;
+        }
+        
+        .profit-highlight {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
+            margin-left: auto;
+            min-width: 140px;
+        }
+
+        .profit-highlight .profit-icon {
+            font-size: 24px;
+        }
+
+        .profit-highlight .profit-label {
+            font-size: 11px;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .profit-highlight .profit-value {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        /* Responsive adjustment */
+        @media (max-width: 768px) {
+            .cash-detail {
+                flex-direction: column;
+                align-items: flex-start !important;
+            }
+            
+            .profit-highlight {
+                margin-left: 0;
+                margin-top: 10px;
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Modal improvements */
+        .modal {
+            align-items: flex-start !important;
+            padding-top: 50px !important;
+        }
+        
+        .modal-content {
+            max-height: 80vh !important;
+            overflow-y: auto !important;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .close-btn:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        /* ==================== END PROFIT HIGHLIGHT ==================== */
     </style>
 </head>
 <body>
@@ -336,11 +416,12 @@
                 </div>
             </div>
             
-            <!-- CASH CARD dengan Total Transaksi -->
+            <!-- CASH CARD dengan Total Transaksi dan Laba Highlight -->
             <div class="cash-card">
                 <div class="cash-label">Kas di Tangan</div>
                 <div class="cash-amount" id="currentCash">Rp 0</div>
-                <div class="cash-detail">
+                
+                <div class="cash-detail" style="display: flex; align-items: center; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
                     <div class="cash-detail-item">
                         <span>💰</span>
                         <span>Modal: <b id="modalAwal">Rp 0</b></span>
@@ -353,9 +434,14 @@
                         <span>📝</span>
                         <span>Shift: <b id="shiftStatus">Tutup</b></span>
                     </div>
-                    <div class="cash-detail-item">
-                        <span>📈</span>
-                        <span>Laba: <b id="headerProfit">Rp 0</b></span>
+                    
+                    <!-- Laba yang di-highlight -->
+                    <div class="profit-highlight" id="profitContainer">
+                        <div class="profit-icon">📈</div>
+                        <div>
+                            <div class="profit-label">Laba</div>
+                            <div class="profit-value" id="headerProfit">Rp 0</div>
+                        </div>
                     </div>
                 </div>
             </div>
