@@ -10,15 +10,15 @@ const backupModule = {
     // Google Sheets Config (untuk GAS)
     gasUrl: '',
     
-    // Firebase Config (akan disimpan di localStorage)
+    // Firebase Config - HARDCODE UNTUK MEMASTIKAN BERJALAN
     firebaseConfig: {
-        apiKey: "",
-        authDomain: "",
-        databaseURL: "",
-        projectId: "",
-        storageBucket: "",
-        messagingSenderId: "",
-        appId: ""
+        apiKey: "AIzaSyDekQF6DX_SM1avMegdy5HaXtLyODnIb9o",
+        authDomain: "newhifzicell.firebaseapp.com",
+        databaseURL: "https://newhifzicell-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "newhifzicell",
+        storageBucket: "newhifzicell.firebasestorage.app",
+        messagingSenderId: "324187914263",
+        appId: "1:324187914263:web:04d190bfd901f0a1cf5c52"
     },
     
     // Firebase instances
@@ -91,10 +91,14 @@ const backupModule = {
         this.isAutoSyncEnabled = localStorage.getItem(this.AUTO_SYNC_KEY) === 'true';
         this.lastSyncTime = localStorage.getItem(this.LAST_SYNC_KEY) || null;
         
-        // Load Firebase config dari localStorage
+        // Load Firebase config dari localStorage (tetap simpan kemampuan edit)
         const savedFirebaseConfig = localStorage.getItem(this.FIREBASE_CONFIG_KEY);
         if (savedFirebaseConfig) {
-            this.firebaseConfig = JSON.parse(savedFirebaseConfig);
+            try {
+                const parsed = JSON.parse(savedFirebaseConfig);
+                // Merge dengan default config
+                this.firebaseConfig = { ...this.firebaseConfig, ...parsed };
+            } catch(e) {}
         }
         
         // Device info
@@ -176,36 +180,44 @@ const backupModule = {
     // ==================== FIREBASE FUNCTIONS ====================
     
     initFirebase: function() {
-        // Cek apakah config sudah lengkap
-        if (!this.firebaseConfig.apiKey || !this.firebaseConfig.databaseURL) {
-            this.log('WARN', 'Firebase config belum lengkap');
+        console.log('[Firebase] Initializing...');
+        
+        // CEK SDK
+        if (typeof firebase === 'undefined') {
+            console.error('[Firebase] SDK not loaded!');
+            this.log('ERROR', 'Firebase SDK not loaded');
             return;
         }
         
-        if (typeof firebase === 'undefined') {
-            this.log('WARN', 'Firebase SDK not loaded yet');
+        // Cek config
+        if (!this.firebaseConfig.apiKey || !this.firebaseConfig.databaseURL) {
+            console.log('[Firebase] Config incomplete:', this.firebaseConfig);
+            this.log('WARN', 'Firebase config incomplete');
             return;
         }
         
         try {
             // Hapus instance lama jika ada
-            if (firebase.apps.length) {
+            if (firebase.apps && firebase.apps.length) {
                 firebase.apps.forEach(app => app.delete());
             }
             
+            // Init Firebase
             this.firebaseApp = firebase.initializeApp(this.firebaseConfig);
             this.database = firebase.database();
             this.auth = firebase.auth();
             
+            console.log('[Firebase] Initialized successfully!');
             this.log('INFO', 'Firebase initialized dengan project: ' + this.firebaseConfig.projectId);
+            
             this.setupAuthListener();
             
-            // Jika auto sync aktif dan sudah login, start sync
             if (this.isAutoSyncEnabled && this.auth.currentUser) {
                 this.startAutoSyncFirebase();
             }
             
         } catch (error) {
+            console.error('[Firebase] Init error:', error);
             this.log('ERROR', 'Firebase init failed: ' + error.message);
             this.showToast('❌ Gagal init Firebase: ' + error.message);
         }
@@ -255,9 +267,23 @@ const backupModule = {
         });
     },
 
+    // ==================== PERBAIKAN LOGIN/REGISTER ====================
+    
     firebaseLogin: function(email, password) {
+        // PERBAIKAN: Cek ulang auth dari firebase global jika this.auth null
+        if (!this.auth && typeof firebase !== 'undefined' && firebase.auth) {
+            console.log('[Firebase] Re-initializing auth...');
+            this.auth = firebase.auth();
+        }
+        
         if (!this.auth) {
             this.showToast('❌ Firebase belum siap. Cek konfigurasi!');
+            console.error('Auth not available. Firebase:', typeof firebase);
+            return;
+        }
+        
+        if (!email || !password) {
+            this.showToast('❌ Email dan password wajib diisi!');
             return;
         }
         
@@ -270,12 +296,30 @@ const backupModule = {
             })
             .catch((error) => {
                 this.showToast('❌ ' + error.message);
+                console.error('Login error:', error);
             });
     },
 
     firebaseRegister: function(email, password) {
+        // PERBAIKAN: Cek ulang auth dari firebase global jika this.auth null
+        if (!this.auth && typeof firebase !== 'undefined' && firebase.auth) {
+            console.log('[Firebase] Re-initializing auth...');
+            this.auth = firebase.auth();
+        }
+        
         if (!this.auth) {
             this.showToast('❌ Firebase belum siap. Cek konfigurasi!');
+            console.error('Auth not available. Firebase:', typeof firebase);
+            return;
+        }
+        
+        if (!email || !password) {
+            this.showToast('❌ Email dan password wajib diisi!');
+            return;
+        }
+        
+        if (password.length < 6) {
+            this.showToast('❌ Password minimal 6 karakter!');
             return;
         }
         
@@ -289,6 +333,7 @@ const backupModule = {
             })
             .catch((error) => {
                 this.showToast('❌ ' + error.message);
+                console.error('Register error:', error);
             });
     },
 
@@ -368,6 +413,10 @@ const backupModule = {
             .catch((error) => {
                 if (!silent) this.showToast('❌ Download gagal: ' + error.message);
             });
+    },
+
+    syncFromCloud: function(silent = false) {
+        this.downloadDataFirebase(silent);
     },
 
     // ==================== GAS FUNCTIONS ====================
@@ -828,6 +877,16 @@ const backupModule = {
     formatRupiah: function(amount) {
         if (!amount && amount !== 0) return 'Rp 0';
         return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    },
+
+    manualSync: function() {
+        if (this.currentProvider === 'firebase' && this.currentUser) {
+            this.uploadDataFirebase();
+        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
+            this.uploadDataGAS();
+        } else {
+            this.showToast('⚠️ Pilih provider dan pastikan sudah login');
+        }
     },
 
     // ==================== RENDER ====================
