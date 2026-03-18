@@ -53,20 +53,20 @@ const router = {
 
     showKasirClosedModal() {
         const modalHTML = `
-            <div class="modal active" id="kasirClosedModal" style="display: flex; z-index: 3000;">
+            <div class="modal active" id="kasirClosedModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 400px; text-align: center;">
-                    <div style="font-size: 64px; margin-bottom: 20px;">🔒</div>
-                    <div class="modal-header" style="justify-content: center; margin-bottom: 15px;">
-                        <span class="modal-title" style="font-size: 20px;">Kasir Sedang Tutup</span>
+                    <div style="font-size: 48px; margin-bottom: 15px;">🔒</div>
+                    <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
+                        <span class="modal-title" style="font-size: 18px;">Kasir Sedang Tutup</span>
                     </div>
                     <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px;">⚠️ Akses Ditolak</div>
-                        <div style="font-size: 14px; color: #666; line-height: 1.5;">
-                            Menu ini tidak dapat diakses saat kasir tutup. 
+                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px; font-size: 14px;">⚠️ Akses Ditolak</div>
+                        <div style="font-size: 13px; color: #666; line-height: 1.5;">
+                            Menu ini tidak dapat diakses saat kasir tutup.<br>
                             Silakan login dan buka kasir terlebih dahulu.
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="router.closeKasirClosedModal();" style="background: #4caf50;">
+                    <button class="btn btn-primary" onclick="router.closeKasirClosedModal();" style="background: #4caf50; padding: 10px 30px;">
                         Tutup
                     </button>
                 </div>
@@ -258,13 +258,13 @@ const app = {
 
     showNewDayConfirmModal() {
         const modalHTML = `
-            <div class="modal active" id="newDayModal" style="display: flex; z-index: 3500;">
+            <div class="modal active" id="newDayModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 400px; text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 15px;">🌅</div>
                     <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title">Shift Baru Hari Ini</span>
+                        <span class="modal-title" style="font-size: 16px;">Shift Baru Hari Ini</span>
                     </div>
-                    <p style="color: #666; margin: 20px 0; line-height: 1.6;">
+                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
                         Hai <b>${this.currentUser.name}</b>!<br><br>
                         Kasir terakhir dibuka kemarin.<br>
                         Modal akan direset ke <b>Rp 0</b> untuk shift hari ini.
@@ -286,13 +286,13 @@ const app = {
         const userName = userInfo ? userInfo.name : 'User lain';
 
         const modalHTML = `
-            <div class="modal active" id="kasirUsedModal" style="display: flex; z-index: 3500;">
+            <div class="modal active" id="kasirUsedModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 400px; text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
                     <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title">Kasir Sedang Digunakan</span>
+                        <span class="modal-title" style="font-size: 16px;">Kasir Sedang Digunakan</span>
                     </div>
-                    <p style="color: #666; margin: 20px 0; line-height: 1.6;">
+                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
                         Kasir saat ini sedang digunakan oleh:<br>
                         <b>${userName}</b><br><br>
                         Silakan tunggu atau hubungi admin.
@@ -413,42 +413,163 @@ const app = {
 
         container.innerHTML = `
             <div class="content-section active" style="text-align: center; padding: 40px 20px;">
-                <div style="font-size: 80px; margin-bottom: 20px;">🔒</div>
-                <h2 style="color: #c62828; margin-bottom: 15px;">Kasir Sedang Tutup</h2>
-                <p style="color: #666; margin-bottom: 30px; line-height: 1.6;">
+                <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
+                <h2 style="color: #c62828; margin-bottom: 15px; font-size: 20px;">Kasir Sedang Tutup</h2>
+                <p style="color: #666; margin-bottom: 30px; line-height: 1.6; font-size: 14px;">
                     Selamat datang, <b>${this.currentUser ? this.currentUser.name : ''}</b>!<br>
                     Silakan buka kasir untuk memulai shift kerja.
                 </p>
 
-                <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 16px; padding: 25px; max-width: 400px; margin: 0 auto 20px;">
-                    <div style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 16px; padding: 20px; max-width: 350px; margin: 0 auto 20px;">
+                    <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
                         📅 Hari ini: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </div>
-                    <div style="font-size: 13px; color: #888;">
+                    <div style="font-size: 12px; color: #888;">
                         ${this.data.kasir.date ? `Shift terakhir: ${new Date(this.data.kasir.date).toLocaleDateString('id-ID')}` : 'Belum ada shift hari ini'}
                     </div>
                 </div>
 
                 <button onclick="app.confirmOpenKasir(true)" 
-                        style="padding: 15px 40px; font-size: 16px; 
+                        style="padding: 12px 30px; font-size: 14px; 
                                background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
-                               color: white; border: none; border-radius: 12px;
+                               color: white; border: none; border-radius: 10px;
                                cursor: pointer; font-weight: 600;
                                box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);">
                     🔓 Buka Kasir Sekarang
                 </button>
 
                 <div style="margin-top: 20px;">
-                    <a href="#" onclick="app.logout()" style="color: #999; font-size: 14px;">🚪 Logout</a>
+                    <a href="#" onclick="app.logout()" style="color: #999; font-size: 13px;">🚪 Logout</a>
                 </div>
             </div>
         `;
     },
 
+    // ==================== SETTINGS FUNCTIONAL ====================
     openSettings() {
-        // ... (sama seperti sebelumnya)
-        alert('Settings - To be implemented');
+        const modalHTML = `
+            <div class="modal active" id="settingsModal" style="display: flex; z-index: 4000; align-items: flex-start; padding-top: 50px;">
+                <div class="modal-content" style="max-width: 450px; max-height: 85vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <span class="modal-title">⚙️ Pengaturan Toko</span>
+                        <button class="close-btn" onclick="app.closeSettings()">×</button>
+                    </div>
+                    
+                    <div style="padding: 20px;">
+                        <!-- Info Toko -->
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Nama Toko</label>
+                            <input type="text" id="settingStoreName" 
+                                   value="${this.data.settings.storeName || 'Hifzi Cell'}" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box;">
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Alamat Toko</label>
+                            <textarea id="settingStoreAddress" 
+                                      style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; min-height: 60px; resize: vertical; font-size: 14px; box-sizing: border-box; font-family: inherit;">${this.data.settings.address || ''}</textarea>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Nomor Telepon</label>
+                            <input type="text" id="settingStorePhone" 
+                                   value="${this.data.settings.phone || ''}" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box;">
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px;">Pajak Default (%)</label>
+                            <input type="number" id="settingTax" 
+                                   value="${this.data.settings.tax || 0}" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box;">
+                        </div>
+                        
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                        
+                        <!-- Data Management -->
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #d32f2f; font-size: 14px;">⚠️ Zona Berbahaya</label>
+                            <div style="display: grid; gap: 8px;">
+                                <button onclick="app.confirmResetData()" 
+                                        style="padding: 10px; background: #ffebee; color: #c62828; border: 1px solid #ef5350; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                    🗑️ Reset Semua Data
+                                </button>
+                                <button onclick="app.exportData()" 
+                                        style="padding: 10px; background: #e3f2fd; color: #1565c0; border: 1px solid #42a5f5; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                    💾 Export Data (JSON)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; padding: 0 20px 20px;">
+                        <button onclick="app.closeSettings()" 
+                                style="padding: 10px 20px; background: #f5f5f5; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">Batal</button>
+                        <button onclick="app.saveSettings()" 
+                                style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">Simpan Perubahan</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove existing modal
+        const existingModal = document.getElementById('settingsModal');
+        if (existingModal) existingModal.remove();
+        
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
+
+    closeSettings() {
+        const modal = document.getElementById('settingsModal');
+        if (modal) modal.remove();
+    },
+
+    saveSettings() {
+        const storeName = document.getElementById('settingStoreName').value.trim();
+        const address = document.getElementById('settingStoreAddress').value.trim();
+        const phone = document.getElementById('settingStorePhone').value.trim();
+        const tax = parseFloat(document.getElementById('settingTax').value) || 0;
+
+        // Update data
+        this.data.settings.storeName = storeName;
+        this.data.settings.address = address;
+        this.data.settings.phone = phone;
+        this.data.settings.tax = tax;
+
+        // Save to storage
+        dataManager.saveData();
+
+        // Update header
+        this.updateHeader();
+
+        this.showToast('✅ Pengaturan berhasil disimpan!');
+        this.closeSettings();
+    },
+
+    confirmResetData() {
+        if (confirm('⚠️ PERINGATAN!\n\nSemua data akan dihapus permanen!\nTransaksi, produk, hutang, dan pengaturan akan hilang.\n\nApakah Anda yakin?')) {
+            if (prompt('Ketik "HAPUS" untuk konfirmasi:') === 'HAPUS') {
+                localStorage.removeItem('hifzi_data');
+                this.showToast('🗑️ Semua data telah dihapus. Memuat ulang...');
+                setTimeout(() => location.reload(), 1500);
+            }
+        }
+    },
+
+    exportData() {
+        const dataStr = JSON.stringify(this.data, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `hifzi_backup_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showToast('💾 Data berhasil diexport!');
+    },
+    // ==================== END SETTINGS ====================
 
     showToast(message) {
         const toast = document.getElementById('toast');
