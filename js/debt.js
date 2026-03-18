@@ -20,6 +20,7 @@ const debtModule = {
         this.loadDebts();
         this.loadCustomNames(); // Load nama custom
         this.isInitialized = true;
+        this.render(); // ✅ TAMBAHAN: render setelah init
     },
 
     loadDebts() {
@@ -110,7 +111,7 @@ const debtModule = {
         this.isInitialized = false;
         this.expandedGroups.clear();
         this.init();
-        this.render();
+        this.render(); // ✅ TAMBAHAN: render setelah reload
     },
 
     // ==========================================
