@@ -15,6 +15,10 @@ const reportsModule = {
                     <div class="profit-amount" id="todayProfit">Rp 0</div>
                     <div class="profit-details">
                         <div class="profit-item">
+                            <span>📊</span>
+                            <span>Total Transaksi: <b id="totalTransactionCount">0</b></span>
+                        </div>
+                        <div class="profit-item">
                             <span>📈</span>
                             <span>Margin: <b id="profitMargin">0%</b></span>
                         </div>
@@ -176,6 +180,7 @@ const reportsModule = {
         if (this.currentRange === 'today') {
             document.getElementById('todayProfit').textContent = 'Rp ' + utils.formatNumber(totalProfit);
             document.getElementById('transactionCount').textContent = count;
+            document.getElementById('totalTransactionCount').textContent = count;
             const margin = totalSales > 0 ? ((totalProfit / totalSales) * 100).toFixed(1) : 0;
             document.getElementById('profitMargin').textContent = margin + '%';
         }
