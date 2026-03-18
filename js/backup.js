@@ -1,5 +1,5 @@
-// backup.js - Versi 3 Provider: Local File, Google Sheets, Firebase
-// Bisa pilih salah satu, tidak konflik
+// backup.js - Versi 4 Provider: Local File, Google Sheets, Firebase
+// Dengan konfigurasi Firebase langsung di UI + Auto Sync toggle
 
 const backupModule = {
     // ==================== CONFIG ====================
@@ -10,15 +10,15 @@ const backupModule = {
     // Google Sheets Config (untuk GAS)
     gasUrl: '',
     
-    // Firebase Config (GANTI DENGAN PUNYA ANDA!)
+    // Firebase Config (akan disimpan di localStorage)
     firebaseConfig: {
-        apiKey: "GANTI_DENGAN_API_KEY_ANDA",
-        authDomain: "GANTI.firebaseapp.com",
-        databaseURL: "https://GANTI-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "GANTI",
-        storageBucket: "GANTI.appspot.com",
-        messagingSenderId: "GANTI",
-        appId: "GANTI"
+        apiKey: "",
+        authDomain: "",
+        databaseURL: "",
+        projectId: "",
+        storageBucket: "",
+        messagingSenderId: "",
+        appId: ""
     },
     
     // Firebase instances
@@ -56,6 +56,7 @@ const backupModule = {
     USER_KEY: 'hifzi_user',
     LOGS_KEY: 'hifzi_backup_logs',
     PROVIDER_KEY: 'hifzi_provider',
+    FIREBASE_CONFIG_KEY: 'hifzi_firebase_config',
     
     debugMode: true,
     
@@ -82,13 +83,19 @@ const backupModule = {
     // ==================== INIT ====================
     
     init: function() {
-        this.log('INFO', 'Backup Module Initialized (3 Providers)');
+        this.log('INFO', 'Backup Module Initialized (3 Providers with Firebase Config)');
         
         // Load saved provider
         this.currentProvider = localStorage.getItem(this.PROVIDER_KEY) || 'local';
         this.gasUrl = localStorage.getItem(this.GAS_URL_KEY) || '';
         this.isAutoSyncEnabled = localStorage.getItem(this.AUTO_SYNC_KEY) === 'true';
         this.lastSyncTime = localStorage.getItem(this.LAST_SYNC_KEY) || null;
+        
+        // Load Firebase config dari localStorage
+        const savedFirebaseConfig = localStorage.getItem(this.FIREBASE_CONFIG_KEY);
+        if (savedFirebaseConfig) {
+            this.firebaseConfig = JSON.parse(savedFirebaseConfig);
+        }
         
         // Device info
         this.deviceId = localStorage.getItem(this.DEVICE_ID_KEY);
@@ -132,30 +139,75 @@ const backupModule = {
         this.render();
     },
 
+    // ==================== FIREBASE CONFIG ====================
+    
+    saveFirebaseConfig: function() {
+        const apiKey = document.getElementById('fb_apiKey').value.trim();
+        const authDomain = document.getElementById('fb_authDomain').value.trim();
+        const databaseURL = document.getElementById('fb_databaseURL').value.trim();
+        const projectId = document.getElementById('fb_projectId').value.trim();
+        const storageBucket = document.getElementById('fb_storageBucket').value.trim();
+        const messagingSenderId = document.getElementById('fb_messagingSenderId').value.trim();
+        const appId = document.getElementById('fb_appId').value.trim();
+        
+        if (!apiKey || !databaseURL || !authDomain) {
+            this.showToast('❌ API Key, Auth Domain, dan Database URL wajib diisi!');
+            return;
+        }
+        
+        this.firebaseConfig = {
+            apiKey,
+            authDomain,
+            databaseURL,
+            projectId,
+            storageBucket,
+            messagingSenderId,
+            appId
+        };
+        
+        localStorage.setItem(this.FIREBASE_CONFIG_KEY, JSON.stringify(this.firebaseConfig));
+        this.showToast('✅ Konfigurasi Firebase tersimpan!');
+        
+        // Re-init Firebase dengan config baru
+        this.initFirebase();
+        this.render();
+    },
+
     // ==================== FIREBASE FUNCTIONS ====================
     
     initFirebase: function() {
+        // Cek apakah config sudah lengkap
+        if (!this.firebaseConfig.apiKey || !this.firebaseConfig.databaseURL) {
+            this.log('WARN', 'Firebase config belum lengkap');
+            return;
+        }
+        
         if (typeof firebase === 'undefined') {
             this.log('WARN', 'Firebase SDK not loaded yet');
             return;
         }
         
         try {
-            if (!firebase.apps.length) {
-                this.firebaseApp = firebase.initializeApp(this.firebaseConfig);
-            } else {
-                this.firebaseApp = firebase.app();
+            // Hapus instance lama jika ada
+            if (firebase.apps.length) {
+                firebase.apps.forEach(app => app.delete());
             }
             
+            this.firebaseApp = firebase.initializeApp(this.firebaseConfig);
             this.database = firebase.database();
             this.auth = firebase.auth();
             
-            this.log('INFO', 'Firebase initialized');
+            this.log('INFO', 'Firebase initialized dengan project: ' + this.firebaseConfig.projectId);
             this.setupAuthListener();
-            this.setupRealtimeListeners();
+            
+            // Jika auto sync aktif dan sudah login, start sync
+            if (this.isAutoSyncEnabled && this.auth.currentUser) {
+                this.startAutoSyncFirebase();
+            }
             
         } catch (error) {
             this.log('ERROR', 'Firebase init failed: ' + error.message);
+            this.showToast('❌ Gagal init Firebase: ' + error.message);
         }
     },
 
@@ -167,6 +219,8 @@ const backupModule = {
                 this.currentUser = user;
                 this.saveUserToLocal(user);
                 this.updateDeviceStatus(true);
+                
+                this.setupRealtimeListeners();
                 
                 if (this.isAutoSyncEnabled) {
                     this.startAutoSyncFirebase();
@@ -203,7 +257,7 @@ const backupModule = {
 
     firebaseLogin: function(email, password) {
         if (!this.auth) {
-            this.showToast('❌ Firebase belum siap');
+            this.showToast('❌ Firebase belum siap. Cek konfigurasi!');
             return;
         }
         
@@ -221,7 +275,7 @@ const backupModule = {
 
     firebaseRegister: function(email, password) {
         if (!this.auth) {
-            this.showToast('❌ Firebase belum siap');
+            this.showToast('❌ Firebase belum siap. Cek konfigurasi!');
             return;
         }
         
@@ -285,7 +339,7 @@ const backupModule = {
                 if (callback) callback(true);
             })
             .catch((error) => {
-                if (!silent) this.showToast('❌ Upload gagal');
+                if (!silent) this.showToast('❌ Upload gagal: ' + error.message);
                 if (callback) callback(false);
             });
     },
@@ -312,11 +366,11 @@ const backupModule = {
                 }
             })
             .catch((error) => {
-                if (!silent) this.showToast('❌ Download gagal');
+                if (!silent) this.showToast('❌ Download gagal: ' + error.message);
             });
     },
 
-    // ==================== GAS FUNCTIONS (DARI KODE LAMA ANDA) ====================
+    // ==================== GAS FUNCTIONS ====================
     
     checkNewDeviceGAS: function() {
         const localData = this.getAllData();
@@ -687,7 +741,7 @@ const backupModule = {
         this.render();
     },
 
-    // ==================== UTILITY FUNCTIONS (SAMA) ====================
+    // ==================== UTILITY FUNCTIONS ====================
     
     getAllData: function() {
         const data = {};
@@ -776,7 +830,7 @@ const backupModule = {
         return 'Rp ' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     },
 
-    // ==================== RENDER (3 PROVIDER) ====================
+    // ==================== RENDER ====================
     
     render: function() {
         const container = document.getElementById('mainContent');
@@ -794,6 +848,7 @@ const backupModule = {
         };
 
         const isLoggedIn = !!this.currentUser;
+        const isFirebaseConfigured = this.firebaseConfig.apiKey && this.firebaseConfig.databaseURL;
         const connectionStatus = this.isOnline ? '🟢' : '🔴';
 
         container.innerHTML = `
@@ -821,7 +876,7 @@ const backupModule = {
                     </div>
                 </div>
 
-                <!-- Provider Selection (3 PILIHAN) -->
+                <!-- Provider Selection -->
                 <div class="modern-card" style="margin-bottom: 20px;">
                     <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
                         ☁️ Pilih Metode Backup
@@ -834,7 +889,7 @@ const backupModule = {
                 </div>
 
                 <!-- Provider Specific Sections -->
-                ${this.currentProvider === 'firebase' ? this.renderFirebaseSection(isLoggedIn) : ''}
+                ${this.currentProvider === 'firebase' ? this.renderFirebaseSection(isLoggedIn, isFirebaseConfigured) : ''}
                 ${this.currentProvider === 'googlesheet' ? this.renderGoogleSheetSection() : ''}
                 ${this.currentProvider === 'local' ? this.renderLocalInfoSection() : ''}
 
@@ -853,7 +908,7 @@ const backupModule = {
                     </div>
                 </div>
 
-                <!-- Local Backup (Selalu tersedia) -->
+                <!-- Local Backup -->
                 <div class="modern-card" style="margin-bottom: 20px;">
                     <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
                         💾 Backup Local (JSON)
@@ -931,6 +986,10 @@ const backupModule = {
                     font-weight: 600;
                     cursor: pointer;
                     font-size: 14px;
+                    transition: opacity 0.2s;
+                }
+                .btn-primary:hover {
+                    opacity: 0.9;
                 }
                 .btn-secondary {
                     background: #edf2f7;
@@ -940,6 +999,10 @@ const backupModule = {
                     border-radius: 8px;
                     font-weight: 600;
                     cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .btn-secondary:hover {
+                    background: #e2e8f0;
                 }
                 .btn-danger {
                     color: white;
@@ -949,6 +1012,10 @@ const backupModule = {
                     font-weight: 600;
                     cursor: pointer;
                     font-size: 14px;
+                    transition: opacity 0.2s;
+                }
+                .btn-danger:hover {
+                    opacity: 0.9;
                 }
                 .form-input {
                     width: 100%;
@@ -957,6 +1024,11 @@ const backupModule = {
                     border-radius: 8px;
                     font-size: 14px;
                     margin-bottom: 12px;
+                    box-sizing: border-box;
+                }
+                .form-input:focus {
+                    outline: none;
+                    border-color: #667eea;
                 }
                 .toggle-switch {
                     position: relative;
@@ -983,6 +1055,19 @@ const backupModule = {
                 }
                 .toggle-switch.active::after {
                     transform: translateX(24px);
+                }
+                .config-section {
+                    background: #f7fafc;
+                    border-radius: 8px;
+                    padding: 16px;
+                    margin-bottom: 16px;
+                }
+                .config-label {
+                    font-size: 12px;
+                    color: #718096;
+                    font-weight: 600;
+                    margin-bottom: 4px;
+                    text-transform: uppercase;
                 }
             </style>
         `;
@@ -1016,12 +1101,64 @@ const backupModule = {
         `;
     },
 
-    renderFirebaseSection: function(isLoggedIn) {
-        if (!isLoggedIn) {
+    renderFirebaseSection: function(isLoggedIn, isConfigured) {
+        // Jika belum dikonfigurasi, tampilkan form konfigurasi
+        if (!isConfigured) {
             return `
                 <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #ff6b35;">
                     <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 16px;">
-                        🔐 Login Firebase
+                        🔥 Konfigurasi Firebase
+                    </div>
+                    <div style="font-size: 13px; color: #718096; margin-bottom: 16px;">
+                        Masukkan konfigurasi dari Firebase Console (Project Settings)
+                    </div>
+                    
+                    <div class="config-section">
+                        <div class="config-label">API Key *</div>
+                        <input type="text" id="fb_apiKey" class="form-input" placeholder="AIzaSy..." value="${this.firebaseConfig.apiKey}">
+                        
+                        <div class="config-label">Auth Domain *</div>
+                        <input type="text" id="fb_authDomain" class="form-input" placeholder="project-id.firebaseapp.com" value="${this.firebaseConfig.authDomain}">
+                        
+                        <div class="config-label">Database URL *</div>
+                        <input type="text" id="fb_databaseURL" class="form-input" placeholder="https://project-id-default-rtdb.firebaseio.com" value="${this.firebaseConfig.databaseURL}">
+                        
+                        <div class="config-label">Project ID</div>
+                        <input type="text" id="fb_projectId" class="form-input" placeholder="project-id" value="${this.firebaseConfig.projectId}">
+                        
+                        <div class="config-label">Storage Bucket</div>
+                        <input type="text" id="fb_storageBucket" class="form-input" placeholder="project-id.appspot.com" value="${this.firebaseConfig.storageBucket}">
+                        
+                        <div class="config-label">Messaging Sender ID</div>
+                        <input type="text" id="fb_messagingSenderId" class="form-input" placeholder="123456789" value="${this.firebaseConfig.messagingSenderId}">
+                        
+                        <div class="config-label">App ID</div>
+                        <input type="text" id="fb_appId" class="form-input" placeholder="1:123456789:web:abcdef" value="${this.firebaseConfig.appId}">
+                    </div>
+                    
+                    <button onclick="backupModule.saveFirebaseConfig()" class="btn-primary" style="width: 100%;">
+                        💾 Simpan Konfigurasi
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Jika sudah dikonfigurasi tapi belum login
+        if (!isLoggedIn) {
+            return `
+                <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #ff6b35;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔥 Firebase Cloud</div>
+                            <div style="font-size: 13px; color: #718096;">${this.firebaseConfig.projectId || 'Project'}</div>
+                        </div>
+                        <button onclick="backupModule.editFirebaseConfig()" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+                            ⚙️ Edit Config
+                        </button>
+                    </div>
+                    
+                    <div style="font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 12px;">
+                        🔐 Login
                     </div>
                     <input type="email" id="authEmail" placeholder="Email" class="form-input">
                     <input type="password" id="authPassword" placeholder="Password" class="form-input">
@@ -1035,6 +1172,7 @@ const backupModule = {
             `;
         }
         
+        // Jika sudah login
         return `
             <div class="modern-card" style="margin-bottom: 20px; border: 2px solid #ff6b35;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -1042,25 +1180,43 @@ const backupModule = {
                         <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔥 Firebase Cloud</div>
                         <div style="font-size: 13px; color: #276749;">✅ ${this.currentUser.email}</div>
                     </div>
-                    <button onclick="backupModule.firebaseLogout()" class="btn-danger" style="background: #e53e3e; padding: 8px 16px; font-size: 12px;">Logout</button>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 12px; background: #fffaf0; border-radius: 8px;">
-                    <div>
-                        <div style="font-size: 14px; font-weight: 600;">Auto Sync</div>
-                        <div style="font-size: 12px; color: #718096;">Real-time update</div>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="backupModule.editFirebaseConfig()" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+                            ⚙️ Config
+                        </button>
+                        <button onclick="backupModule.firebaseLogout()" class="btn-danger" style="background: #e53e3e; padding: 8px 16px; font-size: 12px;">Logout</button>
                     </div>
-                    <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}"></div>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <!-- Auto Sync Toggle -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 16px; background: #fffaf0; border-radius: 8px; border: 2px solid #ed8936;">
+                    <div>
+                        <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔄 Auto Sync</div>
+                        <div style="font-size: 12px; color: #718096; margin-top: 4px;">
+                            ${this.isAutoSyncEnabled ? 'Sinkronisasi otomatis aktif setiap 3 menit' : 'Sinkronisasi manual'}
+                        </div>
+                    </div>
+                    <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}" style="flex-shrink: 0;"></div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <button onclick="backupModule.uploadDataFirebase()" class="btn-primary" style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">⬆️ Upload</button>
                     <button onclick="backupModule.downloadDataFirebase()" class="btn-primary" style="background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);">⬇️ Download</button>
                 </div>
                 
-                <div id="devicesList" style="margin-top: 12px; font-size: 12px; color: #718096;"></div>
+                <div id="devicesList" style="font-size: 12px; color: #718096;"></div>
             </div>
         `;
+    },
+
+    editFirebaseConfig: function() {
+        // Hapus config dan render ulang
+        this.firebaseApp = null;
+        this.database = null;
+        this.auth = null;
+        this.currentUser = null;
+        this.stopAutoSync();
+        this.render();
     },
 
     renderGoogleSheetSection: function() {
@@ -1083,12 +1239,15 @@ const backupModule = {
                 </button>
                 
                 ${hasUrl ? `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 12px; background: #fffaf0; border-radius: 8px;">
+                    <!-- Auto Sync Toggle untuk GAS -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 16px; background: #fffaf0; border-radius: 8px; border: 2px solid #ed8936;">
                         <div>
-                            <div style="font-size: 14px; font-weight: 600;">Auto Sync</div>
-                            <div style="font-size: 12px; color: #718096;">Cek tiap 3 menit</div>
+                            <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔄 Auto Sync</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">
+                                ${this.isAutoSyncEnabled ? 'Sinkronisasi otomatis aktif setiap 3 menit' : 'Sinkronisasi manual'}
+                            </div>
                         </div>
-                        <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}"></div>
+                        <div onclick="backupModule.toggleAutoSync()" class="toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}" style="flex-shrink: 0;"></div>
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -1204,7 +1363,6 @@ const backupModule = {
             if (!confirm('⚠️ Reset Google Sheets?')) return;
             if (prompt('Ketik RESET:') !== 'RESET') return;
             
-            // Implementasi reset GAS (sama seperti kode lama Anda)
             this.showToast('🗑️ Mereset GAS...');
         }
     },
