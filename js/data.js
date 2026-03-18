@@ -325,6 +325,12 @@ const dataManager = {
         
         // Jika hari baru atau kasir tutup
         if (status.shouldReset || forceReset) {
+            // SIMPAN DATA SHIFT SEBELUMNYA KE HISTORY SEBELUM RESET
+            if (this.data.kasir.date && this.data.kasir.date !== today) {
+                this.saveShiftHistory();
+            }
+            
+            // Reset modal dan cash untuk hari baru
             this.data.settings.modalAwal = 0;
             this.data.settings.currentCash = 0;
         }
@@ -347,41 +353,56 @@ const dataManager = {
         };
     },
 
+    // ========== PERBAIKAN: Simpan shift history sebelum tutup/reset ==========
+    saveShiftHistory() {
+        if (!this.data.shiftHistory) this.data.shiftHistory = [];
+        
+        const kasirDate = this.data.kasir.date;
+        const dayTrans = this.data.transactions.filter(t => 
+            new Date(t.date).toDateString() === kasirDate && t.status !== 'voided'
+        );
+
+        const shiftSummary = {
+            date: kasirDate,
+            userId: this.data.kasir.currentUser,
+            openTime: this.data.kasir.openTime,
+            closeTime: new Date().toISOString(),
+            totalSales: dayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
+            totalProfit: dayTrans.reduce((sum, t) => sum + (t.profit || 0), 0),
+            transactionCount: dayTrans.length,
+            modalAwal: this.data.settings.modalAwal,
+            cashEnd: this.data.settings.currentCash
+        };
+
+        // Cek apakah sudah ada entry untuk tanggal ini
+        const existingIndex = this.data.shiftHistory.findIndex(s => s.date === kasirDate);
+        if (existingIndex !== -1) {
+            // Update existing
+            this.data.shiftHistory[existingIndex] = shiftSummary;
+        } else {
+            // Tambah baru
+            this.data.shiftHistory.push(shiftSummary);
+        }
+    },
+
     closeKasir() {
         if (!this.data.kasir.isOpen) {
             return { success: false, message: 'Kasir sudah tutup!' };
         }
 
         const today = new Date().toDateString();
-        const todayTrans = this.data.transactions.filter(t => 
-            new Date(t.date).toDateString() === today && t.status !== 'voided'
-        );
-
-        const currentUser = this.getCurrentUser();
         
-        const shiftSummary = {
-            date: today,
-            userId: currentUser ? currentUser.userId : null,
-            username: currentUser ? currentUser.username : 'unknown',
-            openTime: this.data.kasir.openTime,
-            closeTime: new Date().toISOString(),
-            totalSales: todayTrans.reduce((sum, t) => sum + t.total, 0),
-            totalProfit: todayTrans.reduce((sum, t) => sum + t.profit, 0),
-            transactionCount: todayTrans.length,
-            modalAwal: this.data.settings.modalAwal,
-            cashEnd: this.data.settings.currentCash
-        };
+        // SIMPAN SHIFT HISTORY TERLEBIH DAHULU (jangan hapus data transaksi!)
+        this.saveShiftHistory();
 
-        if (!this.data.shiftHistory) this.data.shiftHistory = [];
-        this.data.shiftHistory.push(shiftSummary);
-
+        // Update status kasir saja, TIDAK menghapus data transaksi
         this.data.kasir.isOpen = false;
         this.data.kasir.closeTime = new Date().toISOString();
         this.data.kasir.currentUser = null;
         
         this.save();
         
-        return { success: true, message: 'Kasir ditutup. Shift berakhir.' };
+        return { success: true, message: 'Kasir ditutup. Shift berakhir. Data tersimpan.' };
     },
     
     // ========== STATS HELPERS ==========
@@ -396,8 +417,8 @@ const dataManager = {
         
         return {
             transactionCount: todayTrans.length,
-            totalSales: todayTrans.reduce((sum, t) => sum + t.total, 0),
-            totalProfit: todayTrans.reduce((sum, t) => sum + t.profit, 0)
+            totalSales: todayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
+            totalProfit: todayTrans.reduce((sum, t) => sum + (t.profit || 0), 0)
         };
     }
 };
