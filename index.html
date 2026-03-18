@@ -13,8 +13,8 @@
     <link rel="stylesheet" href="css/reports.css">
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
-    <!-- PERBAIKAN: Path debt.css di folder css/ -->
     <link rel="stylesheet" href="css/debt.css">
+    <link rel="stylesheet" href="css/users.css">
     
     <!-- Telegram Module CSS -->
     <link rel="stylesheet" href="telegram.css">
@@ -24,6 +24,213 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style>
+        /* LOGIN STYLES */
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .login-box {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        
+        .login-logo {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .login-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .login-subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+        
+        .login-form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .login-form-group label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .login-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+        
+        .login-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+        
+        .login-error {
+            color: #f44336;
+            font-size: 14px;
+            margin-top: 15px;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .login-info {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #999;
+        }
+        
+        /* USER INFO IN HEADER */
+        .user-info-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+        
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .user-details {
+            text-align: left;
+        }
+        
+        .user-name {
+            font-weight: 600;
+            color: white;
+        }
+        
+        .user-role {
+            font-size: 11px;
+            opacity: 0.8;
+            color: white;
+        }
+        
+        .logout-btn {
+            background: rgba(255,255,255,0.3);
+            border: none;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.5);
+        }
+        
+        /* KASIR CLOSED PAGE */
+        .kasir-closed-container {
+            text-align: center;
+            padding: 60px 20px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .kasir-closed-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        
+        .kasir-closed-title {
+            color: #c62828;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+        
+        .kasir-closed-text {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .kasir-info-box {
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .kasir-open-btn {
+            padding: 18px 50px;
+            font-size: 18px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.3);
+            transition: all 0.3s;
+        }
+        
+        .kasir-open-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
+        }
+        
         /* OCR Styles */
         .ocr-upload-area {
             border: 3px dashed #ccc;
@@ -296,89 +503,147 @@
             border-color: #4caf50 !important;
             box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
         }
+        
+        /* Hide main app before login */
+        #appContainer {
+            display: none;
+        }
+        
+        #appContainer.logged-in {
+            display: block;
+        }
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Memuat...</div>
-    </div>
-
-    <!-- Header -->
-    <div class="header">
-        <div class="header-top">
-            <div>
-                <h1 id="headerStoreName">HIFZI CELL</h1>
-                <div id="headerStoreAddress">Alamat Toko</div>
+    <!-- LOGIN CONTAINER -->
+    <div id="loginContainer" class="login-container">
+        <div class="login-box">
+            <div class="login-logo">🏪</div>
+            <div class="login-title" id="loginStoreName">Hifzi Cell</div>
+            <div class="login-subtitle">Sistem Kasir Pintar</div>
+            
+            <form id="loginForm" onsubmit="app.doLogin(); return false;">
+                <div class="login-form-group">
+                    <label>👤 Username</label>
+                    <input type="text" id="loginUsername" class="login-input" placeholder="Masukkan username" required>
+                </div>
                 
-                <div id="kasirStatusIndicator" class="kasir-indicator closed" style="margin-top: 8px;">
-                    <span id="kasirStatusDot" class="kasir-dot"></span>
-                    <span id="kasirStatusText">🔒 Kasir Tutup</span>
+                <div class="login-form-group">
+                    <label>🔒 Password</label>
+                    <input type="password" id="loginPassword" class="login-input" placeholder="Masukkan password" required>
                 </div>
-            </div>
-            <div class="header-actions">
-                <div class="sync-status" id="syncStatus" onclick="backupModule.manualSync()">
-                    <span>☁️</span>
-                    <span id="syncText">Ready</span>
-                </div>
-                <button class="icon-btn" onclick="app.openSettings()" title="Pengaturan" 
-                        style="cursor: pointer; z-index: 1001;">
-                    ⚙️
-                </button>
-            </div>
-        </div>
-        
-        <div class="cash-card">
-            <div class="cash-label">Kas di Tangan</div>
-            <div class="cash-amount" id="currentCash">Rp 0</div>
-            <div class="cash-detail">
-                <div class="cash-detail-item">
-                    <span>💰</span>
-                    <span>Modal: <b id="modalAwal">Rp 0</b></span>
-                </div>
-                <div class="cash-detail-item">
-                    <span>📊</span>
-                    <span>Shift: <b id="shiftStatus">Tutup</b></span>
-                </div>
-                <div class="cash-detail-item">
-                    <span>📈</span>
-                    <span>Laba: <b id="headerProfit">Rp 0</b></span>
-                </div>
+                
+                <div id="loginError" class="login-error"></div>
+                
+                <button type="submit" class="login-btn">🔓 Login</button>
+            </form>
+            
+            <div class="login-info">
+                <div>Default Login:</div>
+                <div><b>admin</b> / admin123 (Admin)</div>
+                <div><b>kasir1</b> / kasir123 (Kasir)</div>
             </div>
         </div>
     </div>
 
-    <!-- Navigation -->
-    <div class="nav-tabs" id="navTabs">
-        <button class="nav-tab active" onclick="router.navigate('pos', this)">🏪 Kasir</button>
-        <button class="nav-tab" onclick="router.navigate('products', this)">📦 Produk</button>
-        <button class="nav-tab" onclick="router.navigate('cash', this)">💵 Kas</button>
-        <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
-        <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
-        <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
-        <!-- PERBAIKAN: Gunakan onclick langsung ke fungsi debt -->
-        <button class="nav-tab" onclick="openDebtModule(this)">💳 Hutang</button>
-        <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
-        <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
-    </div>
-
-    <!-- Content Container -->
-    <div id="mainContent"></div>
-
-    <!-- Cart Bar -->
-    <div class="cart-bar" id="cartBar" style="display: none;">
-        <div class="cart-info">
-            <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
-            <div class="cart-total" id="cartTotal">Rp 0</div>
+    <!-- MAIN APP CONTAINER -->
+    <div id="appContainer">
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Memuat...</div>
         </div>
-        <button class="btn-checkout" onclick="posModule.openCheckout()" id="checkoutBtn">
-            Bayar →
-        </button>
-    </div>
 
-    <!-- Toast -->
-    <div class="toast" id="toast"></div>
+        <!-- Header -->
+        <div class="header">
+            <div class="header-top">
+                <div>
+                    <h1 id="headerStoreName">HIFZI CELL</h1>
+                    <div id="headerStoreAddress">Alamat Toko</div>
+                    
+                    <div id="kasirStatusIndicator" class="kasir-indicator closed" style="margin-top: 8px;">
+                        <span id="kasirStatusDot" class="kasir-dot"></span>
+                        <span id="kasirStatusText">🔒 Kasir Tutup</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <!-- USER INFO HEADER -->
+                    <div class="user-info-header" id="userInfoHeader" style="display: none;">
+                        <div class="user-avatar">👤</div>
+                        <div class="user-details">
+                            <div class="user-name" id="headerUserName">User</div>
+                            <div class="user-role" id="headerUserRole">Kasir</div>
+                        </div>
+                        <button class="logout-btn" onclick="app.logout()">Logout</button>
+                    </div>
+                    
+                    <div class="sync-status" id="syncStatus" onclick="backupModule.manualSync()">
+                        <span>☁️</span>
+                        <span id="syncText">Ready</span>
+                    </div>
+                    <button class="icon-btn" onclick="app.openSettings()" title="Pengaturan" 
+                            style="cursor: pointer; z-index: 1001;">
+                        ⚙️
+                    </button>
+                </div>
+            </div>
+            
+            <!-- CASH CARD dengan Total Transaksi -->
+            <div class="cash-card">
+                <div class="cash-label">Kas di Tangan</div>
+                <div class="cash-amount" id="currentCash">Rp 0</div>
+                <div class="cash-detail">
+                    <div class="cash-detail-item">
+                        <span>💰</span>
+                        <span>Modal: <b id="modalAwal">Rp 0</b></span>
+                    </div>
+                    <div class="cash-detail-item">
+                        <span>📊</span>
+                        <span>Total Transaksi: <b id="headerTransactionCount">0</b></span>
+                    </div>
+                    <div class="cash-detail-item">
+                        <span>📝</span>
+                        <span>Shift: <b id="shiftStatus">Tutup</b></span>
+                    </div>
+                    <div class="cash-detail-item">
+                        <span>📈</span>
+                        <span>Laba: <b id="headerProfit">Rp 0</b></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-tabs" id="navTabs">
+            <button class="nav-tab" onclick="router.navigate('pos', this)">🏪 Kasir</button>
+            <button class="nav-tab" onclick="router.navigate('products', this)">📦 Produk</button>
+            <button class="nav-tab" onclick="router.navigate('cash', this)">💵 Kas</button>
+            <button class="nav-tab" onclick="router.navigate('reports', this)">📊 Laporan</button>
+            <button class="nav-tab" onclick="router.navigate('transactions', this)">📝 Transaksi</button>
+            <button class="nav-tab" onclick="router.navigate('receipt', this)">🧾 Struk</button>
+            <button class="nav-tab" onclick="openDebtModule(this)">💳 Hutang</button>
+            <button class="nav-tab" onclick="router.navigate('users', this)">👥 User</button>
+            <button class="nav-tab" onclick="goToTelegram(this)">📱 Telegram</button>
+            <button class="nav-tab" onclick="router.navigate('backup', this)">☁️ Cloud</button>
+        </div>
+
+        <!-- Content Container -->
+        <div id="mainContent"></div>
+
+        <!-- Cart Bar -->
+        <div class="cart-bar" id="cartBar" style="display: none;">
+            <div class="cart-info">
+                <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
+                <div class="cart-total" id="cartTotal">Rp 0</div>
+            </div>
+            <button class="btn-checkout" onclick="posModule.openCheckout()" id="checkoutBtn">
+                Bayar →
+            </button>
+        </div>
+
+        <!-- Toast -->
+        <div class="toast" id="toast"></div>
+    </div>
 
     <!-- PERBAIKAN: Script helper untuk Debt dan Telegram -->
     <script>
@@ -517,8 +782,8 @@
     <script src="js/receipt.js"></script>
     <script src="telegram.js"></script>
     <script src="js/backup.js"></script>
-    <!-- PERBAIKAN: Path debt.js di folder js/ -->
     <script src="js/debt.js"></script>
+    <script src="js/users.js"></script>
     
     <!-- Verifikasi module -->
     <script>
@@ -536,6 +801,7 @@
         console.log('backupModule:', typeof backupModule);
         console.log('debtModule:', typeof debtModule);
         console.log('TelegramModule:', typeof TelegramModule);
+        console.log('usersModule:', typeof usersModule);
     </script>
 </body>
 </html>
