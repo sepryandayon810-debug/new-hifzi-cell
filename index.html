@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="css/transactions.css">
     <link rel="stylesheet" href="css/receipt.css">
     <link rel="stylesheet" href="css/debt.css">
-    <link rel="stylesheet" href="css/backup.css">
+    <!-- PERBAIKAN: Hapus backup.css karena tidak ada -->
     
     <!-- ==================== FIREBASE SDK ==================== -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -340,7 +340,7 @@
             overflow-y: auto !important;
         }
 
-        /* ==================== BACKUP PAGE STYLES ==================== */
+        /* BACKUP PAGE STYLES */
         .backup-container {
             padding: 20px;
             max-width: 900px;
@@ -602,7 +602,6 @@
             }
         }
 
-        /* Stats Grid */
         .backup-stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -695,7 +694,7 @@
                         <button class="logout-btn" onclick="app.logout()">Logout</button>
                     </div>
                     
-                    <div class="sync-status" id="syncStatus" onclick="backupModule.manualSync()">
+                    <div class="sync-status" id="syncStatus" onclick="if(typeof backupModule !== 'undefined') backupModule.manualSync()">
                         <span>☁️</span>
                         <span id="syncText">Ready</span>
                     </div>
@@ -737,48 +736,7 @@
 
         <!-- Navigation -->
         <div class="nav-tabs" id="navTabs">
-            <button class="nav-tab" onclick="router.navigate('pos', this)" data-page="pos">
-                <span class="nav-icon">🛒</span>
-                <span class="nav-label">Kasir</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('products', this)" data-page="products">
-                <span class="nav-icon">📦</span>
-                <span class="nav-label">Produk</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('cash', this)" data-page="cash">
-                <span class="nav-icon">💰</span>
-                <span class="nav-label">Kas</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('reports', this)" data-page="reports">
-                <span class="nav-icon">📊</span>
-                <span class="nav-label">Laporan</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('transactions', this)" data-page="transactions">
-                <span class="nav-icon">📋</span>
-                <span class="nav-label">Transaksi</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('receipt', this)" data-page="receipt">
-                <span class="nav-icon">🧾</span>
-                <span class="nav-label">Struk</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('debt', this)" data-page="debt">
-                <span class="nav-icon">💳</span>
-                <span class="nav-label">Hutang</span>
-            </button>
-            <button class="nav-tab" onclick="router.navigate('users', this)" data-page="users">
-                <span class="nav-icon">👥</span>
-                <span class="nav-label">User</span>
-            </button>
-            <!-- PERBAIKAN: Gunakan router.navigate untuk Telegram -->
-            <button class="nav-tab" onclick="router.navigate('telegram', this)" data-page="telegram">
-                <span class="nav-icon">✈️</span>
-                <span class="nav-label">Telegram</span>
-            </button>
-            <!-- PERBAIKAN: Gunakan router.navigate untuk Cloud -->
-            <button class="nav-tab" onclick="router.navigate('cloud', this)" data-page="cloud">
-                <span class="nav-icon">☁️</span>
-                <span class="nav-label">Cloud</span>
-            </button>
+            <!-- Navigation akan di-render oleh router.renderNavigation() -->
         </div>
 
         <!-- Content Container -->
@@ -790,7 +748,7 @@
                 <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
                 <div class="cart-total" id="cartTotal">Rp 0</div>
             </div>
-            <button class="btn-checkout" onclick="posModule.openCheckout()" id="checkoutBtn">
+            <button class="btn-checkout" onclick="if(typeof posModule !== 'undefined') posModule.openCheckout()" id="checkoutBtn">
                 Bayar →
             </button>
         </div>
@@ -800,22 +758,13 @@
     </div>
 
     <!-- ==================== SCRIPTS ==================== -->
-    <!-- PERBAIKAN URUTAN: Telegram Module HARUS sebelum router.js -->
+    <!-- PERBAIKAN URUTAN: Load dari yang paling dasar ke yang paling tinggi -->
     
-    <!-- Utils & Data -->
+    <!-- 1. Utils & Data (Paling Dasar) -->
     <script src="js/utils.js"></script>
     <script src="js/data.js"></script>
     
-    <!-- Backup Module (WAJIB sebelum app.js) -->
-    <script src="js/backup.js"></script>
-    
-    <!-- ✅ Telegram Module (WAJIB sebelum app.js dan router.js) -->
-    <script src="telegram-github.js"></script>
-    
-    <!-- App Core -->
-    <script src="js/app.js"></script>
-    
-    <!-- Feature Modules -->
+    <!-- 2. Feature Modules (Independen) -->
     <script src="js/pos.js"></script>
     <script src="js/products.js"></script>
     <script src="js/cash.js"></script>
@@ -825,7 +774,16 @@
     <script src="js/debt.js"></script>
     <script src="js/users.js"></script>
     
-    <!-- Router System (WAJIB paling akhir) -->
+    <!-- 3. Backup Module (Untuk Cloud) -->
+    <script src="js/backup.js"></script>
+    
+    <!-- 4. Telegram Module -->
+    <script src="js/telegram.js"></script>
+    
+    <!-- 5. Router System (Bergantung pada modules di atas) -->
     <script src="js/router.js"></script>
+    
+    <!-- 6. App Core (Paling Akhir, bergantung pada semua di atas) -->
+    <script src="js/app.js"></script>
 </body>
 </html>
