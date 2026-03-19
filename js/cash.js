@@ -1,46 +1,100 @@
 const cashModule = {
     currentDeleteTransaction: null,
     
+    // Filter state
+    filterState: {
+        startDate: null,
+        endDate: null,
+        preset: 'today' // today, yesterday, week, month, year, custom
+    },
+    
     init() {
-        // ⬅️ PERBAIKAN: Inisialisasi currentCash jika undefined/null
         this.ensureCashInitialized();
-        
+        this.checkDayChange(); // ⬅️ Cek perubahan hari
         this.renderHTML();
         this.updateStats();
         this.renderTransactions();
     },
 
-    // ⬅️ TAMBAH: Fungsi untuk memastikan currentCash selalu number
+    // ⬅️ TAMBAH: Cek apakah sudah berganti hari
+    checkDayChange() {
+        const lastActiveDate = localStorage.getItem('hifzi_last_active_date');
+        const today = new Date().toDateString();
+        
+        if (lastActiveDate && lastActiveDate !== today) {
+            console.log('[Cash] Day changed detected. Last:', lastActiveDate, 'Today:', today);
+            
+            // Cek apakah kasir sedang tutup (shift tidak aktif)
+            const isKasirOpen = dataManager.data.settings?.kasirOpen || false;
+            
+            if (!isKasirOpen) {
+                // Jika kasir tutup, reset kas ke 0 atau modal awal jika ada
+                const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+                
+                if (confirm(`🌅 Selamat datang di hari baru!\n\nKas kemarin: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}\n\nKasir dalam keadaan TUTUP.\n\nSetel kas ke Rp ${utils.formatNumber(modalAwal)} (Modal Awal) atau Rp 0?`)) {
+                    dataManager.data.settings.currentCash = modalAwal;
+                } else {
+                    dataManager.data.settings.currentCash = 0;
+                }
+                
+                // Reset modal awal untuk hari baru
+                dataManager.data.settings.modalAwal = 0;
+                
+                // Simpan transaksi closing hari sebelumnya jika diperlukan
+                this.saveDayClosing(lastActiveDate);
+                
+                dataManager.save();
+                app.showToast('✅ Kas direset untuk hari baru');
+            }
+        }
+        
+        // Update last active date
+        localStorage.setItem('hifzi_last_active_date', today);
+    },
+
+    // ⬅️ TAMBAH: Simpan closing hari sebelumnya
+    saveDayClosing(dateStr) {
+        if (!dataManager.data.dailyClosing) {
+            dataManager.data.dailyClosing = [];
+        }
+        
+        const closingData = {
+            date: dateStr,
+            closingCash: dataManager.data.settings.currentCash,
+            modalAwal: dataManager.data.settings.modalAwal,
+            timestamp: new Date().toISOString()
+        };
+        
+        dataManager.data.dailyClosing.push(closingData);
+        
+        // Keep only last 30 days
+        if (dataManager.data.dailyClosing.length > 30) {
+            dataManager.data.dailyClosing = dataManager.data.dailyClosing.slice(-30);
+        }
+    },
+
     ensureCashInitialized() {
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
-            // Pastikan currentCash adalah number, bukan undefined/null/NaN
             let currentCash = dataManager.data.settings.currentCash;
             
-            // Jika undefined, null, atau bukan number, set ke 0
             if (typeof currentCash !== 'number' || isNaN(currentCash)) {
                 console.log('[Cash] Initializing currentCash from invalid value:', currentCash);
-                
-                // Coba hitung dari transaksi yang ada
                 currentCash = this.calculateCashFromTransactions();
                 dataManager.data.settings.currentCash = currentCash;
                 dataManager.save();
-                
                 console.log('[Cash] currentCash initialized to:', currentCash);
             }
             
-            // Pastikan modalAwal juga terinisialisasi
             if (typeof dataManager.data.settings.modalAwal !== 'number' || isNaN(dataManager.data.settings.modalAwal)) {
                 dataManager.data.settings.modalAwal = 0;
             }
         }
     },
 
-    // ⬅️ TAMBAH: Hitung ulang kas dari semua transaksi
     calculateCashFromTransactions() {
         let cash = 0;
         
         if (typeof dataManager !== 'undefined' && dataManager.data) {
-            // Hitung dari cashTransactions
             if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
                 dataManager.data.cashTransactions.forEach(t => {
                     const amount = parseInt(t.amount) || 0;
@@ -52,11 +106,9 @@ const cashModule = {
                 });
             }
             
-            // Hitung dari transaksi penjualan (yang profit masuk ke kas)
             if (dataManager.data.transactions && Array.isArray(dataManager.data.transactions)) {
                 dataManager.data.transactions.forEach(t => {
                     if (t.status !== 'deleted' && t.status !== 'voided') {
-                        // Jika transaksi tunai, total masuk ke kas
                         if (t.paymentMethod === 'cash') {
                             cash += parseInt(t.total) || 0;
                         }
@@ -123,23 +175,133 @@ const cashModule = {
                 </div>
 
                 <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">Riwayat Transaksi Kas Hari Ini</span>
-                        <button class="btn btn-sm btn-secondary" onclick="cashModule.recalculateCash()" style="font-size: 12px; padding: 6px 12px;">
-                            🔄 Recalculate Kas
-                        </button>
+                    <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+                        <span class="card-title">Riwayat Transaksi Kas</span>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <select id="filterPreset" onchange="cashModule.applyFilter()" 
+                                    style="padding: 6px 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 13px;">
+                                <option value="today">📅 Hari Ini</option>
+                                <option value="yesterday">📅 Kemarin</option>
+                                <option value="week">📆 Minggu Ini</option>
+                                <option value="month">🗓️ Bulan Ini</option>
+                                <option value="year">📊 Tahun Ini</option>
+                                <option value="custom">🔍 Custom...</option>
+                            </select>
+                            <div id="customDateRange" style="display: none; gap: 8px; align-items: center;">
+                                <input type="date" id="filterStartDate" onchange="cashModule.applyFilter()" 
+                                       style="padding: 6px; border-radius: 6px; border: 1px solid #ddd; font-size: 12px;">
+                                <span>s/d</span>
+                                <input type="date" id="filterEndDate" onchange="cashModule.applyFilter()" 
+                                       style="padding: 6px; border-radius: 6px; border: 1px solid #ddd; font-size: 12px;">
+                            </div>
+                            <button class="btn btn-sm btn-secondary" onclick="cashModule.recalculateCash()" 
+                                    style="font-size: 12px; padding: 6px 12px;">
+                                🔄 Recalculate
+                            </button>
+                        </div>
                     </div>
                     <div class="transaction-list" id="cashTransactionList"></div>
+                    <div id="filterSummary" style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-top: 10px; font-size: 13px;">
+                        <!-- Summary will be inserted here -->
+                    </div>
                 </div>
             </div>
         `;
+        
+        // Set default dates for custom filter
+        const todayStr = new Date().toISOString().split('T')[0];
+        const startDateInput = document.getElementById('filterStartDate');
+        const endDateInput = document.getElementById('filterEndDate');
+        if (startDateInput) startDateInput.value = todayStr;
+        if (endDateInput) endDateInput.value = todayStr;
+    },
+    
+    // ⬅️ TAMBAH: Apply filter
+    applyFilter() {
+        const preset = document.getElementById('filterPreset').value;
+        const customRange = document.getElementById('customDateRange');
+        
+        if (preset === 'custom') {
+            customRange.style.display = 'flex';
+        } else {
+            customRange.style.display = 'none';
+        }
+        
+        this.filterState.preset = preset;
+        this.renderTransactions();
+    },
+    
+    // ⬅️ TAMBAH: Get date range based on preset
+    getDateRange() {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        let startDate, endDate;
+        
+        switch (this.filterState.preset) {
+            case 'today':
+                startDate = new Date(today);
+                endDate = new Date(today);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'yesterday':
+                startDate = new Date(today);
+                startDate.setDate(startDate.getDate() - 1);
+                endDate = new Date(startDate);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'week':
+                // Monday as first day
+                const dayOfWeek = today.getDay();
+                const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+                startDate = new Date(today.setDate(diff));
+                endDate = new Date();
+                endDate.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'year':
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = new Date(now.getFullYear(), 11, 31);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+                
+            case 'custom':
+                const startInput = document.getElementById('filterStartDate').value;
+                const endInput = document.getElementById('filterEndDate').value;
+                if (startInput && endInput) {
+                    startDate = new Date(startInput);
+                    endDate = new Date(endInput);
+                    endDate.setHours(23, 59, 59, 999);
+                } else {
+                    startDate = today;
+                    endDate = new Date(today);
+                    endDate.setHours(23, 59, 59, 999);
+                }
+                break;
+                
+            default:
+                startDate = today;
+                endDate = new Date(today);
+                endDate.setHours(23, 59, 59, 999);
+        }
+        
+        return { startDate, endDate };
     },
     
     updateStats() {
-        const today = new Date().toDateString();
-        const transactions = dataManager.data.cashTransactions.filter(t => 
-            new Date(t.date).toDateString() === today
-        );
+        const { startDate, endDate } = this.getDateRange();
+        
+        const transactions = dataManager.data.cashTransactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate >= startDate && tDate <= endDate;
+        });
         
         const income = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
@@ -160,51 +322,147 @@ const cashModule = {
         const container = document.getElementById('cashTransactionList');
         if (!container) return;
         
-        const today = new Date().toDateString();
+        const { startDate, endDate } = this.getDateRange();
         
-        const transactions = dataManager.data.cashTransactions
-            .filter(t => new Date(t.date).toDateString() === today)
-            .reverse();
+        // Filter transactions
+        let transactions = dataManager.data.cashTransactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate >= startDate && tDate <= endDate;
+        }).sort((a, b) => new Date(b.date) - new Date(a.date)); // Sort newest first
         
-        if (transactions.length === 0) {
-            container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>Belum ada transaksi hari ini</p></div>`;
-            return;
-        }
-        
-        let html = '';
-        transactions.forEach(t => {
-            const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup';
-            const prefix = isIncome ? '+' : '-';
-            const amountClass = isIncome ? 'income' : 'expense';
+        // Calculate summary
+        const totalIncome = transactions
+            .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
             
-            let typeLabel = '';
-            if (t.type === 'modal_in') typeLabel = ' (Modal)';
-            else if (t.type === 'topup') typeLabel = ' (Top Up)';
-            else if (t.category === 'tarik_tunai') typeLabel = ' (Tarik Tunai)';
-            
-            html += `
-                <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee;">
-                    <div class="transaction-info" style="flex: 1;">
-                        <div class="transaction-title" style="font-weight: 500; margin-bottom: 4px;">${t.note || t.category}${typeLabel}</div>
-                        <div class="transaction-meta" style="font-size: 12px; color: #999;">${new Date(t.date).toLocaleTimeString('id-ID')}</div>
+        const totalExpense = transactions
+            .filter(t => t.type === 'out')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
+        const net = totalIncome - totalExpense;
+        
+        // Update summary
+        const summaryEl = document.getElementById('filterSummary');
+        if (summaryEl) {
+            const dateRangeText = this.getFilterLabel();
+            summaryEl.innerHTML = `
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong>${dateRangeText}</strong><br>
+                        <small>${transactions.length} transaksi</small>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="transaction-amount ${amountClass}" style="font-weight: 600; ${isIncome ? 'color: #4caf50;' : 'color: #f44336;'}">
-                            ${prefix} Rp ${utils.formatNumber(t.amount)}
+                    <div style="text-align: right;">
+                        <div style="color: #4caf50;">⬇️ Masuk: Rp ${utils.formatNumber(totalIncome)}</div>
+                        <div style="color: #f44336;">⬆️ Keluar: Rp ${utils.formatNumber(totalExpense)}</div>
+                        <div style="font-weight: bold; margin-top: 4px; color: ${net >= 0 ? '#4caf50' : '#f44336'};">
+                            Net: Rp ${utils.formatNumber(net)}
                         </div>
-                        <button class="btn-delete-cash" data-transaction-id="${t.id}" 
-                                style="width: 32px; height: 32px; border-radius: 50%; background: #ffebee; 
-                                       border: 2px solid #f44336; color: #f44336; font-size: 14px; cursor: pointer; 
-                                       display: flex; align-items: center; justify-content: center;
-                                       transition: all 0.2s;"
-                                title="Hapus transaksi">🗑️</button>
                     </div>
                 </div>
             `;
+        }
+        
+        if (transactions.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📋</div>
+                    <p>Belum ada transaksi ${this.getFilterLabel().toLowerCase()}</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Group by date
+        const grouped = this.groupByDate(transactions);
+        
+        let html = '';
+        Object.keys(grouped).forEach(dateKey => {
+            const dayTrans = grouped[dateKey];
+            const dayTotal = dayTrans.reduce((sum, t) => {
+                const amt = parseInt(t.amount) || 0;
+                return t.type === 'in' || t.type === 'modal_in' || t.type === 'topup' ? sum + amt : sum - amt;
+            }, 0);
+            
+            html += `
+                <div style="background: #f8f9fa; padding: 8px 12px; margin: 10px 0 5px 0; border-radius: 6px; font-weight: 600; font-size: 13px; color: #666; display: flex; justify-content: space-between;">
+                    <span>${dateKey}</span>
+                    <span style="color: ${dayTotal >= 0 ? '#4caf50' : '#f44336'};">
+                        ${dayTotal >= 0 ? '+' : ''}Rp ${utils.formatNumber(Math.abs(dayTotal))}
+                    </span>
+                </div>
+            `;
+            
+            dayTrans.forEach(t => {
+                const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup';
+                const prefix = isIncome ? '+' : '-';
+                const amountClass = isIncome ? 'income' : 'expense';
+                
+                let typeLabel = '';
+                if (t.type === 'modal_in') typeLabel = ' (Modal)';
+                else if (t.type === 'topup') typeLabel = ' (Top Up)';
+                else if (t.category === 'tarik_tunai') typeLabel = ' (Tarik Tunai)';
+                
+                const timeStr = new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                
+                html += `
+                    <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee;">
+                        <div class="transaction-info" style="flex: 1;">
+                            <div class="transaction-title" style="font-weight: 500; margin-bottom: 4px;">${t.note || t.category}${typeLabel}</div>
+                            <div class="transaction-meta" style="font-size: 12px; color: #999;">${timeStr}</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="transaction-amount ${amountClass}" style="font-weight: 600; ${isIncome ? 'color: #4caf50;' : 'color: #f44336;'}">
+                                ${prefix} Rp ${utils.formatNumber(t.amount)}
+                            </div>
+                            <button class="btn-delete-cash" data-transaction-id="${t.id}" 
+                                    style="width: 32px; height: 32px; border-radius: 50%; background: #ffebee; 
+                                           border: 2px solid #f44336; color: #f44336; font-size: 14px; cursor: pointer; 
+                                           display: flex; align-items: center; justify-content: center;
+                                           transition: all 0.2s;"
+                                    title="Hapus transaksi">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            });
         });
         
         container.innerHTML = html;
         this.attachDeleteListeners();
+    },
+    
+    // ⬅️ TAMBAH: Group transactions by date
+    groupByDate(transactions) {
+        const grouped = {};
+        
+        transactions.forEach(t => {
+            const date = new Date(t.date);
+            const dateKey = date.toLocaleDateString('id-ID', { 
+                weekday: 'short', 
+                day: 'numeric', 
+                month: 'short',
+                year: 'numeric'
+            });
+            
+            if (!grouped[dateKey]) {
+                grouped[dateKey] = [];
+            }
+            grouped[dateKey].push(t);
+        });
+        
+        return grouped;
+    },
+    
+    // ⬅️ TAMBAH: Get filter label
+    getFilterLabel() {
+        const labels = {
+            'today': 'Hari Ini',
+            'yesterday': 'Kemarin',
+            'week': 'Minggu Ini',
+            'month': 'Bulan Ini',
+            'year': 'Tahun Ini',
+            'custom': 'Custom'
+        };
+        return labels[this.filterState.preset] || 'Hari Ini';
     },
     
     attachDeleteListeners() {
@@ -223,14 +481,12 @@ const cashModule = {
     },
     
     deleteTransaction(transactionId) {
-        // Cari transaksi dengan pengecekan tipe data yang benar
         const t = dataManager.data.cashTransactions.find(tr => {
             return tr.id === transactionId || tr.id === transactionId.toString();
         });
         
         if (!t) {
             console.error('Transaction not found. ID:', transactionId);
-            console.log('Available transactions:', dataManager.data.cashTransactions);
             app.showToast('Transaksi tidak ditemukan!');
             return;
         }
@@ -241,10 +497,8 @@ const cashModule = {
             return;
         }
         
-        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number sebelum operasi
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
-        // Sesuaikan kas
         if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
             currentCash -= parseInt(t.amount) || 0;
         } else {
@@ -253,12 +507,10 @@ const cashModule = {
         
         dataManager.data.settings.currentCash = currentCash;
         
-        // Hapus transaksi dari array
         dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(
             tr => tr.id !== transactionId && tr.id !== transactionId.toString()
         );
         
-        // Hapus transaksi fee terkait (jika ada)
         if (t.details && t.details.adminFee > 0) {
             dataManager.data.transactions = dataManager.data.transactions.filter(tr => {
                 if (tr.type === 'topup_fee' || tr.type === 'tarik_tunai_fee') {
@@ -331,7 +583,6 @@ const cashModule = {
             return;
         }
         
-        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
         if (type === 'out' && amount > currentCash) {
@@ -406,7 +657,6 @@ const cashModule = {
             return;
         }
         
-        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
         dataManager.data.settings.modalAwal = amount;
@@ -509,7 +759,6 @@ const cashModule = {
         
         const total = nominal + admin;
         
-        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         dataManager.data.settings.currentCash = currentCash + total;
         
@@ -617,7 +866,6 @@ const cashModule = {
             return;
         }
         
-        // ⬅️ PERBAIKAN: Pastikan currentCash adalah number
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
         if (total > currentCash) {
@@ -664,44 +912,11 @@ const cashModule = {
     },
     
     openHistory() {
-        const today = new Date().toLocaleDateString('id-ID', { 
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-        });
-        
-        const allTrans = [...dataManager.data.cashTransactions].reverse();
-        
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="historyModal">
-                <div class="modal-content" style="max-width: 500px;">
-                    <div class="modal-header">
-                        <span class="modal-title">📋 Riwayat Kas</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('historyModal')">×</button>
-                    </div>
-                    
-                    <div style="background: #e3f2fd; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
-                        <b>${today}</b>
-                    </div>
-                    
-                    <div class="transaction-list" style="max-height: 50vh; overflow-y: auto;">
-                        ${allTrans.length === 0 ? '<div class="empty-state">Belum ada transaksi</div>' : 
-                          allTrans.map(t => {
-                            const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup';
-                            return `
-                                <div class="transaction-item">
-                                    <div class="transaction-info">
-                                        <div class="transaction-title">${t.note || t.category}</div>
-                                        <div class="transaction-meta">${new Date(t.date).toLocaleString('id-ID')}</div>
-                                    </div>
-                                    <div class="transaction-amount ${isIncome ? 'income' : 'expense'}">
-                                        ${isIncome ? '+' : '-'} Rp ${utils.formatNumber(t.amount)}
-                                    </div>
-                                </div>
-                            `;
-                          }).join('')}
-                    </div>
-                </div>
-            </div>
-        `);
+        // Gunakan filter yang sama dengan renderTransactions
+        this.filterState.preset = 'today';
+        this.renderTransactions();
+        // Scroll ke bagian riwayat
+        document.getElementById('cashTransactionList')?.scrollIntoView({ behavior: 'smooth' });
     },
     
     closeModal(id) {
@@ -711,7 +926,6 @@ const cashModule = {
         }
     },
 
-    // ⬅️ TAMBAH: Fungsi untuk recalculate kas manual
     recalculateCash() {
         if (!confirm('🔄 Recalculate Kas?\n\nIni akan menghitung ulang kas berdasarkan semua transaksi yang tersimpan.\n\nLanjutkan?')) {
             return;
