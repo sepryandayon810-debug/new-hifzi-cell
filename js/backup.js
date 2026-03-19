@@ -1,17 +1,17 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (OPTIMIZED)
+// BACKUP MODULE - HIFZI CELL (COMPLETE)
 // Firebase + Google Sheets + Local
 // ============================================
 
 const backupModule = {
     currentProvider: localStorage.getItem('hifzi_provider') || 'local',
     isAutoSyncEnabled: localStorage.getItem('hifzi_auto_sync') === 'true',
-    isAutoSaveLocalEnabled: localStorage.getItem('hifzi_auto_save_local') !== 'false', // Default true
+    isAutoSaveLocalEnabled: localStorage.getItem('hifzi_auto_save_local') !== 'false',
     autoSyncInterval: null,
     lastSyncTime: localStorage.getItem('hifzi_last_sync') || null,
     isOnline: navigator.onLine,
     pendingSync: false,
-    isRendered: false, // Flag untuk mencegah render berulang
+    isRendered: false,
     
     // Firebase
     firebaseConfig: JSON.parse(localStorage.getItem('hifzi_firebase_config') || '{}'),
@@ -19,6 +19,7 @@ const backupModule = {
     database: null,
     auth: null,
     currentUser: null,
+    firebaseBackupData: null, // Menyimpan data backup untuk tampilan Excel
     
     // Google Sheets
     gasUrl: localStorage.getItem('hifzi_gas_url') || '',
@@ -69,42 +70,10 @@ const backupModule = {
             this.checkNewDeviceGAS();
         }
 
-        // Listen untuk render saat navigasi - DEBOUNCED
-        this.setupRenderListener();
-    },
-
-    setupRenderListener() {
-        // Gunakan flag untuk mencegah render berkali-kali
-        let renderTimeout;
-        
-        const debouncedRender = () => {
-            clearTimeout(renderTimeout);
-            renderTimeout = setTimeout(() => {
-                if (!this.isRendered) {
-                    this.render();
-                }
-            }, 100);
-        };
-
-        // Override fungsi navigasi app jika ada
-        if (typeof app !== 'undefined' && app.navigateTo) {
-            const originalNavigate = app.navigateTo.bind(app);
-            app.navigateTo = (page) => {
-                originalNavigate(page);
-                if (page === 'cloud' || page === 'backup') {
-                    this.isRendered = false; // Reset flag saat navigasi
-                    debouncedRender();
-                }
-            };
+        // Start auto sync if enabled
+        if (this.isAutoSyncEnabled) {
+            this.startAutoSync();
         }
-
-        // Also check URL hash
-        window.addEventListener('hashchange', () => {
-            if (location.hash.includes('cloud') || location.hash.includes('backup')) {
-                this.isRendered = false;
-                debouncedRender();
-            }
-        });
     },
 
     // ============================================
@@ -162,33 +131,47 @@ const backupModule = {
     },
 
     // ============================================
-    // LOCAL STORAGE AUTO-SAVE CONTROL
+    // AUTO SYNC CONTROL
     // ============================================
 
-    toggleAutoSaveLocal() {
-        this.isAutoSaveLocalEnabled = !this.isAutoSaveLocalEnabled;
-        localStorage.setItem(this.KEYS.AUTO_SAVE_LOCAL, this.isAutoSaveLocalEnabled);
+    toggleAutoSync() {
+        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
+        localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
         
-        // Update dataManager jika ada
-        if (typeof dataManager !== 'undefined') {
-            dataManager.autoSaveEnabled = this.isAutoSaveLocalEnabled;
+        if (this.isAutoSyncEnabled) {
+            this.startAutoSync();
+            this.syncToCloud(true);
+            this.showToast('🟢 Auto-sync aktif (3 menit)');
+        } else {
+            this.stopAutoSync();
+            this.showToast('⚪ Auto-sync dimatikan');
         }
         
-        this.showToast(this.isAutoSaveLocalEnabled ? '💾 Auto-save Local: ON' : '💾 Auto-save Local: OFF');
         this.render();
     },
 
-    // Method untuk save manual jika auto-save dimatikan
-    manualSaveLocal() {
-        if (typeof dataManager !== 'undefined' && dataManager.saveData) {
-            dataManager.saveData();
-            this.showToast('💾 Data disimpan ke LocalStorage');
+    startAutoSync() {
+        this.stopAutoSync();
+        
+        if (!this.isAutoSyncEnabled || this.currentProvider === 'local') {
+            return;
         }
+        
+        this.autoSyncInterval = setInterval(() => {
+            console.log('[Backup] Running auto-sync...');
+            this.syncToCloud(true);
+        }, 180000); // 3 menit
+        
+        console.log(`[Backup] Auto-sync started for ${this.currentProvider}`);
     },
 
-    // ============================================
-    // AUTO SYNC
-    // ============================================
+    stopAutoSync() {
+        if (this.autoSyncInterval) {
+            clearInterval(this.autoSyncInterval);
+            this.autoSyncInterval = null;
+            console.log('[Backup] Auto-sync stopped');
+        }
+    },
 
     shouldSync() {
         return this.currentProvider !== 'local' && this.isAutoSyncEnabled && this.isOnline;
@@ -211,44 +194,6 @@ const backupModule = {
         }
         
         return Promise.resolve();
-    },
-
-    startAutoSync() {
-        this.stopAutoSync();
-        
-        if (!this.isAutoSyncEnabled || this.currentProvider === 'local') {
-            return;
-        }
-        
-        this.autoSyncInterval = setInterval(() => {
-            console.log('[Backup] Running auto-sync...');
-            this.syncToCloud(true);
-        }, 180000);
-        
-        console.log(`[Backup] Auto-sync started for ${this.currentProvider}`);
-    },
-
-    stopAutoSync() {
-        if (this.autoSyncInterval) {
-            clearInterval(this.autoSyncInterval);
-            this.autoSyncInterval = null;
-            console.log('[Backup] Auto-sync stopped');
-        }
-    },
-
-    toggleAutoSync() {
-        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
-        localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
-        
-        if (this.isAutoSyncEnabled) {
-            this.startAutoSync();
-            this.showToast('🟢 Auto-sync aktif (3 menit)');
-        } else {
-            this.stopAutoSync();
-            this.showToast('⚪ Auto-sync dimatikan');
-        }
-        
-        this.render();
     },
 
     // ============================================
@@ -395,6 +340,7 @@ const backupModule = {
             this.currentUser = null;
             localStorage.removeItem(this.KEYS.FB_USER);
             this.stopAutoSync();
+            this.firebaseBackupData = null;
             this.showToast('✅ Logout berhasil');
             this.render();
         });
@@ -429,6 +375,7 @@ const backupModule = {
             .catch((err) => {
                 if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
                 this.updateSyncStatus('Error');
+                this.pendingSync = true;
                 throw err;
             });
     },
@@ -451,6 +398,7 @@ const backupModule = {
             .then((snapshot) => {
                 const cloudData = snapshot.val();
                 if (cloudData) {
+                    this.firebaseBackupData = cloudData; // Simpan untuk tampilan Excel
                     this.saveBackupData(cloudData);
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
@@ -469,6 +417,220 @@ const backupModule = {
                 if (!silent) this.showToast('❌ Download gagal: ' + err.message);
                 throw err;
             });
+    },
+
+    // Tampilkan data Firebase dalam format Excel/Table
+    showFirebaseExcelView() {
+        if (!this.firebaseBackupData && this.currentUser) {
+            // Jika belum ada data, download dulu
+            this.showToast('⬇️ Mengambil data dari Firebase...');
+            this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value')
+                .then((snapshot) => {
+                    this.firebaseBackupData = snapshot.val();
+                    this.renderFirebaseExcelModal();
+                })
+                .catch((err) => {
+                    this.showToast('❌ Gagal mengambil data: ' + err.message);
+                });
+        } else {
+            this.renderFirebaseExcelModal();
+        }
+    },
+
+    renderFirebaseExcelModal() {
+        const data = this.firebaseBackupData;
+        if (!data) {
+            this.showToast('ℹ️ Tidak ada data untuk ditampilkan');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'firebase-excel-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 10000;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        `;
+
+        // Generate tabs untuk setiap tabel
+        const tabs = [
+            { id: 'products', label: '📦 Produk', data: data.products || [] },
+            { id: 'transactions', label: '📝 Transaksi', data: data.transactions || [] },
+            { id: 'debts', label: '💳 Hutang', data: data.debts || [] },
+            { id: 'users', label: '👥 Users', data: data.users || [] },
+            { id: 'categories', label: '🏷️ Kategori', data: data.categories || [] },
+            { id: 'shifts', label: '💰 Shift', data: data.shifts || [] }
+        ];
+
+        const generateTable = (tabData, tabId) => {
+            if (!tabData || tabData.length === 0) {
+                return `<div style="text-align: center; padding: 40px; color: #718096;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                    <div>Tidak ada data</div>
+                </div>`;
+            }
+
+            const keys = Object.keys(tabData[0]).filter(k => !k.startsWith('_'));
+            const headerStyle = 'background: #ff6b35; color: white; padding: 12px; text-align: left; font-weight: 600; font-size: 12px; position: sticky; top: 0;';
+            const cellStyle = 'padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+            
+            const rows = tabData.map((row, idx) => {
+                const cells = keys.map(key => {
+                    let value = row[key];
+                    if (typeof value === 'object') value = JSON.stringify(value);
+                    if (key.toLowerCase().includes('price') || key.toLowerCase().includes('amount') || key.toLowerCase().includes('cash')) {
+                        value = typeof value === 'number' ? 'Rp ' + value.toLocaleString('id-ID') : value;
+                    }
+                    return `<td style="${cellStyle} ${idx % 2 === 0 ? 'background: white;' : 'background: #f7fafc;'}">${value || '-'}</td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+
+            const headers = keys.map(key => 
+                `<th style="${headerStyle}">${key.replace(/_/g, ' ').toUpperCase()}</th>`
+            ).join('');
+
+            return `
+                <div style="overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0;">
+                    <table style="width: 100%; border-collapse: collapse; font-family: 'Segoe UI', sans-serif;">
+                        <thead>
+                            <tr>${headers}</tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 12px; font-size: 12px; color: #718096;">
+                    Total: ${tabData.length} baris • Backup dari: ${data._backupMeta?.deviceName || 'Unknown'} • 
+                    ${data._backupMeta?.backupDate ? new Date(data._backupMeta.backupDate).toLocaleString('id-ID') : '-'}
+                </div>
+            `;
+        };
+
+        const tabButtons = tabs.map(tab => `
+            <button onclick="backupModule.switchExcelTab('${tab.id}')" 
+                id="tab-btn-${tab.id}"
+                style="padding: 10px 16px; border: none; background: #fed7d7; color: #c53030; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;">
+                ${tab.label} (${tab.data.length})
+            </button>
+        `).join('');
+
+        const tabContents = tabs.map(tab => `
+            <div id="tab-content-${tab.id}" style="display: none;">
+                ${generateTable(tab.data, tab.id)}
+            </div>
+        `).join('');
+
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 16px; width: 100%; max-width: 1200px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; margin-top: 20px;">
+                <div style="padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%); color: white;">
+                    <div>
+                        <div style="font-size: 20px; font-weight: 700;">🔥 Data Firebase (Excel View)</div>
+                        <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">
+                            ${this.currentUser?.email || 'Not logged in'} • 
+                            ${data._backupMeta?.backupDate ? new Date(data._backupMeta.backupDate).toLocaleString('id-ID') : '-'}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="backupModule.downloadFirebaseAsExcel()" 
+                            style="padding: 10px 16px; background: white; color: #ff6b35; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;">
+                            📥 Download Excel
+                        </button>
+                        <button onclick="document.getElementById('firebase-excel-modal').remove()" 
+                            style="padding: 10px 16px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;">
+                            ✕ Tutup
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="padding: 16px; background: #fff5f5; border-bottom: 1px solid #fed7d7;">
+                    <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
+                        ${tabButtons}
+                    </div>
+                </div>
+                
+                <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                    ${tabContents}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        
+        // Aktifkan tab pertama yang ada datanya
+        const firstTabWithData = tabs.find(t => t.data.length > 0);
+        if (firstTabWithData) {
+            this.switchExcelTab(firstTabWithData.id);
+        } else {
+            this.switchExcelTab('products');
+        }
+    },
+
+    switchExcelTab(tabId) {
+        // Hide all tabs
+        document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[id^="tab-btn-"]').forEach(el => {
+            el.style.background = '#fed7d7';
+            el.style.color = '#c53030';
+        });
+        
+        // Show selected tab
+        const content = document.getElementById(`tab-content-${tabId}`);
+        const btn = document.getElementById(`tab-btn-${tabId}`);
+        if (content) content.style.display = 'block';
+        if (btn) {
+            btn.style.background = '#ff6b35';
+            btn.style.color = 'white';
+        }
+    },
+
+    downloadFirebaseAsExcel() {
+        if (!this.firebaseBackupData) return;
+        
+        const data = this.firebaseBackupData;
+        const wb = XLSX.utils.book_new();
+        
+        // Tambahkan sheet untuk setiap data
+        const sheets = [
+            { name: 'Produk', data: data.products || [] },
+            { name: 'Transaksi', data: data.transactions || [] },
+            { name: 'Hutang', data: data.debts || [] },
+            { name: 'Users', data: data.users || [] },
+            { name: 'Kategori', data: data.categories || [] },
+            { name: 'Shift', data: data.shifts || [] },
+            { name: 'Settings', data: data.settings ? [data.settings] : [] }
+        ];
+        
+        sheets.forEach(sheet => {
+            if (sheet.data.length > 0) {
+                const ws = XLSX.utils.json_to_sheet(sheet.data);
+                XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+            }
+        });
+        
+        // Tambahkan metadata sheet
+        const metaData = [{
+            backupDate: data._backupMeta?.backupDate || new Date().toISOString(),
+            deviceId: data._backupMeta?.deviceId || '-',
+            deviceName: data._backupMeta?.deviceName || '-',
+            version: data._backupMeta?.version || '-',
+            provider: data._backupMeta?.provider || '-',
+            downloadedBy: this.currentUser?.email || '-',
+            downloadDate: new Date().toISOString()
+        }];
+        const metaWs = XLSX.utils.json_to_sheet(metaData);
+        XLSX.utils.book_append_sheet(wb, metaWs, 'Metadata');
+        
+        XLSX.writeFile(wb, `firebase_backup_${new Date().toISOString().split('T')[0]}.xlsx`);
+        this.showToast('✅ File Excel berhasil didownload!');
     },
 
     // ============================================
@@ -918,6 +1080,7 @@ function logAction(action, deviceId, deviceName) {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
         this.stopAutoSync();
+        this.firebaseBackupData = null; // Reset cached data
         
         if (provider === 'firebase') {
             this.initFirebase();
@@ -1004,7 +1167,10 @@ function logAction(action, deviceId, deviceName) {
             if (!confirm('⚠️ Reset data di Firebase?')) return;
             
             this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').remove()
-                .then(() => this.showToast('✅ Firebase direset!'));
+                .then(() => {
+                    this.firebaseBackupData = null;
+                    this.showToast('✅ Firebase direset!');
+                });
                 
         } else if (this.currentProvider === 'googlesheet') {
             if (!this.gasUrl) {
@@ -1051,33 +1217,15 @@ function logAction(action, deviceId, deviceName) {
     },
 
     // ============================================
-    // RENDER UI (OPTIMIZED)
+    // RENDER UI (MAIN)
     // ============================================
 
     render() {
-        // Cegah render berkali-kali
-        if (this.isRendered) {
-            console.log('[Backup] Already rendered, skipping...');
+        const container = document.getElementById('mainContent');
+        if (!container) {
+            console.error('[Backup] mainContent not found');
             return;
         }
-        
-        // Coba cari container dengan berbagai cara
-        let container = document.getElementById('mainContent');
-        
-        // Jika tidak ada, coba cari container lain yang umum
-        if (!container) {
-            container = document.querySelector('.main-content') || 
-                       document.querySelector('#content') || 
-                       document.querySelector('.content') ||
-                       document.querySelector('main');
-        }
-        
-        if (!container) {
-            console.error('[Backup] No container found for rendering');
-            return;
-        }
-        
-        console.log('[Backup] Rendering to:', container.id || container.className);
         
         const isFirebase = this.currentProvider === 'firebase';
         const isGAS = this.currentProvider === 'googlesheet';
@@ -1200,39 +1348,14 @@ function logAction(action, deviceId, deviceName) {
                             </div>
                         </button>
                     </div>
+                    ${this.pendingSync ? `
+                        <div style="background: #fffaf0; border-left: 4px solid #ed8936; padding: 12px; border-radius: 6px; font-size: 13px; color: #c05621; margin-bottom: 12px;">
+                            <strong>⚠️ Sync Pending:</strong> Auto-sync gagal saat offline. Klik Upload Manual untuk mencoba lagi.
+                        </div>
+                    ` : ''}
                     <div style="background: #ebf8ff; border-left: 4px solid #4299e1; padding: 12px; border-radius: 6px; font-size: 13px; color: #2c5282;">
                         <strong>💡 Tips:</strong> Gunakan Upload sebelum pindah device, lalu Download di device baru. Data Telegram tidak ikut tersimpan di cloud.
                     </div>
-                </div>
-
-                <!-- Local Storage Settings -->
-                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ed8936;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <div>
-                            <div style="font-size: 16px; font-weight: 600; color: #2d3748;">💾 Pengaturan Local Storage</div>
-                            <div style="font-size: 13px; color: #718096; margin-top: 4px;">Kontrol auto-save ke browser</div>
-                        </div>
-                        <div onclick="backupModule.toggleAutoSaveLocal()" 
-                            style="width: 50px; height: 28px; background: ${this.isAutoSaveLocalEnabled ? '#ed8936' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
-                            <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSaveLocalEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
-                        </div>
-                    </div>
-                    
-                    ${!this.isAutoSaveLocalEnabled ? `
-                        <div style="background: #fffaf0; border: 1px solid #fbd38d; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                            <div style="font-size: 13px; color: #c05621; margin-bottom: 8px;">
-                                ⚠️ <strong>Auto-save dimatikan!</strong> Data hanya tersimpan di memori sementara.
-                            </div>
-                            <button onclick="backupModule.manualSaveLocal()" 
-                                style="width: 100%; padding: 12px; background: #ed8936; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                💾 Simpan ke LocalStorage Sekarang
-                            </button>
-                        </div>
-                    ` : `
-                        <div style="background: #f0fff4; border-radius: 8px; padding: 12px; font-size: 13px; color: #2f855a;">
-                            ✅ Data otomatis tersimpan ke LocalStorage setiap perubahan
-                        </div>
-                    `}
                 </div>
 
                 <!-- Local Backup -->
@@ -1294,10 +1417,7 @@ function logAction(action, deviceId, deviceName) {
             </div>
         `;
 
-        // Set HTML ke container
         container.innerHTML = html;
-        this.isRendered = true; // Set flag bahwa sudah dirender
-        console.log('[Backup] Render completed');
     },
 
     renderFirebaseSection(isConfigured, isLoggedIn) {
@@ -1310,6 +1430,9 @@ function logAction(action, deviceId, deviceName) {
                         <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_projectId" placeholder="Project ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_storageBucket" placeholder="Storage Bucket" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_messagingSenderId" placeholder="Messaging Sender ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_appId" placeholder="App ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                     </div>
                     <button onclick="backupModule.saveFirebaseConfig()" 
                         style="width: 100%; padding: 14px; background: #ff6b35; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
@@ -1348,10 +1471,16 @@ function logAction(action, deviceId, deviceName) {
                         <div style="font-weight: 600; color: #2d3748;">🔥 Firebase Connected</div>
                         <div style="font-size: 13px; color: #38a169; margin-top: 4px;">✅ ${this.currentUser?.email}</div>
                     </div>
-                    <button onclick="backupModule.firebaseLogout()" 
-                        style="padding: 8px 16px; background: #fc8181; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
-                        Logout
-                    </button>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="backupModule.showFirebaseExcelView()" 
+                            style="padding: 8px 16px; background: #fff5f0; color: #ff6b35; border: 2px solid #ff6b35; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                            📊 Lihat Data
+                        </button>
+                        <button onclick="backupModule.firebaseLogout()" 
+                            style="padding: 8px 16px; background: #fc8181; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                            Logout
+                        </button>
+                    </div>
                 </div>
                 
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f7fafc; border-radius: 10px;">
@@ -1361,7 +1490,7 @@ function logAction(action, deviceId, deviceName) {
                     </div>
                     <div onclick="backupModule.toggleAutoSync()" 
                         style="width: 50px; height: 28px; background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
-                        <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSaveLocalEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
+                        <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
                     </div>
                 </div>
             </div>
