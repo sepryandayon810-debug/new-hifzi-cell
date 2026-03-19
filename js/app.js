@@ -1,4 +1,8 @@
-// Global App - Core Application Logic
+/**
+ * Global App - Core Application Logic
+ * Hifzi Cell POS System
+ */
+
 const app = {
     data: null,
     currentUser: null,
@@ -34,6 +38,8 @@ const app = {
         // Sudah login, render navigation sesuai role
         if (typeof router !== 'undefined') {
             router.renderNavigation();
+        } else {
+            console.error('[App] Router not found!');
         }
 
         console.log('[App] User logged in, checking kasir status');
@@ -155,7 +161,7 @@ const app = {
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         console.log('[App] Kasir status:', kasirStatus);
         
-        // Owner dan Admin bisa langsung akses menu non-operasional
+        // Owner dan Admin bisa langsung akses menu non-operasional meski kasir dibuka user lain
         if (this.currentUser.role === 'owner' || this.currentUser.role === 'admin') {
             this.showToast(`Selamat datang, ${this.currentUser.name}! 👋`);
             const defaultTab = document.querySelector('.nav-tab');
@@ -459,7 +465,7 @@ const app = {
                         📅 Hari ini: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </div>
                     <div style="font-size: 12px; color: #888;">
-                        ${this.data.kasir.date ? `Shift terakhir: ${new Date(this.data.kasir.date).toLocaleDateString('id-ID')}` : 'Belum ada shift hari ini'}
+                        ${this.data.kasir && this.data.kasir.date ? `Shift terakhir: ${new Date(this.data.kasir.date).toLocaleDateString('id-ID')}` : 'Belum ada shift hari ini'}
                     </div>
                 </div>
 
