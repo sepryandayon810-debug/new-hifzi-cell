@@ -3,12 +3,50 @@ const router = {
     currentPage: null,
     allowedWhenClosed: ['backup', 'users'],
 
+    // Definisi akses menu berdasarkan role
+    menuAccess: {
+        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'backup', 'debt', 'users', 'telegram', 'cloud'],
+        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'backup', 'debt', 'users', 'telegram', 'cloud'],
+        'kasir': ['pos', 'products', 'transactions'] // Kasir hanya bisa akses POS, Produk, dan Transaksi
+    },
+
+    // Definisi label menu untuk pesan error
+    menuLabels: {
+        'pos': 'Kasir (POS)',
+        'products': 'Produk',
+        'cash': 'Kas',
+        'reports': 'Laporan',
+        'transactions': 'Transaksi',
+        'receipt': 'Struk',
+        'backup': 'Backup',
+        'debt': 'Hutang',
+        'users': 'Manajemen Pengguna',
+        'telegram': 'Telegram',
+        'cloud': 'Cloud'
+    },
+
     navigate(page, element) {
         const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
         const currentUser = dataManager.getCurrentUser();
 
+        // Cek apakah user sudah login
+        if (!currentUser) {
+            app.showToast('❌ Silakan login terlebih dahulu!');
+            return;
+        }
+
+        // Cek apakah kasir sudah dibuka (kecuali menu yang diizinkan saat tutup)
         if (!isKasirOpen && !this.allowedWhenClosed.includes(page)) {
             this.showKasirClosedModal();
+            return;
+        }
+
+        // Cek akses berdasarkan role user
+        const userRole = currentUser.role;
+        const allowedMenus = this.menuAccess[userRole] || [];
+        
+        if (!allowedMenus.includes(page)) {
+            this.showAccessDeniedModal(userRole, page);
             return;
         }
 
@@ -47,8 +85,82 @@ const router = {
             case 'users':
                 usersModule.init();
                 break;
+            case 'telegram':
+                // Modul Telegram - akan diimplementasikan
+                this.showModuleNotReady('Telegram');
+                break;
+            case 'cloud':
+                // Modul Cloud - akan diimplementasikan
+                this.showModuleNotReady('Cloud');
+                break;
         }
         window.scrollTo(0, 0);
+    },
+
+    // Cek apakah user memiliki akses ke menu tertentu
+    hasAccess(page) {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) return false;
+        
+        const allowedMenus = this.menuAccess[currentUser.role] || [];
+        return allowedMenus.includes(page);
+    },
+
+    // Dapatkan daftar menu yang boleh diakses user saat ini
+    getAllowedMenus() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) return [];
+        return this.menuAccess[currentUser.role] || [];
+    },
+
+    showAccessDeniedModal(userRole, page) {
+        const menuName = this.menuLabels[page] || page;
+        const allowedMenus = this.menuAccess[userRole] || [];
+        
+        // Buat daftar menu yang bisa diakses
+        const allowedMenuList = allowedMenus
+            .map(m => `• ${this.menuLabels[m] || m}`)
+            .join('<br>');
+
+        const modalHTML = `
+            <div class="modal active" id="accessDeniedModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
+                <div class="modal-content" style="max-width: 400px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🚫</div>
+                    <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
+                        <span class="modal-title" style="font-size: 18px;">Akses Ditolak</span>
+                    </div>
+                    <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                            ❌ Anda tidak memiliki akses ke menu ini
+                        </div>
+                        <div style="font-size: 13px; color: #666; line-height: 1.5;">
+                            Menu <strong>${menuName}</strong> hanya dapat diakses oleh Owner dan Admin.
+                        </div>
+                    </div>
+                    
+                    <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 10px; padding: 15px; margin-bottom: 20px; text-align: left;">
+                        <div style="font-size: 12px; color: #1565c0; font-weight: 600; margin-bottom: 8px;">
+                            📋 Menu yang dapat Anda akses:
+                        </div>
+                        <div style="font-size: 12px; color: #555; line-height: 1.8;">
+                            ${allowedMenuList}
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="router.closeAccessDeniedModal()" style="padding: 10px 30px;">
+                        Mengerti
+                    </button>
+                </div>
+            </div>
+        `;
+        const existingModal = document.getElementById('accessDeniedModal');
+        if (existingModal) existingModal.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    closeAccessDeniedModal() {
+        const modal = document.getElementById('accessDeniedModal');
+        if (modal) modal.remove();
     },
 
     showKasirClosedModal() {
@@ -80,6 +192,78 @@ const router = {
     closeKasirClosedModal() {
         const modal = document.getElementById('kasirClosedModal');
         if (modal) modal.remove();
+    },
+
+    showModuleNotReady(moduleName) {
+        const modalHTML = `
+            <div class="modal active" id="moduleNotReadyModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
+                <div class="modal-content" style="max-width: 350px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🚧</div>
+                    <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
+                        <span class="modal-title" style="font-size: 18px;">Modul ${moduleName}</span>
+                    </div>
+                    <div style="background: #fff3e0; border: 2px solid #ff9800; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+                        <div style="color: #e65100; font-weight: 600; margin-bottom: 8px; font-size: 14px;">🛠️ Dalam Pengembangan</div>
+                        <div style="font-size: 13px; color: #666; line-height: 1.5;">
+                            Fitur ${moduleName} sedang dalam tahap pengembangan.<br>
+                            Silakan gunakan menu lain yang tersedia.
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="router.closeModuleNotReadyModal()" style="padding: 10px 30px;">
+                        Mengerti
+                    </button>
+                </div>
+            </div>
+        `;
+        const existingModal = document.getElementById('moduleNotReadyModal');
+        if (existingModal) existingModal.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    closeModuleNotReadyModal() {
+        const modal = document.getElementById('moduleNotReadyModal');
+        if (modal) modal.remove();
+    },
+
+    // Render navigation tabs berdasarkan role user
+    renderNavigation() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) return;
+
+        const allowedMenus = this.menuAccess[currentUser.role] || [];
+        const navContainer = document.querySelector('.nav-tabs') || document.getElementById('navTabs');
+        
+        if (!navContainer) return;
+
+        // Definisi icon untuk setiap menu
+        const menuIcons = {
+            'pos': '🛒',
+            'products': '📦',
+            'cash': '💰',
+            'reports': '📊',
+            'transactions': '📋',
+            'receipt': '🧾',
+            'backup': '💾',
+            'debt': '💳',
+            'users': '👥',
+            'telegram': '✈️',
+            'cloud': '☁️'
+        };
+
+        // Build navigation HTML
+        let navHTML = '';
+        allowedMenus.forEach(menu => {
+            const icon = menuIcons[menu] || '📄';
+            const label = this.menuLabels[menu] || menu;
+            navHTML += `
+                <button class="nav-tab" onclick="router.navigate('${menu}', this)" data-page="${menu}">
+                    <span class="nav-icon">${icon}</span>
+                    <span class="nav-label">${label}</span>
+                </button>
+            `;
+        });
+
+        navContainer.innerHTML = navHTML;
     }
 };
 
@@ -116,7 +300,10 @@ const app = {
             return;
         }
 
-        // Sudah login, cek status kasir
+        // Sudah login, render navigation sesuai role
+        router.renderNavigation();
+
+        // Cek status kasir
         console.log('[App] User logged in, checking kasir status');
         this.handleLoggedIn();
     },
@@ -230,6 +417,9 @@ const app = {
         // Sembunyikan login, tampilkan app
         document.getElementById('loginContainer').style.display = 'none';
         document.getElementById('appContainer').classList.add('active');
+        
+        // Render navigation sesuai role user
+        router.renderNavigation();
         
         // Update header dengan data terbaru
         this.updateHeader();
