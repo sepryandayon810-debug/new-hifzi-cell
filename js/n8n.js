@@ -2,14 +2,10 @@
  * N8N Integration Module - Hifzi Cell POS
  * Pencarian & Manajemen Data via Google Sheets (DIRECT)
  * 
- * FITUR:
- * - Cari: Langsung query ke Sheets via CSV (read-only, cepat)
- * - Tambah/Edit/Hapus: Via Google Apps Script Web App (write)
- * - Generate GAS Code: Untuk setup backend sendiri
- * - Excel View: Tampilan tabel seperti Excel untuk melihat data
- * 
- * Sheet terpisah dari database penjualan (products, transactions, dll)
- * Sheet ini khusus untuk data pelanggan/member/kontak
+ * PERBAIKAN:
+ * - CORS Fix: Gunakan text/plain untuk menghindari preflight
+ * - Data muncul di semua view (Search, Add, Edit, Delete, Excel)
+ * - GAS Template dengan doOptions() untuk handle CORS
  */
 
 const n8nModule = {
@@ -28,61 +24,73 @@ const n8nModule = {
         lastSync: localStorage.getItem('hifzi_n8n_last_sync') || null
     },
 
-    // Template GAS Code untuk generate
+    // Template GAS Code dengan CORS fix lengkap
     gasTemplate: `/**
  * GOOGLE APPS SCRIPT BACKEND
  * Untuk Hifzi Cell POS - Data Integration
  * 
- * 1. Buka Google Sheets → Extensions → Apps Script
- * 2. Paste code ini
- * 3. Deploy → New Deployment → Web App
- * 4. Execute as: Me
- * 5. Who has access: Anyone
- * 6. Copy URL Web App ke konfigurasi POS
+ * Deploy sebagai Web App dengan:
+ * - Execute as: Me
+ * - Who has access: Anyone
  */
 
 const CONFIG = {
   SPREADSHEET_ID: '{{SPREADSHEET_ID}}',
-  SHEET_NAME: '{{SHEET_NAME}}',
-  ALLOWED_ACTIONS: ['add', 'edit', 'delete', 'getAll']
+  SHEET_NAME: '{{SHEET_NAME}}'
 };
+
+/**
+ * HANDLE PREFLIGHT (CORS FIX)
+ * WAJIB ada untuk handle OPTIONS request dari browser
+ */
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.JSON)
+    .setHeaders({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400'
+    });
+}
 
 function doGet(e) {
   try {
+    // Set CORS headers untuk semua response
+    const headers = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    };
+    
     const action = e.parameter.action;
     
     if (action === 'getAll') {
       const data = getAllData();
-      return ContentService.createTextOutput(JSON.stringify({
-        success: true,
-        data: data,
-        count: data.length,
-        timestamp: new Date().toISOString()
-      })).setMimeType(ContentService.MimeType.JSON);
+      return createResponse({ success: true, data: data, count: data.length }, headers);
     }
     
-    return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      error: 'Invalid action'
-    })).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({ success: false, error: 'Invalid action' }, headers);
     
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({ success: false, error: error.toString() }, {
+      'Access-Control-Allow-Origin': '*'
+    });
   }
 }
 
 function doPost(e) {
+  // Set CORS headers untuk semua response
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  
   try {
+    // Parse JSON dari postData.contents
     const params = JSON.parse(e.postData.contents);
     const { action, nama, nomor, namaLama, nomorBaru } = params;
-    
-    // Validasi action
-    if (!CONFIG.ALLOWED_ACTIONS.includes(action)) {
-      throw new Error('Action not allowed');
-    }
     
     let result;
     
@@ -96,22 +104,35 @@ function doPost(e) {
       case 'delete':
         result = deleteData(nama);
         break;
+      case 'getAll':
+        result = getAllData();
+        return createResponse({ success: true, data: result, count: result.length }, headers);
       default:
-        throw new Error('Unknown action');
+        throw new Error('Unknown action: ' + action);
     }
     
-    return ContentService.createTextOutput(JSON.stringify({
-      success: true,
-      result: result,
-      timestamp: new Date().toISOString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({ success: true, result: result }, headers);
     
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({ success: false, error: error.toString() }, headers);
   }
+}
+
+/**
+ * Helper untuk create response dengan CORS headers
+ */
+function createResponse(data, headers) {
+  let output = ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+  
+  // Set headers satu per satu
+  if (headers) {
+    for (let key in headers) {
+      output.setHeader(key, headers[key]);
+    }
+  }
+  
+  return output;
 }
 
 function getSheet() {
@@ -123,6 +144,8 @@ function getSheet() {
     sheet = ss.insertSheet(CONFIG.SHEET_NAME);
     sheet.appendRow(['NAMA', 'NOMOR', 'TIMESTAMP']);
     sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 3).setBackground('#667eea');
+    sheet.getRange(1, 1, 1, 3).setFontColor('white');
   }
   
   return sheet;
@@ -154,14 +177,14 @@ function addData(nama, nomor) {
   // Cek duplikat
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString().toUpperCase() === nama.toUpperCase()) {
-      throw new Error('Nama sudah ada');
+      throw new Error('Nama "' + nama + '" sudah ada');
     }
   }
   
   // Tambah data baru
   sheet.appendRow([nama.toUpperCase(), nomor, new Date()]);
   
-  return { nama: nama.toUpperCase(), nomor: nomor };
+  return { nama: nama.toUpperCase(), nomor: nomor, timestamp: new Date() };
 }
 
 function editData(namaLama, nomorBaru) {
@@ -173,16 +196,16 @@ function editData(namaLama, nomorBaru) {
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString().toUpperCase() === namaLama.toUpperCase()) {
-      sheet.getRange(i + 1, 2).setValue(nomorBaru); // Update nomor
+      sheet.getRange(i + 1, 2).setValue(nomorBaru); // Update nomor (kolom 2)
       sheet.getRange(i + 1, 3).setValue(new Date()); // Update timestamp
       found = true;
       break;
     }
   }
   
-  if (!found) throw new Error('Data tidak ditemukan');
+  if (!found) throw new Error('Data "' + namaLama + '" tidak ditemukan');
   
-  return { namaLama: namaLama, nomorBaru: nomorBaru };
+  return { namaLama: namaLama, nomorBaru: nomorBaru, updatedAt: new Date() };
 }
 
 function deleteData(nama) {
@@ -200,9 +223,9 @@ function deleteData(nama) {
     }
   }
   
-  if (!found) throw new Error('Data tidak ditemukan');
+  if (!found) throw new Error('Data "' + nama + '" tidak ditemukan');
   
-  return { deleted: nama };
+  return { deleted: nama, deletedAt: new Date() };
 }
 
 // Test function
@@ -213,16 +236,15 @@ function test() {
 }`,
 
     /**
-     * Inisialisasi module - dipanggil oleh router
+     * Inisialisasi module
      */
     init() {
-        // Hindari re-initialization
         if (this.initialized && document.getElementById('n8nContainer')) {
             console.log('[N8N] Already initialized, skipping');
             return;
         }
         
-        console.log('[N8N] Module initializing - Direct Sheets Mode');
+        console.log('[N8N] Module initializing');
         this.loadConfig();
         this.initialized = true;
         this.renderPage();
@@ -263,16 +285,16 @@ function test() {
             
             const csvUrl = `https://docs.google.com/spreadsheets/d/${this.config.spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(this.config.sheetName)}`;
             
-            console.log('[N8N] Loading data from Google Sheets...');
+            console.log('[N8N] Loading data from:', csvUrl);
             
             const response = await fetch(csvUrl);
-            if (!response.ok) throw new Error('Failed to fetch');
+            if (!response.ok) throw new Error('Failed to fetch CSV');
             
             const csvText = await response.text();
             this.allData = this.parseCSV(csvText);
             
             this.config.lastSync = new Date().toISOString();
-            localStorage.setItem('hifzi_n8n_last_sync', this.config.lastSync);
+            this.saveConfig();
             
             console.log(`[N8N] Loaded ${this.allData.length} records`);
             app.showToast(`✅ ${this.allData.length} data dimuat`);
@@ -287,9 +309,6 @@ function test() {
         }
     },
 
-    /**
-     * Parse CSV dari Google Sheets
-     */
     parseCSV(csvText) {
         const lines = csvText.split('\n');
         if (lines.length < 2) return [];
@@ -335,7 +354,7 @@ function test() {
     },
 
     /**
-     * API CALLS - Untuk Write Operations (Tambah/Edit/Hapus)
+     * API CALLS - CORS FIX: Gunakan text/plain bukan application/json
      */
     async apiCall(action, data = {}) {
         if (!this.config.webAppUrl) {
@@ -344,12 +363,18 @@ function test() {
         }
 
         try {
+            // PERBAIKAN CORS: Gunakan text/plain untuk menghindari preflight [^6^]
             const response = await fetch(this.config.webAppUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, ...data }),
-                mode: 'cors'
+                headers: { 
+                    'Content-Type': 'text/plain;charset=utf-8'  // Bukan application/json!
+                },
+                body: JSON.stringify({ action, ...data })
             });
+            
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
             
             const result = await response.json();
             
@@ -367,7 +392,7 @@ function test() {
     },
 
     /**
-     * PENCARIAN - Langsung dari data lokal (cepat)
+     * PENCARIAN - Dari data lokal (allData)
      */
     performSearch() {
         const input = document.getElementById('searchInput');
@@ -379,21 +404,18 @@ function test() {
             return;
         }
 
-        console.log(`[N8N] Searching for: "${keyword}"`);
-
-        // Filter dari data yang sudah diload
+        // Filter dari allData yang sudah diload
         this.searchResults = this.allData.filter(item => {
             const nama = (item.NAMA || item.nama || '').toUpperCase();
             const nomor = (item.NOMOR || item.nomor || item.TELEPON || item.HP || '').toString();
             return nama.includes(keyword) || nomor.includes(keyword);
         });
 
-        console.log(`[N8N] Found ${this.searchResults.length} results`);
         this.renderResults();
     },
 
     /**
-     * TAMBAH DATA - Via Web App
+     * TAMBAH DATA
      */
     async submitAdd() {
         const nama = document.getElementById('addNama')?.value.trim().toUpperCase();
@@ -404,7 +426,7 @@ function test() {
             return;
         }
 
-        // Cek duplikat di data lokal
+        // Cek duplikat di allData (data lokal)
         const exists = this.allData.find(item => 
             (item.NAMA || item.nama || '').toUpperCase() === nama
         );
@@ -422,17 +444,17 @@ function test() {
             app.showToast(`✅ Data ${nama} berhasil ditambahkan!`);
             this.clearForm();
             
-            // Refresh data
+            // Refresh data dan kembali ke search
             await this.loadSheetData();
             this.switchTab('search');
             
         } catch (error) {
-            // Error sudah ditampilkan di apiCall
+            console.error('Add error:', error);
         }
     },
 
     /**
-     * EDIT DATA - Via Web App
+     * EDIT DATA
      */
     async submitEdit() {
         const namaLama = document.getElementById('editNamaLama')?.value.trim().toUpperCase();
@@ -446,25 +468,20 @@ function test() {
         try {
             app.showToast('⏳ Mengupdate data...');
             
-            await this.apiCall('edit', { 
-                namaLama, 
-                nomorBaru,
-                namaBaru: null // Nama tidak berubah, hanya nomor
-            });
+            await this.apiCall('edit', { namaLama, nomorBaru });
             
             app.showToast(`✅ Data ${namaLama} berhasil diupdate!`);
             
-            // Refresh data
             await this.loadSheetData();
             this.switchTab('search');
             
         } catch (error) {
-            // Error sudah ditampilkan
+            console.error('Edit error:', error);
         }
     },
 
     /**
-     * HAPUS DATA - Via Web App
+     * HAPUS DATA
      */
     async submitDelete() {
         const nama = document.getElementById('deleteNama')?.value.trim().toUpperCase();
@@ -485,17 +502,16 @@ function test() {
             
             app.showToast(`✅ Data ${nama} berhasil dihapus!`);
             
-            // Refresh data
             await this.loadSheetData();
             this.switchTab('search');
             
         } catch (error) {
-            // Error sudah ditampilkan
+            console.error('Delete error:', error);
         }
     },
 
     // ============================================
-    // UI RENDERING - Konsisten dengan HTML utama
+    // UI RENDERING
     // ============================================
 
     renderPage() {
@@ -504,7 +520,6 @@ function test() {
 
         const currentUser = dataManager?.getCurrentUser?.();
         
-        // Cek akses - hanya owner dan admin
         if (!currentUser || (currentUser.role !== 'owner' && currentUser.role !== 'admin')) {
             container.innerHTML = `
                 <div class="content-section active" style="text-align: center; padding: 40px;">
@@ -540,7 +555,7 @@ function test() {
                         <button onclick="n8nModule.refreshData()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-size: 16px; transition: all 0.3s;" title="Refresh Data">
                             🔄
                         </button>
-                        <button onclick="n8nModule.openConfigModal()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-size: 16px; transition: all 0.3s;" title="Konfigurasi">
+                        <button onclick="n8nModule.switchTab('gas')" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-size: 16px; transition: all 0.3s;" title="Setup GAS">
                             ⚙️
                         </button>
                     </div>
@@ -622,8 +637,12 @@ function test() {
         }
     },
 
+    /**
+     * SEARCH VIEW - Dengan data yang sudah diload
+     */
     renderSearchView() {
         const hasConfig = this.config.spreadsheetId;
+        const hasData = this.allData.length > 0;
         
         return `
             <div class="n8n-view">
@@ -632,7 +651,7 @@ function test() {
                         <div style="font-size: 32px; margin-bottom: 10px;">⚙️</div>
                         <h3 style="color: #856404; margin-bottom: 10px;">Konfigurasi Diperlukan</h3>
                         <p style="color: #856404; font-size: 14px; margin-bottom: 15px;">
-                            Spreadsheet ID belum diatur. Silakan buka tab <strong>Setup GAS</strong> atau klik tombol pengaturan di atas.
+                            Spreadsheet ID belum diatur. Silakan buka tab <strong>Setup GAS</strong>.
                         </p>
                         <button onclick="n8nModule.switchTab('gas')" style="background: #ffc107; color: #856404; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                             Buka Setup GAS →
@@ -658,9 +677,59 @@ function test() {
                         </button>
                     </div>
                     <p style="font-size: 12px; color: #a0aec0; margin: 0;">
-                        Tekan Enter untuk mencari • Data realtime dari Google Sheets
+                        Tekan Enter untuk mencari • Data tersedia: ${this.allData.length} records
                     </p>
                 </div>
+
+                <!-- TAMPILKAN DATA YANG SUDAH DILOAD -->
+                ${hasData ? `
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h4 style="margin: 0; color: #4a5568; font-size: 16px;">📋 Data Tersedia (${this.allData.length})</h4>
+                            <button onclick="n8nModule.switchTab('excel')" style="padding: 8px 16px; background: #4299e1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                Lihat Semua →
+                            </button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; max-height: 400px; overflow-y: auto; padding-right: 10px;">
+                            ${this.allData.slice(0, 10).map((item, idx) => `
+                                <div class="n8n-result-item" style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; display: flex; align-items: center; gap: 12px; transition: all 0.2s; cursor: pointer;">
+                                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; color: white; flex-shrink: 0;">
+                                        ${(idx + 1)}
+                                    </div>
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="font-weight: 700; color: #2d3748; font-size: 14px; text-transform: uppercase; margin-bottom: 2px;">
+                                            ${this.escapeHtml(item.NAMA || item.nama || '-')}
+                                        </div>
+                                        <div style="color: #667eea; font-size: 13px; font-weight: 600;">
+                                            📱 ${this.escapeHtml(item.NOMOR || item.nomor || '-')}
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 4px;">
+                                        <button onclick="event.stopPropagation(); n8nModule.quickEdit('${this.escapeHtml(item.NAMA || item.nama)}', '${this.escapeHtml(item.NOMOR || item.nomor)}')" 
+                                                style="width: 32px; height: 32px; border-radius: 6px; border: none; background: #fef3c7; color: #d97706; cursor: pointer; font-size: 14px;"
+                                                title="Edit">✏️</button>
+                                        <button onclick="event.stopPropagation(); n8nModule.quickDelete('${this.escapeHtml(item.NAMA || item.nama)}')" 
+                                                style="width: 32px; height: 32px; border-radius: 6px; border: none; background: #fee2e2; color: #dc2626; cursor: pointer; font-size: 14px;"
+                                                title="Hapus">🗑️</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                            ${this.allData.length > 10 ? `
+                                <div style="text-align: center; padding: 20px; color: #a0aec0; font-size: 13px;">
+                                    ... dan ${this.allData.length - 10} data lainnya
+                                    <button onclick="n8nModule.switchTab('excel')" style="display: block; margin: 10px auto 0; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                        Lihat di Excel View
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                ` : hasConfig ? `
+                    <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">📭</div>
+                        <p>Belum ada data. Klik Refresh untuk memuat.</p>
+                    </div>
+                ` : ''}
 
                 <div id="searchResults">
                     ${this.renderResultsList()}
@@ -671,210 +740,321 @@ function test() {
 
     renderResultsList() {
         if (this.searchResults.length === 0) {
-            if (!this.config.spreadsheetId) {
-                return `
-                    <div style="text-align: center; padding: 60px 20px; color: #a0aec0;">
-                        <div style="font-size: 48px; margin-bottom: 15px;">📋</div>
-                        <p style="font-size: 16px; margin-bottom: 10px;">Belum terhubung ke Google Sheets</p>
-                        <p style="font-size: 13px;">Atur konfigurasi terlebih dahulu</p>
-                    </div>
-                `;
-            }
-            
-            if (this.allData.length === 0) {
-                return `
-                    <div style="text-align: center; padding: 60px 20px; color: #a0aec0;">
-                        <div style="font-size: 48px; margin-bottom: 15px;">⏳</div>
-                        <p style="font-size: 16px; margin-bottom: 10px;">${this.isLoading ? 'Memuat data...' : 'Tidak ada data'}</p>
-                        ${!this.isLoading ? `
-                            <button onclick="n8nModule.refreshData()" style="margin-top: 10px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">
-                                🔄 Refresh Data
-                            </button>
-                        ` : ''}
-                    </div>
-                `;
-            }
-            
-            return `
-                <div style="text-align: center; padding: 60px 20px; color: #a0aec0;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">🔍</div>
-                    <p style="font-size: 16px; margin-bottom: 10px;">Masukkan kata kunci untuk mencari</p>
-                    <p style="font-size: 13px;">Data tersedia: ${this.allData.length} records</p>
-                </div>
-            `;
+            return '';
         }
 
         return `
-            <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 600; color: #4a5568;">${this.searchResults.length} hasil ditemukan</span>
-                <button onclick="n8nModule.clearResults()" style="padding: 6px 12px; background: #fed7d7; color: #c53030; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                    Clear
-                </button>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-                ${this.searchResults.map((item, index) => `
-                    <div class="n8n-result-item" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 15px; transition: all 0.3s; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        <div style="width: 45px; height: 45px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: white; flex-shrink: 0;">
-                            👤
-                        </div>
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 700; color: #2d3748; font-size: 16px; margin-bottom: 4px; text-transform: uppercase;">
-                                ${this.escapeHtml(item.NAMA || item.nama || '-')}
+            <div style="margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <span style="font-weight: 600; color: #4a5568;">🔍 ${this.searchResults.length} hasil pencarian</span>
+                    <button onclick="n8nModule.clearResults()" style="padding: 6px 12px; background: #fed7d7; color: #c53030; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                        Clear
+                    </button>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    ${this.searchResults.map((item) => `
+                        <div class="n8n-result-item" style="background: white; border: 2px solid #667eea; border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 15px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);">
+                            <div style="width: 45px; height: 45px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: white; flex-shrink: 0;">
+                                👤
                             </div>
-                            <div style="color: #667eea; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 5px;">
-                                <span>📱</span>
-                                ${this.escapeHtml(item.NOMOR || item.nomor || item.TELEPON || item.HP || '-')}
-                            </div>
-                            ${item.TIMESTAMP ? `
-                                <div style="font-size: 11px; color: #a0aec0; margin-top: 4px;">
-                                    🕐 ${new Date(item.TIMESTAMP).toLocaleString('id-ID')}
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="font-weight: 700; color: #2d3748; font-size: 16px; margin-bottom: 4px; text-transform: uppercase;">
+                                    ${this.escapeHtml(item.NAMA || item.nama || '-')}
                                 </div>
-                            ` : ''}
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button onclick="n8nModule.quickEdit('${this.escapeHtml(item.NAMA || item.nama)}', '${this.escapeHtml(item.NOMOR || item.nomor)}')" 
-                                    style="width: 36px; height: 36px; border-radius: 8px; border: none; background: #fef3c7; color: #d97706; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-                                    onmouseover="this.style.background='#fde68a'"
-                                    onmouseout="this.style.background='#fef3c7'"
-                                    title="Edit">✏️</button>
-                            <button onclick="n8nModule.quickDelete('${this.escapeHtml(item.NAMA || item.nama)}')" 
-                                    style="width: 36px; height: 36px; border-radius: 8px; border: none; background: #fee2e2; color: #dc2626; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-                                    onmouseover="this.style.background='#fecaca'"
-                                    onmouseout="this.style.background='#fee2e2'"
-                                    title="Hapus">🗑️</button>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    },
-
-    renderAddView() {
-        return `
-            <div class="n8n-view">
-                <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
-                    <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">➕</span>
-                    Tambah Data Baru
-                </h3>
-                
-                <div style="max-width: 500px;">
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
-                            Nama Lengkap <span style="color: #f56565;">*</span>
-                        </label>
-                        <input type="text" id="addNama" placeholder="Contoh: AFLIS" 
-                               oninput="this.value = this.value.toUpperCase()"
-                               style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box; text-transform: uppercase;"
-                               onfocus="this.style.borderColor='#48bb78'; this.style.boxShadow='0 0 0 3px rgba(72, 187, 120, 0.1)'"
-                               onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
-                        <p style="font-size: 12px; color: #a0aec0; margin-top: 6px;">Otomatis uppercase</p>
-                    </div>
-                    
-                    <div style="margin-bottom: 25px;">
-                        <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
-                            Nomor Telepon <span style="color: #f56565;">*</span>
-                        </label>
-                        <input type="text" id="addNomor" placeholder="Contoh: 08123456789"
-                               style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box;"
-                               onfocus="this.style.borderColor='#48bb78'; this.style.boxShadow='0 0 0 3px rgba(72, 187, 120, 0.1)'"
-                               onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
-                    </div>
-                    
-                    <div style="display: flex; gap: 12px;">
-                        <button onclick="n8nModule.clearForm()" 
-                                style="flex: 1; padding: 14px 24px; background: #edf2f7; color: #4a5568; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
-                            Bersihkan
-                        </button>
-                        <button onclick="n8nModule.submitAdd()" 
-                                style="flex: 2; padding: 14px 24px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);">
-                            💾 Simpan ke Sheets
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    renderEditView() {
-        return `
-            <div class="n8n-view">
-                <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
-                    <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">✏️</span>
-                    Edit Data
-                </h3>
-                
-                <div style="max-width: 500px;">
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
-                            Nama yang akan diubah <span style="color: #f56565;">*</span>
-                        </label>
-                        <input type="text" id="editNamaLama" placeholder="Cari nama..." 
-                               oninput="this.value = this.value.toUpperCase()"
-                               style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box; text-transform: uppercase;"
-                               onfocus="this.style.borderColor='#ed8936'; this.style.boxShadow='0 0 0 3px rgba(237, 137, 54, 0.1)'"
-                               onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
-                        <p style="font-size: 12px; color: #a0aec0; margin-top: 6px;">Nama harus persis sama dengan yang di sheet</p>
-                    </div>
-                    
-                    <div style="margin-bottom: 25px;">
-                        <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
-                            Nomor Baru <span style="color: #f56565;">*</span>
-                        </label>
-                        <input type="text" id="editNomorBaru" placeholder="Nomor baru..."
-                               style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box;"
-                               onfocus="this.style.borderColor='#ed8936'; this.style.boxShadow='0 0 0 3px rgba(237, 137, 54, 0.1)'"
-                               onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
-                    </div>
-                    
-                    <button onclick="n8nModule.submitEdit()" 
-                            style="width: 100%; padding: 14px 24px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);">
-                        💾 Update Data
-                    </button>
-                </div>
-            </div>
-        `;
-    },
-
-    renderDeleteView() {
-        return `
-            <div class="n8n-view">
-                <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
-                    <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">🗑️</span>
-                    Hapus Data
-                </h3>
-                
-                <div style="max-width: 500px;">
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
-                            Nama yang akan dihapus <span style="color: #f56565;">*</span>
-                        </label>
-                        <input type="text" id="deleteNama" placeholder="Nama yang mau dihapus..." 
-                               oninput="this.value = this.value.toUpperCase()"
-                               style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box; text-transform: uppercase;"
-                               onfocus="this.style.borderColor='#f56565'; this.style.boxShadow='0 0 0 3px rgba(245, 101, 101, 0.1)'"
-                               onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
-                    </div>
-                    
-                    <div style="background: #fff5f5; border: 1px solid #feb2b2; border-radius: 10px; padding: 16px; margin-bottom: 25px;">
-                        <div style="display: flex; align-items: center; gap: 10px; color: #c53030; font-size: 14px;">
-                            <span style="font-size: 20px;">⚠️</span>
-                            <div>
-                                <strong>Perhatian!</strong> Data yang dihapus tidak dapat dikembalikan.
+                                <div style="color: #667eea; font-size: 14px; font-weight: 600;">
+                                    📱 ${this.escapeHtml(item.NOMOR || item.nomor || item.TELEPON || item.HP || '-')}
+                                </div>
+                                ${item.TIMESTAMP ? `
+                                    <div style="font-size: 11px; color: #a0aec0; margin-top: 4px;">
+                                        🕐 ${new Date(item.TIMESTAMP).toLocaleString('id-ID')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="n8nModule.quickEdit('${this.escapeHtml(item.NAMA || item.nama)}', '${this.escapeHtml(item.NOMOR || item.nomor)}')" 
+                                        style="width: 40px; height: 40px; border-radius: 8px; border: none; background: #fef3c7; color: #d97706; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center;"
+                                        title="Edit">✏️</button>
+                                <button onclick="n8nModule.quickDelete('${this.escapeHtml(item.NAMA || item.nama)}')" 
+                                        style="width: 40px; height: 40px; border-radius: 8px; border: none; background: #fee2e2; color: #dc2626; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center;"
+                                        title="Hapus">🗑️</button>
                             </div>
                         </div>
-                    </div>
-                    
-                    <button onclick="n8nModule.submitDelete()" 
-                            style="width: 100%; padding: 14px 24px; background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);">
-                        🗑️ Hapus Permanen
-                    </button>
+                    `).join('')}
                 </div>
             </div>
         `;
     },
 
     /**
-     * EXCEL VIEW - Tampilan tabel seperti Excel
+     * ADD VIEW - Dengan preview data yang sudah ada
+     */
+    renderAddView() {
+        return `
+            <div class="n8n-view">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <!-- Form Tambah -->
+                    <div>
+                        <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">➕</span>
+                            Tambah Data Baru
+                        </h3>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                            <div style="margin-bottom: 20px;">
+                                <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
+                                    Nama Lengkap <span style="color: #f56565;">*</span>
+                                </label>
+                                <input type="text" id="addNama" placeholder="Contoh: AFLIS" 
+                                       oninput="this.value = this.value.toUpperCase()"
+                                       style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box; text-transform: uppercase;"
+                                       onfocus="this.style.borderColor='#48bb78'; this.style.boxShadow='0 0 0 3px rgba(72, 187, 120, 0.1)'"
+                                       onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                            </div>
+                            
+                            <div style="margin-bottom: 25px;">
+                                <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
+                                    Nomor Telepon <span style="color: #f56565;">*</span>
+                                </label>
+                                <input type="text" id="addNomor" placeholder="Contoh: 08123456789"
+                                       style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box;"
+                                       onfocus="this.style.borderColor='#48bb78'; this.style.boxShadow='0 0 0 3px rgba(72, 187, 120, 0.1)'"
+                                       onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                            </div>
+                            
+                            <div style="display: flex; gap: 12px;">
+                                <button onclick="n8nModule.clearForm()" 
+                                        style="flex: 1; padding: 14px 24px; background: #edf2f7; color: #4a5568; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                                    Bersihkan
+                                </button>
+                                <button onclick="n8nModule.submitAdd()" 
+                                        style="flex: 2; padding: 14px 24px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);">
+                                    💾 Simpan ke Sheets
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Preview Data Existing -->
+                    <div>
+                        <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">📋</span>
+                            Data Tersedia (${this.allData.length})
+                        </h3>
+                        
+                        <div style="background: #f7fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto;">
+                            ${this.allData.length > 0 ? `
+                                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <thead style="position: sticky; top: 0; background: #edf2f7;">
+                                        <tr>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">NAMA</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">NOMOR</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${this.allData.map(item => `
+                                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                                <td style="padding: 10px 12px; font-weight: 600; color: #2d3748; text-transform: uppercase;">
+                                                    ${this.escapeHtml(item.NAMA || item.nama || '-')}
+                                                </td>
+                                                <td style="padding: 10px 12px; color: #667eea; font-family: monospace;">
+                                                    ${this.escapeHtml(item.NOMOR || item.nomor || '-')}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            ` : `
+                                <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                                    <p>Belum ada data</p>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    /**
+     * EDIT VIEW - Dengan data preview
+     */
+    renderEditView() {
+        return `
+            <div class="n8n-view">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <!-- Form Edit -->
+                    <div>
+                        <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">✏️</span>
+                            Edit Data
+                        </h3>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                            <div style="margin-bottom: 20px;">
+                                <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
+                                    Nama yang akan diubah <span style="color: #f56565;">*</span>
+                                </label>
+                                <input type="text" id="editNamaLama" placeholder="Cari nama..." 
+                                       oninput="this.value = this.value.toUpperCase()"
+                                       style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box; text-transform: uppercase;"
+                                       onfocus="this.style.borderColor='#ed8936'; this.style.boxShadow='0 0 0 3px rgba(237, 137, 54, 0.1)'"
+                                       onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                                <p style="font-size: 11px; color: #a0aec0; margin-top: 6px;">Nama harus persis sama dengan yang di sheet</p>
+                            </div>
+                            
+                            <div style="margin-bottom: 25px;">
+                                <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
+                                    Nomor Baru <span style="color: #f56565;">*</span>
+                                </label>
+                                <input type="text" id="editNomorBaru" placeholder="Nomor baru..."
+                                       style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box;"
+                                       onfocus="this.style.borderColor='#ed8936'; this.style.boxShadow='0 0 0 3px rgba(237, 137, 54, 0.1)'"
+                                       onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                            </div>
+                            
+                            <button onclick="n8nModule.submitEdit()" 
+                                    style="width: 100%; padding: 14px 24px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);">
+                                💾 Update Data
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Data Reference -->
+                    <div>
+                        <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">📋</span>
+                            Referensi Data
+                        </h3>
+                        
+                        <div style="background: #f7fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto;">
+                            ${this.allData.length > 0 ? `
+                                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <thead style="position: sticky; top: 0; background: #edf2f7;">
+                                        <tr>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">NAMA</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">NOMOR</th>
+                                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${this.allData.map(item => `
+                                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                                <td style="padding: 10px 12px; font-weight: 600; color: #2d3748; text-transform: uppercase;">
+                                                    ${this.escapeHtml(item.NAMA || item.nama || '-')}
+                                                </td>
+                                                <td style="padding: 10px 12px; color: #667eea; font-family: monospace;">
+                                                    ${this.escapeHtml(item.NOMOR || item.nomor || '-')}
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center;">
+                                                    <button onclick="n8nModule.fillEditForm('${this.escapeHtml(item.NAMA || item.nama)}', '${this.escapeHtml(item.NOMOR || item.nomor)}')"
+                                                            style="padding: 6px 12px; background: #fef3c7; color: #d97706; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                                        Pilih
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            ` : `
+                                <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                                    <p>Belum ada data</p>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    /**
+     * DELETE VIEW - Dengan data preview
+     */
+    renderDeleteView() {
+        return `
+            <div class="n8n-view">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <!-- Form Delete -->
+                    <div>
+                        <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">🗑️</span>
+                            Hapus Data
+                        </h3>
+                        
+                        <div style="background: #f7fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                            <div style="margin-bottom: 20px;">
+                                <label style="display: block; font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 14px;">
+                                    Nama yang akan dihapus <span style="color: #f56565;">*</span>
+                                </label>
+                                <input type="text" id="deleteNama" placeholder="Nama yang mau dihapus..." 
+                                       oninput="this.value = this.value.toUpperCase()"
+                                       style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; transition: all 0.3s; box-sizing: border-box; text-transform: uppercase;"
+                                       onfocus="this.style.borderColor='#f56565'; this.style.boxShadow='0 0 0 3px rgba(245, 101, 101, 0.1)'"
+                                       onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                            </div>
+                            
+                            <div style="background: #fff5f5; border: 1px solid #feb2b2; border-radius: 10px; padding: 16px; margin-bottom: 25px;">
+                                <div style="display: flex; align-items: center; gap: 10px; color: #c53030; font-size: 14px;">
+                                    <span style="font-size: 20px;">⚠️</span>
+                                    <div>
+                                        <strong>Perhatian!</strong> Data yang dihapus tidak dapat dikembalikan.
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button onclick="n8nModule.submitDelete()" 
+                                    style="width: 100%; padding: 14px 24px; background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);">
+                                🗑️ Hapus Permanen
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Data Reference -->
+                    <div>
+                        <h3 style="margin: 0 0 20px 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
+                            <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">📋</span>
+                            Pilih Data
+                        </h3>
+                        
+                        <div style="background: #f7fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-height: 400px; overflow-y: auto;">
+                            ${this.allData.length > 0 ? `
+                                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <thead style="position: sticky; top: 0; background: #edf2f7;">
+                                        <tr>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">NAMA</th>
+                                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #4a5568; border-bottom: 1px solid #e2e8f0;">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${this.allData.map(item => `
+                                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                                <td style="padding: 10px 12px; font-weight: 600; color: #2d3748; text-transform: uppercase;">
+                                                    ${this.escapeHtml(item.NAMA || item.nama || '-')}
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center;">
+                                                    <button onclick="document.getElementById('deleteNama').value = '${this.escapeHtml(item.NAMA || item.nama)}'"
+                                                            style="padding: 6px 12px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                                        Pilih untuk Hapus
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            ` : `
+                                <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                                    <p>Belum ada data</p>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    /**
+     * EXCEL VIEW - Tampilan tabel lengkap
      */
     renderExcelView() {
         if (this.allData.length === 0) {
@@ -896,24 +1076,24 @@ function test() {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h3 style="margin: 0; color: #2d3748; display: flex; align-items: center; gap: 10px;">
                         <span style="width: 35px; height: 35px; background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px;">📊</span>
-                        Excel View
+                        Excel View - ${this.allData.length} Records
                     </h3>
                     <div style="display: flex; gap: 8px;">
-                        <button onclick="n8nModule.exportToExcel()" style="padding: 8px 16px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
-                            📥 Export
+                        <button onclick="n8nModule.exportToExcel()" style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                            📥 Export Excel
                         </button>
-                        <button onclick="n8nModule.refreshData()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                        <button onclick="n8nModule.refreshData()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
                             🔄 Refresh
                         </button>
                     </div>
                 </div>
                 
-                <div class="n8n-excel-table" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: white;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 500px;">
+                <div class="n8n-excel-table" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 600px;">
                         <thead>
                             <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
                                 ${headers.map(h => `
-                                    <th style="padding: 14px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px;">
+                                    <th style="padding: 14px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">
                                         ${h}
                                     </th>
                                 `).join('')}
@@ -926,7 +1106,7 @@ function test() {
                             ${this.allData.map((row, idx) => `
                                 <tr style="background: ${idx % 2 === 0 ? 'white' : '#f7fafc'}; transition: all 0.2s;" onmouseover="this.style.background='#edf2f7'" onmouseout="this.style.background='${idx % 2 === 0 ? 'white' : '#f7fafc'}'">
                                     ${headers.map(h => `
-                                        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #2d3748; ${h === 'NAMA' ? 'font-weight: 600; text-transform: uppercase;' : ''}">
+                                        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #2d3748; ${h === 'NAMA' ? 'font-weight: 600; text-transform: uppercase;' : ''} ${h === 'NOMOR' ? 'color: #667eea; font-family: monospace;' : ''}">
                                             ${this.escapeHtml(row[h])}
                                         </td>
                                     `).join('')}
@@ -953,7 +1133,7 @@ function test() {
     },
 
     /**
-     * GAS SETUP VIEW - Generate dan konfigurasi GAS
+     * GAS SETUP VIEW
      */
     renderGASView() {
         const gasCode = this.generateGASCode();
@@ -966,7 +1146,7 @@ function test() {
                 </h3>
                 
                 <div style="display: grid; gap: 20px;">
-                    <!-- Step 1: Konfigurasi Sheet -->
+                    <!-- Step 1: Konfigurasi -->
                     <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;">
                         <h4 style="margin: 0 0 15px 0; color: #4a5568; font-size: 16px; display: flex; align-items: center; gap: 8px;">
                             <span style="width: 28px; height: 28px; background: #667eea; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;">1</span>
@@ -980,9 +1160,6 @@ function test() {
                                 </label>
                                 <input type="text" id="gasSpreadsheetId" value="${this.config.spreadsheetId}" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE"
                                        style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: monospace; box-sizing: border-box;">
-                                <p style="font-size: 11px; color: #a0aec0; margin: 5px 0 0 0;">
-                                    Dari URL: https://docs.google.com/spreadsheets/d/<strong>SPREADSHEET_ID</strong>/edit
-                                </p>
                             </div>
                             
                             <div>
@@ -1012,21 +1189,21 @@ function test() {
                     <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;">
                         <h4 style="margin: 0 0 15px 0; color: #4a5568; font-size: 16px; display: flex; align-items: center; gap: 8px;">
                             <span style="width: 28px; height: 28px; background: #48bb78; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;">2</span>
-                            Generate GAS Code
+                            Generate GAS Code (CORS Fixed)
                         </h4>
                         
                         <p style="font-size: 13px; color: #718096; margin-bottom: 15px; line-height: 1.5;">
-                            Code ini akan otomatis ter-generate berdasarkan Spreadsheet ID dan Sheet Name di atas. 
+                            Code ini sudah include <strong>doOptions()</strong> untuk handle CORS preflight request.
                             Copy paste ke Google Apps Script.
                         </p>
                         
                         <div style="position: relative;">
                             <textarea id="gasCodeOutput" readonly 
-                                      style="width: 100%; height: 300px; padding: 15px; background: #1a202c; color: #68d391; border: none; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.5; resize: vertical; box-sizing: border-box;">${gasCode}</textarea>
+                                      style="width: 100%; height: 300px; padding: 15px; background: #1a202c; color: #68d391; border: none; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; line-height: 1.5; resize: vertical; box-sizing: border-box;">${gasCode}</textarea>
                             
                             <button onclick="n8nModule.copyGASCode()" 
                                     style="position: absolute; top: 10px; right: 10px; padding: 8px 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer; font-size: 12px; backdrop-filter: blur(10px);">
-                                📋 Copy Code
+                                📋 Copy
                             </button>
                         </div>
                         
@@ -1035,7 +1212,7 @@ function test() {
                             1. Buka <a href="https://script.google.com" target="_blank" style="color: #2f855a; text-decoration: underline;">script.google.com</a><br>
                             2. Create new project → Paste code di atas<br>
                             3. Klik <strong>Deploy</strong> → <strong>New deployment</strong><br>
-                            4. Pilih type: <strong>Web app</strong><br>
+                            4. Type: <strong>Web app</strong><br>
                             5. Execute as: <strong>Me</strong><br>
                             6. Who has access: <strong>Anyone</strong><br>
                             7. Copy Web App URL ke kolom di atas
@@ -1067,18 +1244,12 @@ function test() {
         `;
     },
 
-    /**
-     * Generate GAS Code dengan config saat ini
-     */
     generateGASCode() {
         return this.gasTemplate
             .replace('{{SPREADSHEET_ID}}', this.config.spreadsheetId || 'YOUR_SPREADSHEET_ID')
             .replace('{{SHEET_NAME}}', this.config.sheetName || 'Sheet1');
     },
 
-    /**
-     * Save GAS Config dari form
-     */
     saveGASConfig() {
         const spreadsheetId = document.getElementById('gasSpreadsheetId')?.value.trim();
         const sheetName = document.getElementById('gasSheetName')?.value.trim();
@@ -1090,23 +1261,14 @@ function test() {
         
         this.saveConfig();
         
-        // Update textarea dengan code baru
         const textarea = document.getElementById('gasCodeOutput');
-        if (textarea) {
-            textarea.value = this.generateGASCode();
-        }
+        if (textarea) textarea.value = this.generateGASCode();
         
         app.showToast('✅ Konfigurasi tersimpan!');
         
-        // Test otomatis
-        if (this.config.spreadsheetId) {
-            this.loadSheetData();
-        }
+        if (this.config.spreadsheetId) this.loadSheetData();
     },
 
-    /**
-     * Copy GAS Code ke clipboard
-     */
     copyGASCode() {
         const textarea = document.getElementById('gasCodeOutput');
         if (textarea) {
@@ -1116,9 +1278,6 @@ function test() {
         }
     },
 
-    /**
-     * Test koneksi read (CSV)
-     */
     async testConnection() {
         const resultDiv = document.getElementById('testResult');
         if (!resultDiv) return;
@@ -1135,7 +1294,7 @@ function test() {
             if (response.ok) {
                 const text = await response.text();
                 const lines = text.split('\n').length;
-                resultDiv.innerHTML = `<div style="color: #48bb78; background: #f0fff4; padding: 10px; border-radius: 6px;">✅ Koneksi berhasil! ${lines} baris terdeteksi.</div>`;
+                resultDiv.innerHTML = `<div style="color: #48bb78; background: #f0fff4; padding: 10px; border-radius: 6px;">✅ Read OK! ${lines} baris terdeteksi.</div>`;
             } else {
                 throw new Error('HTTP ' + response.status);
             }
@@ -1144,9 +1303,6 @@ function test() {
         }
     },
 
-    /**
-     * Test koneksi write (Web App)
-     */
     async testWriteConnection() {
         const resultDiv = document.getElementById('testResult');
         if (!resultDiv) return;
@@ -1157,29 +1313,34 @@ function test() {
         try {
             if (!this.config.webAppUrl) throw new Error('Web App URL belum diatur');
             
-            // Test dengan action getAll (read via POST)
+            // Test dengan POST dan text/plain (CORS fix)
             const response = await fetch(this.config.webAppUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'getAll' }),
-                mode: 'cors'
+                headers: { 
+                    'Content-Type': 'text/plain;charset=utf-8'  // CORS FIX!
+                },
+                body: JSON.stringify({ action: 'getAll' })
             });
             
             const result = await response.json();
             
             if (result.success) {
-                resultDiv.innerHTML = `<div style="color: #48bb78; background: #f0fff4; padding: 10px; border-radius: 6px;">✅ Web App aktif! ${result.count || 0} records.</div>`;
+                resultDiv.innerHTML = `<div style="color: #48bb78; background: #f0fff4; padding: 10px; border-radius: 6px;">✅ Write OK! ${result.count || 0} records.</div>`;
             } else {
                 throw new Error(result.error || 'Unknown error');
             }
         } catch (error) {
-            resultDiv.innerHTML = `<div style="color: #f56565; background: #fff5f5; padding: 10px; border-radius: 6px;">❌ Error: ${error.message}<br><small>Pastikan Web App sudah deploy dan permission "Anyone"</small></div>`;
+            resultDiv.innerHTML = `<div style="color: #f56565; background: #fff5f5; padding: 10px; border-radius: 6px;">
+                ❌ Error: ${error.message}<br>
+                <small style="font-size: 11px;">Pastikan:<br>
+                1. Web App sudah deploy<br>
+                2. Permission: "Anyone"<br>
+                3. doOptions() ada di code<br>
+                4. CORS headers di set</small>
+            </div>`;
         }
     },
 
-    /**
-     * Export data ke Excel file
-     */
     exportToExcel() {
         if (this.allData.length === 0) {
             app.showToast('❌ Tidak ada data untuk export');
@@ -1187,12 +1348,10 @@ function test() {
         }
 
         try {
-            // Convert to worksheet
             const ws = XLSX.utils.json_to_sheet(this.allData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, this.config.sheetName || 'Data');
             
-            // Generate filename dengan timestamp
             const timestamp = new Date().toISOString().slice(0, 10);
             const filename = `HifziCell_Data_${timestamp}.xlsx`;
             
@@ -1216,12 +1375,10 @@ function test() {
     attachEventListeners() {
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            // Enter key
             searchInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') this.performSearch();
             });
             
-            // Real-time search dengan debounce
             let timeout;
             searchInput.addEventListener('input', (e) => {
                 clearTimeout(timeout);
@@ -1240,9 +1397,7 @@ function test() {
 
     renderResults() {
         const container = document.getElementById('searchResults');
-        if (container) {
-            container.innerHTML = this.renderResultsList();
-        }
+        if (container) container.innerHTML = this.renderResultsList();
     },
 
     clearResults() {
@@ -1265,6 +1420,14 @@ function test() {
         }, 100);
     },
 
+    fillEditForm(nama, nomor) {
+        const inputNama = document.getElementById('editNamaLama');
+        const inputNomor = document.getElementById('editNomorBaru');
+        if (inputNama) inputNama.value = nama || '';
+        if (inputNomor) inputNomor.value = nomor || '';
+        app.showToast(`✅ Data ${nama} dipilih untuk edit`);
+    },
+
     quickDelete(nama) {
         this.switchTab('delete');
         setTimeout(() => {
@@ -1274,11 +1437,9 @@ function test() {
     },
 
     clearForm() {
-        document.querySelectorAll('.n8n-input').forEach(input => input.value = '');
-    },
-
-    openConfigModal() {
-        this.switchTab('gas');
+        document.querySelectorAll('input[type="text"]').forEach(input => {
+            if (input.id?.startsWith('add')) input.value = '';
+        });
     },
 
     escapeHtml(text) {
@@ -1291,4 +1452,4 @@ function test() {
     }
 };
 
-console.log('[N8N] Module loaded - Direct Sheets Integration with GAS Generator');
+console.log('[N8N] Module loaded - CORS Fixed Version with Data Preview');
