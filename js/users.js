@@ -43,78 +43,83 @@ const usersModule = {
                 </div>
 
                 ${isOwner ? `
-                <!-- Riwayat Login Section - Hanya untuk Owner -->
+                <!-- Riwayat Login Section - Hanya untuk Owner - Accordion Style -->
                 <div class="card" style="margin-top: 20px;">
-                    <div class="card-header">
+                    <div class="card-header" style="cursor: pointer; user-select: none;" onclick="usersModule.toggleLoginHistory()">
                         <span class="card-title">📋 Riwayat Login (6 Bulan Terakhir)</span>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-secondary btn-sm" onclick="usersModule.exportLoginHistory()">📥 Download CSV</button>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span id="loginHistoryBadge" style="background: #6c5ce7; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">0 login</span>
+                            <span id="loginHistoryArrow" style="font-size: 20px; transition: transform 0.3s ease; transform: rotate(-90deg);">▼</span>
                         </div>
                     </div>
                     
-                    <!-- Filter Section -->
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: end;">
-                            <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
-                                <label style="font-size: 12px; color: #666;">Filter Periode</label>
-                                <select id="loginFilterPeriod" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
-                                    <option value="today">Hari Ini</option>
-                                    <option value="yesterday">Kemarin</option>
-                                    <option value="7days">7 Hari Terakhir</option>
-                                    <option value="30days">30 Hari Terakhir</option>
-                                    <option value="thisMonth">Bulan Ini</option>
-                                    <option value="lastMonth">Bulan Lalu</option>
-                                    <option value="custom">Pilih Tanggal</option>
-                                </select>
+                    <div id="loginHistoryContent" style="display: none; overflow: hidden; transition: all 0.3s ease;">
+                        <!-- Filter Section -->
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 20px 0;">
+                            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: end;">
+                                <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
+                                    <label style="font-size: 12px; color: #666;">Filter Periode</label>
+                                    <select id="loginFilterPeriod" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                                        <option value="today">Hari Ini</option>
+                                        <option value="yesterday">Kemarin</option>
+                                        <option value="7days">7 Hari Terakhir</option>
+                                        <option value="30days">30 Hari Terakhir</option>
+                                        <option value="thisMonth">Bulan Ini</option>
+                                        <option value="lastMonth">Bulan Lalu</option>
+                                        <option value="custom">Pilih Tanggal</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group" id="customDateStart" style="margin: 0; display: none; min-width: 150px;">
+                                    <label style="font-size: 12px; color: #666;">Dari Tanggal</label>
+                                    <input type="date" id="filterStartDate" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                                </div>
+                                
+                                <div class="form-group" id="customDateEnd" style="margin: 0; display: none; min-width: 150px;">
+                                    <label style="font-size: 12px; color: #666;">Sampai Tanggal</label>
+                                    <input type="date" id="filterEndDate" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                                </div>
+                                
+                                <div class="form-group" style="margin: 0; min-width: 150px;">
+                                    <label style="font-size: 12px; color: #666;">User</label>
+                                    <select id="loginFilterUser" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                                        <option value="all">Semua User</option>
+                                    </select>
+                                </div>
+                                
+                                <button class="btn btn-secondary btn-sm" onclick="usersModule.resetLoginFilter()" style="margin-bottom: 2px;">Reset</button>
+                                
+                                <button class="btn btn-secondary btn-sm" onclick="usersModule.exportLoginHistory()">📥 Download CSV</button>
                             </div>
-                            
-                            <div class="form-group" id="customDateStart" style="margin: 0; display: none; min-width: 150px;">
-                                <label style="font-size: 12px; color: #666;">Dari Tanggal</label>
-                                <input type="date" id="filterStartDate" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
-                            </div>
-                            
-                            <div class="form-group" id="customDateEnd" style="margin: 0; display: none; min-width: 150px;">
-                                <label style="font-size: 12px; color: #666;">Sampai Tanggal</label>
-                                <input type="date" id="filterEndDate" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
-                            </div>
-                            
-                            <div class="form-group" style="margin: 0; min-width: 150px;">
-                                <label style="font-size: 12px; color: #666;">User</label>
-                                <select id="loginFilterUser" onchange="usersModule.filterLoginHistory()" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
-                                    <option value="all">Semua User</option>
-                                </select>
-                            </div>
-                            
-                            <button class="btn btn-secondary btn-sm" onclick="usersModule.resetLoginFilter()" style="margin-bottom: 2px;">Reset</button>
                         </div>
-                    </div>
-                    
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Waktu Login</th>
-                                    <th>Nama</th>
-                                    <th>Username</th>
-                                    <th>Role</th>
-                                    <th>IP/Device</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="loginHistoryTableBody">
-                                <tr>
-                                    <td colspan="6" style="text-align: center; color: #999; padding: 30px;">
-                                        Memuat riwayat login...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
-                        <span id="loginHistoryCount" style="font-size: 13px; color: #666;">Total: 0 login</span>
-                        <div style="font-size: 12px; color: #999;">
-                            💡 Data otomatis terhapus setelah 6 bulan untuk menghemat storage
+                        
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Waktu Login</th>
+                                        <th>Nama</th>
+                                        <th>Username</th>
+                                        <th>Role</th>
+                                        <th>IP/Device</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="loginHistoryTableBody">
+                                    <tr>
+                                        <td colspan="6" style="text-align: center; color: #999; padding: 30px;">
+                                            Klik untuk memuat riwayat login...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                            <span id="loginHistoryCount" style="font-size: 13px; color: #666;">Total: 0 login</span>
+                            <div style="font-size: 12px; color: #999;">
+                                💡 Data otomatis terhapus setelah 6 bulan untuk menghemat storage
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -125,7 +130,26 @@ const usersModule = {
         // Load filter options jika owner
         if (isOwner) {
             this.loadUserFilterOptions();
-            this.filterLoginHistory();
+            // Tidak otomatis load data, tunggu user expand
+        }
+    },
+
+    // Toggle accordion riwayat login
+    toggleLoginHistory() {
+        const content = document.getElementById('loginHistoryContent');
+        const arrow = document.getElementById('loginHistoryArrow');
+        const isExpanded = content.style.display === 'block';
+        
+        if (isExpanded) {
+            content.style.display = 'none';
+            arrow.style.transform = 'rotate(-90deg)';
+        } else {
+            content.style.display = 'block';
+            arrow.style.transform = 'rotate(0deg)';
+            // Load data pertama kali expand
+            if (document.getElementById('loginHistoryTableBody').innerHTML.includes('Klik untuk memuat')) {
+                this.filterLoginHistory();
+            }
         }
     },
 
@@ -383,10 +407,13 @@ const usersModule = {
         document.getElementById('editUserModal').remove();
         this.loadUsers();
         
-        // Refresh filter user jika owner
+        // Refresh filter user jika owner dan accordion terbuka
         if (currentUser && currentUser.role === 'owner') {
-            this.loadUserFilterOptions();
-            this.filterLoginHistory();
+            const content = document.getElementById('loginHistoryContent');
+            if (content && content.style.display === 'block') {
+                this.loadUserFilterOptions();
+                this.filterLoginHistory();
+            }
         }
         
         app.showToast('✅ User berhasil diupdate!');
@@ -412,10 +439,13 @@ const usersModule = {
         
         this.loadUsers();
         
-        // Refresh filter user jika owner
+        // Refresh filter user jika owner dan accordion terbuka
         if (currentUser && currentUser.role === 'owner') {
-            this.loadUserFilterOptions();
-            this.filterLoginHistory();
+            const content = document.getElementById('loginHistoryContent');
+            if (content && content.style.display === 'block') {
+                this.loadUserFilterOptions();
+                this.filterLoginHistory();
+            }
         }
         
         app.showToast('✅ User dihapus!');
@@ -493,8 +523,10 @@ const usersModule = {
     renderLoginHistoryTable(loginHistory) {
         const tbody = document.getElementById('loginHistoryTableBody');
         const countEl = document.getElementById('loginHistoryCount');
+        const badgeEl = document.getElementById('loginHistoryBadge');
         
         countEl.textContent = `Total: ${loginHistory.length} login`;
+        if (badgeEl) badgeEl.textContent = `${loginHistory.length} login`;
         
         if (loginHistory.length === 0) {
             tbody.innerHTML = `
