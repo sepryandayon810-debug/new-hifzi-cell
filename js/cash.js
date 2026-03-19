@@ -111,68 +111,161 @@ const cashModule = {
     },
     
     renderHTML() {
-        const today = new Date().toLocaleDateString('id-ID', { 
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-        });
-        
-        // ⬅️ PERBARUI: Label dinamis berdasarkan filter
         const periodLabel = this.getFilterLabel();
+        const { startDate, endDate } = this.getDateRange();
+        
+        // ⬅️ TAMBAH: Hitung statistik untuk periode yang dipilih
+        const periodStats = this.calculatePeriodStats(startDate, endDate);
+        
+        // ⬅️ TAMBAH: Format tanggal untuk display
+        const dateRangeText = this.getDateRangeText(startDate, endDate);
         
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-icon sales">💵</div>
-                        <div class="stat-label" id="incomeLabel">Pemasukan ${periodLabel}</div>
-                        <div class="stat-value" id="todayIncome">Rp 0</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon expense">💸</div>
-                        <div class="stat-label" id="expenseLabel">Pengeluaran ${periodLabel}</div>
-                        <div class="stat-value" id="todayExpense">Rp 0</div>
+                
+                <!-- ⬅️ PERBARUI: Header Card dengan Info Periode -->
+                <div class="cash-header-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                     border-radius: 16px; padding: 24px; margin-bottom: 20px; color: white; position: relative; overflow: hidden;">
+                    
+                    <!-- Background decoration -->
+                    <div style="position: absolute; top: -50%; right: -10%; width: 300px; height: 300px; 
+                         background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                    <div style="position: absolute; bottom: -30%; left: -5%; width: 200px; height: 200px; 
+                         background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
+                    
+                    <div style="position: relative; z-index: 1;">
+                        <!-- Badge Periode -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div style="background: rgba(255,255,255,0.2); padding: 6px 16px; border-radius: 20px; 
+                                 font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                <span>📅</span>
+                                <span id="periodBadge">${periodLabel}</span>
+                            </div>
+                            <div style="font-size: 12px; opacity: 0.9; text-align: right;">
+                                <div id="dateRangeText">${dateRangeText}</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Kas di Tangan (Real-time) -->
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Kas di Tangan (Real-time)</div>
+                            <div style="font-size: 42px; font-weight: 700; letter-spacing: -1px;">
+                                Rp ${utils.formatNumber(dataManager.data.settings.currentCash || 0)}
+                            </div>
+                        </div>
+                        
+                        <!-- Info Row -->
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; opacity: 0.9;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span>💰</span>
+                                <span>Modal: Rp ${utils.formatNumber(dataManager.data.settings.modalAwal || 0)}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span>📝</span>
+                                <span>Total Transaksi: ${periodStats.totalTransactions}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span>👤</span>
+                                <span>Shift: ${dataManager.data.settings.currentUser || 'Administrator'}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Laba Card (untuk periode yang dipilih) -->
+                        <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); 
+                             background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); 
+                             padding: 16px 24px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.2);">
+                            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">LABA ${periodLabel.toUpperCase()}</div>
+                            <div style="font-size: 24px; font-weight: 700; color: ${periodStats.net >= 0 ? '#4ade80' : '#f87171'};">
+                                Rp ${utils.formatNumber(periodStats.net)}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">Manajemen Kas</span>
-                        <div style="font-size: 12px; color: #999;">${today}</div>
+                <!-- Stat Cards -->
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                    <div class="stat-card" style="background: white; border-radius: 12px; padding: 20px; 
+                         box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 16px;">
+                        <div class="stat-icon" style="width: 56px; height: 56px; background: #e8f5e9; 
+                             border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">💵</div>
+                        <div>
+                            <div class="stat-label" id="incomeLabel" style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                Pemasukan ${periodLabel}
+                            </div>
+                            <div class="stat-value" id="todayIncome" style="font-size: 24px; font-weight: 700; color: #2e7d32;">
+                                Rp ${utils.formatNumber(periodStats.income)}
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="cash-actions">
-                        <button class="cash-btn in" onclick="cashModule.openModal('in')">
-                            <span style="font-size: 24px;">⬇️</span>
-                            <span>Kas Masuk</span>
+                    <div class="stat-card" style="background: white; border-radius: 12px; padding: 20px; 
+                         box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 16px;">
+                        <div class="stat-icon" style="width: 56px; height: 56px; background: #ffebee; 
+                             border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">💸</div>
+                        <div>
+                            <div class="stat-label" id="expenseLabel" style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                Pengeluaran ${periodLabel}
+                            </div>
+                            <div class="stat-value" id="todayExpense" style="font-size: 24px; font-weight: 700; color: #c62828;">
+                                Rp ${utils.formatNumber(periodStats.expense)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manajemen Kas -->
+                <div class="card" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <span class="card-title" style="font-size: 18px; font-weight: 600; color: #333;">Manajemen Kas</span>
+                        <div style="font-size: 12px; color: #999;">${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                    </div>
+                    
+                    <div class="cash-actions" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                        <button class="cash-btn in" onclick="cashModule.openModal('in')" 
+                                style="background: #e8f5e9; border: 2px solid #4caf50; color: #2e7d32; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                            <span style="font-size: 28px;">⬇️</span>
+                            <span style="font-size: 14px; font-weight: 600;">Kas Masuk</span>
                         </button>
-                        <button class="cash-btn out" onclick="cashModule.openModal('out')">
-                            <span style="font-size: 24px;">⬆️</span>
-                            <span>Kas Keluar</span>
+                        
+                        <button class="cash-btn out" onclick="cashModule.openModal('out')"
+                                style="background: #ffebee; border: 2px solid #f44336; color: #c62828; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                            <span style="font-size: 28px;">⬆️</span>
+                            <span style="font-size: 14px; font-weight: 600;">Kas Keluar</span>
                         </button>
-                        <button class="cash-btn tarik-tunai" onclick="cashModule.openTarikTunai()">
-                            <span style="font-size: 24px;">🏧</span>
-                            <span>Tarik Tunai</span>
+                        
+                        <button class="cash-btn tarik-tunai" onclick="cashModule.openTarikTunai()"
+                                style="background: #e3f2fd; border: 2px solid #2196f3; color: #1565c0; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                            <span style="font-size: 28px;">🏧</span>
+                            <span style="font-size: 14px; font-weight: 600;">Tarik Tunai</span>
                         </button>
-                        <button class="cash-btn topup" onclick="cashModule.openTopUp()">
-                            <span style="font-size: 24px;">💜</span>
-                            <span>Top Up</span>
+                        
+                        <button class="cash-btn topup" onclick="cashModule.openTopUp()"
+                                style="background: #f3e5f5; border: 2px solid #9c27b0; color: #6a1b9a; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                            <span style="font-size: 28px;">💜</span>
+                            <span style="font-size: 14px; font-weight: 600;">Top Up</span>
                         </button>
-                        <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()">
-                            <span style="font-size: 24px;">💰</span>
-                            <span>Modal Awal</span>
+                        
+                        <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()"
+                                style="background: #fff8e1; border: 2px solid #ffc107; color: #f57f17; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                            <span style="font-size: 28px;">💰</span>
+                            <span style="font-size: 14px; font-weight: 600;">Modal Awal</span>
                         </button>
-                        <button class="cash-btn history" onclick="cashModule.openHistory()">
-                            <span style="font-size: 24px;">📋</span>
-                            <span>Riwayat</span>
+                        
+                        <button class="cash-btn history" onclick="cashModule.openHistory()"
+                                style="background: #eceff1; border: 2px solid #607d8b; color: #37474f; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                            <span style="font-size: 28px;">📋</span>
+                            <span style="font-size: 14px; font-weight: 600;">Riwayat</span>
                         </button>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
-                        <span class="card-title">Riwayat Transaksi Kas</span>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <!-- Riwayat Transaksi -->
+                <div class="card" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+                        <span class="card-title" style="font-size: 18px; font-weight: 600; color: #333;">Riwayat Transaksi Kas</span>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                             <select id="filterPreset" onchange="cashModule.applyFilter()" 
-                                    style="padding: 6px 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 13px;">
+                                    style="padding: 8px 16px; border-radius: 8px; border: 2px solid #e0e0e0; font-size: 14px; background: white; cursor: pointer;">
                                 <option value="today">📅 Hari Ini</option>
                                 <option value="yesterday">📅 Kemarin</option>
                                 <option value="week">📆 Minggu Ini</option>
@@ -180,21 +273,25 @@ const cashModule = {
                                 <option value="year">📊 Tahun Ini</option>
                                 <option value="custom">🔍 Custom...</option>
                             </select>
+                            
                             <div id="customDateRange" style="display: none; gap: 8px; align-items: center;">
                                 <input type="date" id="filterStartDate" onchange="cashModule.applyFilter()" 
-                                       style="padding: 6px; border-radius: 6px; border: 1px solid #ddd; font-size: 12px;">
-                                <span>s/d</span>
+                                       style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
+                                <span style="color: #666;">s/d</span>
                                 <input type="date" id="filterEndDate" onchange="cashModule.applyFilter()" 
-                                       style="padding: 6px; border-radius: 6px; border: 1px solid #ddd; font-size: 12px;">
+                                       style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
                             </div>
+                            
                             <button class="btn btn-sm btn-secondary" onclick="cashModule.recalculateCash()" 
-                                    style="font-size: 12px; padding: 6px 12px;">
+                                    style="font-size: 13px; padding: 8px 16px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 8px; cursor: pointer;">
                                 🔄 Recalculate
                             </button>
                         </div>
                     </div>
-                    <div class="transaction-list" id="cashTransactionList"></div>
-                    <div id="filterSummary" style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-top: 10px; font-size: 13px;">
+                    
+                    <div class="transaction-list" id="cashTransactionList" style="min-height: 200px;"></div>
+                    
+                    <div id="filterSummary" style="padding: 16px; background: #f8f9fa; border-radius: 8px; margin-top: 16px; font-size: 14px; border: 1px solid #e0e0e0;">
                         <!-- Summary will be inserted here -->
                     </div>
                 </div>
@@ -208,9 +305,53 @@ const cashModule = {
         if (startDateInput) startDateInput.value = todayStr;
         if (endDateInput) endDateInput.value = todayStr;
         
-        // ⬅️ TAMBAH: Set filter dropdown ke nilai yang tersimpan
+        // Set filter dropdown ke nilai yang tersimpan
         const filterSelect = document.getElementById('filterPreset');
         if (filterSelect) filterSelect.value = this.filterState.preset;
+        
+        // Show/hide custom date range
+        const customRange = document.getElementById('customDateRange');
+        if (customRange) {
+            customRange.style.display = this.filterState.preset === 'custom' ? 'flex' : 'none';
+        }
+    },
+    
+    // ⬅️ TAMBAH: Method baru untuk menghitung statistik periode
+    calculatePeriodStats(startDate, endDate) {
+        const transactions = dataManager.data.cashTransactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate >= startDate && tDate <= endDate;
+        });
+        
+        const income = transactions
+            .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
+        const expense = transactions
+            .filter(t => t.type === 'out')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
+        return {
+            income,
+            expense,
+            net: income - expense,
+            totalTransactions: transactions.length
+        };
+    },
+    
+    // ⬅️ TAMBAH: Method baru untuk format teks tanggal range
+    getDateRangeText(startDate, endDate) {
+        const options = { day: 'numeric', month: 'short', year: 'numeric' };
+        
+        if (this.filterState.preset === 'today') {
+            return startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        } else if (this.filterState.preset === 'yesterday') {
+            return startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        } else if (startDate.toDateString() === endDate.toDateString()) {
+            return startDate.toLocaleDateString('id-ID', options);
+        } else {
+            return `${startDate.toLocaleDateString('id-ID', options)} - ${endDate.toLocaleDateString('id-ID', options)}`;
+        }
     },
     
     applyFilter() {
@@ -225,20 +366,9 @@ const cashModule = {
         
         this.filterState.preset = preset;
         
-        // ⬅️ TAMBAH: Update label stat card saat filter berubah
-        this.updateStatLabels();
-        this.updateStats();
+        // ⬅️ PERBARUI: Re-render seluruh HTML untuk update semua komponen
+        this.renderHTML();
         this.renderTransactions();
-    },
-    
-    // ⬅️ TAMBAH: Method baru untuk update label stat card
-    updateStatLabels() {
-        const periodLabel = this.getFilterLabel();
-        const incomeLabel = document.getElementById('incomeLabel');
-        const expenseLabel = document.getElementById('expenseLabel');
-        
-        if (incomeLabel) incomeLabel.textContent = `Pemasukan ${periodLabel}`;
-        if (expenseLabel) expenseLabel.textContent = `Pengeluaran ${periodLabel}`;
     },
     
     getDateRange() {
@@ -304,26 +434,16 @@ const cashModule = {
     },
     
     updateStats() {
+        // ⬅️ PERBARUI: Method ini sekarang tidak digunakan karena renderHTML sudah menghitung semuanya
+        // Tetap dipertahankan untuk kompatibilitas
         const { startDate, endDate } = this.getDateRange();
-        
-        const transactions = dataManager.data.cashTransactions.filter(t => {
-            const tDate = new Date(t.date);
-            return tDate >= startDate && tDate <= endDate;
-        });
-        
-        const income = transactions
-            .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
-            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
-        
-        const expense = transactions
-            .filter(t => t.type === 'out')
-            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        const stats = this.calculatePeriodStats(startDate, endDate);
         
         const incomeEl = document.getElementById('todayIncome');
         const expenseEl = document.getElementById('todayExpense');
         
-        if (incomeEl) incomeEl.textContent = 'Rp ' + utils.formatNumber(income);
-        if (expenseEl) expenseEl.textContent = 'Rp ' + utils.formatNumber(expense);
+        if (incomeEl) incomeEl.textContent = 'Rp ' + utils.formatNumber(stats.income);
+        if (expenseEl) expenseEl.textContent = 'Rp ' + utils.formatNumber(stats.expense);
     },
     
     renderTransactions() {
@@ -349,17 +469,21 @@ const cashModule = {
         
         const summaryEl = document.getElementById('filterSummary');
         if (summaryEl) {
-            const dateRangeText = this.getFilterLabel();
+            const periodLabel = this.getFilterLabel();
             summaryEl.innerHTML = `
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: center;">
                     <div>
-                        <strong>${dateRangeText}</strong><br>
-                        <small>${transactions.length} transaksi</small>
+                        <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px;">
+                            Ringkasan ${periodLabel}
+                        </div>
+                        <div style="font-size: 13px; color: #666;">
+                            ${transactions.length} transaksi kas
+                        </div>
                     </div>
                     <div style="text-align: right;">
-                        <div style="color: #4caf50;">⬇️ Masuk: Rp ${utils.formatNumber(totalIncome)}</div>
-                        <div style="color: #f44336;">⬆️ Keluar: Rp ${utils.formatNumber(totalExpense)}</div>
-                        <div style="font-weight: bold; margin-top: 4px; color: ${net >= 0 ? '#4caf50' : '#f44336'};">
+                        <div style="color: #4caf50; font-weight: 600; font-size: 15px;">⬇️ Masuk: Rp ${utils.formatNumber(totalIncome)}</div>
+                        <div style="color: #f44336; font-weight: 600; font-size: 15px; margin: 4px 0;">⬆️ Keluar: Rp ${utils.formatNumber(totalExpense)}</div>
+                        <div style="font-weight: 700; font-size: 16px; color: ${net >= 0 ? '#2e7d32' : '#c62828'}; padding-top: 4px; border-top: 1px solid #e0e0e0; margin-top: 4px;">
                             Net: Rp ${utils.formatNumber(net)}
                         </div>
                     </div>
@@ -369,9 +493,10 @@ const cashModule = {
         
         if (transactions.length === 0) {
             container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📋</div>
-                    <p>Belum ada transaksi ${this.getFilterLabel().toLowerCase()}</p>
+                <div class="empty-state" style="text-align: center; padding: 48px 20px; color: #999;">
+                    <div style="font-size: 64px; margin-bottom: 16px;">📋</div>
+                    <p style="font-size: 16px; margin: 0;">Belum ada transaksi ${this.getFilterLabel().toLowerCase()}</p>
+                    <p style="font-size: 13px; margin-top: 8px; opacity: 0.7;">Transaksi kas masuk dan keluar akan muncul di sini</p>
                 </div>
             `;
             return;
@@ -388,9 +513,9 @@ const cashModule = {
             }, 0);
             
             html += `
-                <div style="background: #f8f9fa; padding: 8px 12px; margin: 10px 0 5px 0; border-radius: 6px; font-weight: 600; font-size: 13px; color: #666; display: flex; justify-content: space-between;">
+                <div style="background: #f5f5f5; padding: 10px 16px; margin: 16px 0 8px 0; border-radius: 8px; font-weight: 600; font-size: 14px; color: #555; display: flex; justify-content: space-between; align-items: center;">
                     <span>${dateKey}</span>
-                    <span style="color: ${dayTotal >= 0 ? '#4caf50' : '#f44336'};">
+                    <span style="color: ${dayTotal >= 0 ? '#4caf50' : '#f44336'}; font-weight: 700;">
                         ${dayTotal >= 0 ? '+' : ''}Rp ${utils.formatNumber(Math.abs(dayTotal))}
                     </span>
                 </div>
@@ -399,7 +524,7 @@ const cashModule = {
             dayTrans.forEach(t => {
                 const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup';
                 const prefix = isIncome ? '+' : '-';
-                const amountClass = isIncome ? 'income' : 'expense';
+                const amountColor = isIncome ? '#2e7d32' : '#c62828';
                 
                 let typeLabel = '';
                 if (t.type === 'modal_in') typeLabel = ' (Modal)';
@@ -409,20 +534,22 @@ const cashModule = {
                 const timeStr = new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                 
                 html += `
-                    <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee;">
+                    <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='transparent'">
                         <div class="transaction-info" style="flex: 1;">
-                            <div class="transaction-title" style="font-weight: 500; margin-bottom: 4px;">${t.note || t.category}${typeLabel}</div>
+                            <div class="transaction-title" style="font-weight: 600; margin-bottom: 4px; color: #333; font-size: 14px;">${t.note || t.category}${typeLabel}</div>
                             <div class="transaction-meta" style="font-size: 12px; color: #999;">${timeStr}</div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <div class="transaction-amount ${amountClass}" style="font-weight: 600; ${isIncome ? 'color: #4caf50;' : 'color: #f44336;'}">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div class="transaction-amount" style="font-weight: 700; font-size: 16px; color: ${amountColor};">
                                 ${prefix} Rp ${utils.formatNumber(t.amount)}
                             </div>
                             <button class="btn-delete-cash" data-transaction-id="${t.id}" 
-                                    style="width: 32px; height: 32px; border-radius: 50%; background: #ffebee; 
-                                           border: 2px solid #f44336; color: #f44336; font-size: 14px; cursor: pointer; 
+                                    style="width: 36px; height: 36px; border-radius: 50%; background: #ffebee; 
+                                           border: 2px solid #f44336; color: #f44336; font-size: 16px; cursor: pointer; 
                                            display: flex; align-items: center; justify-content: center;
                                            transition: all 0.2s;"
+                                    onmouseover="this.style.background='#f44336'; this.style.color='white';"
+                                    onmouseout="this.style.background='#ffebee'; this.style.color='#f44336';"
                                     title="Hapus transaksi">🗑️</button>
                         </div>
                     </div>
@@ -469,14 +596,12 @@ const cashModule = {
     
     attachDeleteListeners() {
         const deleteButtons = document.querySelectorAll('.btn-delete-cash');
-        console.log('Found delete buttons:', deleteButtons.length);
         
         deleteButtons.forEach(btn => {
             btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const transactionId = parseInt(btn.getAttribute('data-transaction-id'));
-                console.log('Deleting transaction ID:', transactionId);
                 this.deleteTransaction(transactionId);
             };
         });
@@ -488,7 +613,6 @@ const cashModule = {
         });
         
         if (!t) {
-            console.error('Transaction not found. ID:', transactionId);
             app.showToast('Transaksi tidak ditemukan!');
             return;
         }
@@ -526,7 +650,7 @@ const cashModule = {
         
         dataManager.save();
         app.updateHeader();
-        this.updateStats();
+        this.renderHTML(); // ⬅️ PERBARUI: Re-render untuk update semua stats
         this.renderTransactions();
         app.showToast('Transaksi dihapus! Kas disesuaikan.');
     },
@@ -535,40 +659,42 @@ const cashModule = {
         const isIn = type === 'in';
         
         document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="cashModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <span class="modal-title">${isIn ? 'Kas Masuk' : 'Kas Keluar'}</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('cashModal')">×</button>
+            <div class="modal active" id="cashModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">${isIn ? '💵 Kas Masuk' : '💸 Kas Keluar'}</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('cashModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s;">×</button>
                     </div>
                     
-                    <div class="form-group">
-                        <label>Jumlah (Rp)</label>
-                        <input type="number" id="cashAmount" placeholder="0">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Kategori</label>
-                        <select id="cashCategory">
-                            ${isIn ? `
-                                <option value="penjualan">Penjualan</option>
-                                <option value="lainnya">Lainnya</option>
-                            ` : `
-                                <option value="operasional">Biaya Operasional</option>
-                                <option value="gaji">Gaji Karyawan</option>
-                                <option value="lainnya">Lainnya</option>
-                            `}
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Keterangan</label>
-                        <textarea id="cashNote" rows="3" placeholder="Catatan..."></textarea>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveTransaction('${type}')">Simpan</button>
+                    <div style="padding: 24px;">
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Jumlah (Rp)</label>
+                            <input type="number" id="cashAmount" placeholder="0" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 18px; font-weight: 600; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Kategori</label>
+                            <select id="cashCategory" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white; cursor: pointer;">
+                                ${isIn ? `
+                                    <option value="penjualan">Penjualan</option>
+                                    <option value="lainnya">Lainnya</option>
+                                ` : `
+                                    <option value="operasional">Biaya Operasional</option>
+                                    <option value="gaji">Gaji Karyawan</option>
+                                    <option value="lainnya">Lainnya</option>
+                                `}
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 24px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Keterangan</label>
+                            <textarea id="cashNote" rows="3" placeholder="Catatan transaksi..." style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; resize: vertical; font-family: inherit;"></textarea>
+                        </div>
+                        
+                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
+                            <button class="btn btn-primary" onclick="cashModule.saveTransaction('${type}')" style="padding: 12px 24px; border-radius: 10px; border: none; background: ${isIn ? '#4caf50' : '#f44336'}; color: white; font-weight: 600; cursor: pointer; font-size: 15px;">Simpan Transaksi</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -610,40 +736,40 @@ const cashModule = {
         dataManager.save();
         app.updateHeader();
         this.closeModal('cashModal');
-        this.updateStats();
+        this.renderHTML(); // ⬅️ PERBARUI: Re-render untuk update stats
         this.renderTransactions();
         app.showToast('Transaksi kas tersimpan!');
     },
     
     openModalAwal() {
         document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="modalAwalModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <span class="modal-title">💰 Input Modal Awal</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('modalAwalModal')">×</button>
+            <div class="modal active" id="modalAwalModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">💰 Input Modal Awal</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('modalAwalModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
-                    <div class="info-box warning">
-                        <div class="info-title">📌 Modal Awal Shift</div>
-                        <div class="info-text">
-                            Modal akan ditambahkan ke Kas di Tangan untuk memulai shift baru.
+                    <div style="padding: 24px;">
+                        <div style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                            <div style="font-weight: 600; color: #f57f17; margin-bottom: 4px; font-size: 14px;">📌 Modal Awal Shift</div>
+                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Modal akan ditambahkan ke Kas di Tangan untuk memulai shift baru.</div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label>Jumlah Modal (Rp)</label>
-                        <input type="number" id="modalAwalAmount" placeholder="Contoh: 500000">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Keterangan</label>
-                        <textarea id="modalAwalNote" rows="2"></textarea>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')">Batal</button>
-                        <button class="btn btn-warning" onclick="cashModule.saveModalAwal()">Simpan Modal</button>
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Jumlah Modal (Rp)</label>
+                            <input type="number" id="modalAwalAmount" placeholder="Contoh: 500000" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 18px; font-weight: 600;">
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 24px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Keterangan</label>
+                            <textarea id="modalAwalNote" rows="2" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; resize: vertical; font-family: inherit;"></textarea>
+                        </div>
+                        
+                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
+                            <button class="btn btn-warning" onclick="cashModule.saveModalAwal()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #ffc107; color: #333; font-weight: 600; cursor: pointer; font-size: 15px;">Simpan Modal</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -676,62 +802,61 @@ const cashModule = {
         dataManager.save();
         app.updateHeader();
         this.closeModal('modalAwalModal');
-        this.updateStats();
+        this.renderHTML();
         this.renderTransactions();
         app.showToast(`Modal Rp ${utils.formatNumber(amount)} tersimpan! Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
     },
     
     openTopUp() {
         document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="topUpModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <span class="modal-title">💜 Top Up</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('topUpModal')">×</button>
+            <div class="modal active" id="topUpModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">💜 Top Up</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('topUpModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
-                    <div class="info-box" style="background: #f3e5f5;">
-                        <div class="info-title">Admin Fee = Laba!</div>
-                        <div class="info-text">
-                            Total bayar = Nominal + Admin Fee<br>
-                            Admin fee masuk ke laba bersih
+                    <div style="padding: 24px;">
+                        <div style="background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                            <div style="font-weight: 600; color: #6a1b9a; margin-bottom: 4px; font-size: 14px;">Admin Fee = Laba!</div>
+                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Total bayar = Nominal + Admin Fee<br>Admin fee masuk ke laba bersih</div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label>Jenis</label>
-                        <select id="topUpType">
-                            <option value="dana">DANA</option>
-                            <option value="gopay">GoPay</option>
-                            <option value="ovo">OVO</option>
-                            <option value="shopeepay">ShopeePay</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Nominal (Rp)</label>
-                        <input type="number" id="topUpNominal" placeholder="50000" oninput="cashModule.calcTopUp()">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Admin Fee (Rp)</label>
-                        <input type="number" id="topUpAdmin" placeholder="1500" oninput="cashModule.calcTopUp()">
-                    </div>
-                    
-                    <div class="calculation-box" style="background: #f3e5f5;">
-                        <div class="calc-row">
-                            <span>Total Bayar:</span>
-                            <span id="topUpTotal">Rp 0</span>
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Jenis</label>
+                            <select id="topUpType" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white;">
+                                <option value="dana">DANA</option>
+                                <option value="gopay">GoPay</option>
+                                <option value="ovo">OVO</option>
+                                <option value="shopeepay">ShopeePay</option>
+                            </select>
                         </div>
-                        <div class="calc-row" style="color: var(--success);">
-                            <span>Laba (Admin):</span>
-                            <span id="topUpProfit">Rp 0</span>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Nominal (Rp)</label>
+                            <input type="number" id="topUpNominal" placeholder="50000" oninput="cashModule.calcTopUp()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
                         </div>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="background: #9c27b0;">Proses</button>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Admin Fee (Rp)</label>
+                            <input type="number" id="topUpAdmin" placeholder="1500" oninput="cashModule.calcTopUp()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
+                        </div>
+                        
+                        <div style="background: #f3e5f5; padding: 16px; border-radius: 10px; margin-bottom: 24px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px;">
+                                <span>Total Bayar:</span>
+                                <span id="topUpTotal" style="font-weight: 700;">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #4caf50; font-weight: 600;">
+                                <span>Laba (Admin):</span>
+                                <span id="topUpProfit">Rp 0</span>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
+                            <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #9c27b0; color: white; font-weight: 600; cursor: pointer; font-size: 15px;">Proses</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -795,52 +920,51 @@ const cashModule = {
         dataManager.save();
         app.updateHeader();
         this.closeModal('topUpModal');
-        this.updateStats();
+        this.renderHTML();
         this.renderTransactions();
         app.showToast(`Top up berhasil! Laba: Rp ${utils.formatNumber(admin)}`);
     },
     
     openTarikTunai() {
         document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="tarikTunaiModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <span class="modal-title">🏧 Tarik Tunai</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')">×</button>
+            <div class="modal active" id="tarikTunaiModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">🏧 Tarik Tunai</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
-                    <div class="info-box" style="background: #e1f5fe;">
-                        <div class="info-title">Admin Fee = Laba!</div>
-                        <div class="info-text">
-                            Nominal = Uang diberikan ke customer<br>
-                            Admin fee = Keuntungan konter
+                    <div style="padding: 24px;">
+                        <div style="background: #e1f5fe; border-left: 4px solid #2196f3; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                            <div style="font-weight: 600; color: #1565c0; margin-bottom: 4px; font-size: 14px;">Admin Fee = Laba!</div>
+                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Nominal = Uang diberikan ke customer<br>Admin fee = Keuntungan konter</div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label>Nominal Tarik (Rp)</label>
-                        <input type="number" id="tarikNominal" placeholder="100000" oninput="cashModule.calcTarik()">
-                    </div>
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Nominal Tarik (Rp)</label>
+                            <input type="number" id="tarikNominal" placeholder="100000" oninput="cashModule.calcTarik()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
+                        </div>
 
-                    <div class="form-group">
-                        <label>Admin Fee (Rp)</label>
-                        <input type="number" id="tarikAdmin" placeholder="2500" oninput="cashModule.calcTarik()">
-                    </div>
-                    
-                    <div class="calculation-box" style="background: #e1f5fe;">
-                        <div class="calc-row">
-                            <span>Total Keluar dari Kas:</span>
-                            <span id="tarikTotal" style="color: var(--danger);">Rp 0</span>
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Admin Fee (Rp)</label>
+                            <input type="number" id="tarikAdmin" placeholder="2500" oninput="cashModule.calcTarik()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
                         </div>
-                        <div class="calc-row" style="color: var(--success);">
-                            <span>Laba (Admin):</span>
-                            <span id="tarikProfit">Rp 0</span>
+                        
+                        <div style="background: #e1f5fe; padding: 16px; border-radius: 10px; margin-bottom: 24px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px;">
+                                <span>Total Keluar dari Kas:</span>
+                                <span id="tarikTotal" style="font-weight: 700; color: #f44336;">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #4caf50; font-weight: 600;">
+                                <span>Laba (Admin):</span>
+                                <span id="tarikProfit">Rp 0</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')">Batal</button>
-                        <button class="btn btn-info" onclick="cashModule.saveTarikTunai()">Proses</button>
+                        
+                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
+                            <button class="btn btn-info" onclick="cashModule.saveTarikTunai()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #2196f3; color: white; font-weight: 600; cursor: pointer; font-size: 15px;">Proses</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -908,15 +1032,14 @@ const cashModule = {
         dataManager.save();
         app.updateHeader();
         this.closeModal('tarikTunaiModal');
-        this.updateStats();
+        this.renderHTML();
         this.renderTransactions();
         app.showToast(`Tarik tunai berhasil! Laba: Rp ${utils.formatNumber(admin)}`);
     },
     
     openHistory() {
         this.filterState.preset = 'today';
-        this.renderHTML(); // ⬅️ PERBARUI: Re-render untuk update label
-        this.updateStats();
+        this.renderHTML();
         this.renderTransactions();
         document.getElementById('cashTransactionList')?.scrollIntoView({ behavior: 'smooth' });
     },
@@ -938,7 +1061,7 @@ const cashModule = {
         dataManager.save();
         
         app.updateHeader();
-        this.updateStats();
+        this.renderHTML();
         
         app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(newCash)}`);
     }
