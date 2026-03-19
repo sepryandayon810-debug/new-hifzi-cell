@@ -252,6 +252,10 @@ function jsonResponse(data) {
         switch(range) {
             case 'today':
                 return date.toDateString() === now.toDateString();
+
+            case 'yesterday':
+                const yesterday = getYesterdayDate();
+                return date.toDateString() === yesterday.toDateString();
                 
             case 'week':
                 const startOfWeek = new Date(now);
@@ -277,6 +281,7 @@ function jsonResponse(data) {
     function getTimeFilterLabel(filter) {
         const labels = {
             'today': 'Hari Ini',
+            'yesterday': 'Hari Kemarin',
             'week': 'Minggu Ini',
             'month': 'Bulan Ini',
             'year': 'Tahun Ini',
@@ -288,6 +293,7 @@ function jsonResponse(data) {
     function getTimeFilterIcon(filter) {
         const icons = {
             'today': '📅',
+            'yesterday': '⏮️',
             'week': '📆',
             'month': '🗓️',
             'year': '📊',
@@ -723,6 +729,7 @@ function jsonResponse(data) {
     function renderTimeFilter() {
         const filters = [
             { key: 'today', label: 'Hari Ini', icon: '📅' },
+            { key: 'yesterday', label: 'Kemarin', icon: '⏮️' },  // TAMBAHAN INI
             { key: 'week', label: 'Minggu Ini', icon: '📆' },
             { key: 'month', label: 'Bulan Ini', icon: '🗓️' },
             { key: 'year', label: 'Tahun Ini', icon: '📊' },
