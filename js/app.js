@@ -109,7 +109,7 @@ const router = {
                 usersModule.init();
                 break;
             case 'telegram':
-                telegramModule.init(); // PERBAIKAN: Panggil module telegram
+                TelegramModule.init(); // PERBAIKAN: Panggil module telegram
                 break;
             case 'cloud':
                 cloudModule.init(); // PERBAIKAN: Panggil module cloud
