@@ -1,6 +1,6 @@
 /**
  * Telegram Bot Integration Module + SALDO INTEGRATION
- * VERSI GITHUB PAGES - Tanpa proxy, CORS normal
+ * VERSI FILE LOKAL - Menggunakan Proxy untuk bypass CORS
  * UPDATE: Tambahan Filter Waktu (Hari Ini, Minggu Ini, Bulan Ini, Tahun Ini)
  */
 
@@ -40,7 +40,7 @@ const TelegramModule = (function() {
     let isInitialized = false;
     
     // ==========================================
-    // GAS CODE TEMPLATE (SAMA)
+    // GAS CODE TEMPLATE
     // ==========================================
     
     const GAS_CODE = `/**
@@ -51,29 +51,75 @@ const TelegramModule = (function() {
 const SHEET_TOPUP = 'TOP UP';
 const SHEET_STEP = 'STEP';
 
-function doPost(e) {
+function doGet(e) {
+  console.log('doGet called:', JSON.stringify(e.parameter));
+  
   try {
-    const data = JSON.parse(e.postData.contents);
-    const action = data.action;
-    
-    switch(action) {
-      case 'initSaldo':
-        return initSaldoTransaction(data);
-      case 'completeSaldo':
-        return completeSaldoTransaction(data);
-      default:
-        return jsonResponse({ success: false, error: 'Unknown action: ' + action });
+    // Support untuk proxy (kirim data via query params)
+    if (e.parameter._method === 'POST' && e.parameter._body) {
+      try {
+        const postData = JSON.parse(decodeURIComponent(e.parameter._body));
+        return handleAction(postData);
+      } catch (err) {
+        return jsonResponse({ success: false, error: 'Invalid _body JSON: ' + err.toString() });
+      }
     }
+    
+    const action = e.parameter.action;
+    
+    if (action === 'test') {
+      return jsonResponse({ 
+        success: true, 
+        message: 'Koneksi berhasil!',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    return jsonResponse({ 
+      success: false, 
+      error: 'Action tidak valid: ' + action,
+      received: e.parameter
+    });
+    
   } catch (error) {
+    console.error('Error in doGet:', error);
     return jsonResponse({ success: false, error: error.toString() });
   }
 }
 
-function doGet(e) {
-  if (e.parameter.action === 'test') {
-    return jsonResponse({ success: true, message: 'Koneksi berhasil!' });
+function doPost(e) {
+  console.log('doPost called');
+  
+  try {
+    let data;
+    if (e.postData && e.postData.contents) {
+      data = JSON.parse(e.postData.contents);
+    } else {
+      return jsonResponse({ success: false, error: 'No post data' });
+    }
+    
+    return handleAction(data);
+    
+  } catch (error) {
+    console.error('Error in doPost:', error);
+    return jsonResponse({ success: false, error: error.toString() });
   }
-  return jsonResponse({ success: false, error: 'Action tidak valid' });
+}
+
+function handleAction(data) {
+  const action = data.action;
+  console.log('Action:', action);
+  
+  switch(action) {
+    case 'initSaldo':
+      return initSaldoTransaction(data);
+    case 'completeSaldo':
+      return completeSaldoTransaction(data);
+    case 'test':
+      return jsonResponse({ success: true, message: 'POST test OK' });
+    default:
+      return jsonResponse({ success: false, error: 'Unknown action: ' + action });
+  }
 }
 
 function initSaldoTransaction(data) {
@@ -100,7 +146,10 @@ function initSaldoTransaction(data) {
     const transaksiId = chatId + '_' + now.getTime();
     const matchKey = chatId + '-waiting';
     
-    const stepRow = [transaksiId, chatId, '', '', 'waiting', matchKey, namaItem, now.toISOString()];
+    const stepRow = [
+      transaksiId, chatId, '', '', 'waiting', matchKey, namaItem, now.toISOString()
+    ];
+    
     const newRow = sheetStep.getLastRow() + 1;
     sheetStep.getRange(newRow, 1, 1, stepRow.length).setValues([stepRow]);
     
@@ -108,7 +157,8 @@ function initSaldoTransaction(data) {
       success: true, 
       transaksiId: transaksiId,
       matchKey: matchKey,
-      row: newRow
+      row: newRow,
+      message: 'Silahkan input nominal'
     });
     
   } catch (error) {
@@ -122,10 +172,14 @@ function completeSaldoTransaction(data) {
     const matchKey = data.matchKey;
     const nominal = parseInt(data.nominal);
     
+    if (!sheetId || !matchKey || !nominal) {
+      return jsonResponse({ success: false, error: 'Data tidak lengkap' });
+    }
+    
     const spreadsheet = SpreadsheetApp.openById(sheetId);
     const sheetStep = spreadsheet.getSheetByName(SHEET_STEP);
-    let sheetTopup = spreadsheet.getSheetByName(SHEET_TOPUP);
     
+    let sheetTopup = spreadsheet.getSheetByName(SHEET_TOPUP);
     if (!sheetTopup) {
       sheetTopup = spreadsheet.insertSheet(SHEET_TOPUP);
       const headers = ['BULAN', 'TANGGAL', 'NAMA ITEM', 'SALDO TOP UP'];
@@ -163,6 +217,7 @@ function completeSaldoTransaction(data) {
     
     return jsonResponse({ 
       success: true,
+      message: 'Transaksi selesai!',
       data: {
         bulan: topupRow[0],
         tanggal: topupRow[1],
@@ -181,7 +236,7 @@ function jsonResponse(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
 }`;
-
+    
     // ==========================================
     // INIT
     // ==========================================
@@ -192,10 +247,6 @@ function jsonResponse(data) {
         
         console.log('[Telegram+Saldo] Initializing...');
         loadData();
-        
-        // Cek environment
-        console.log('[Telegram+Saldo] Host:', window.location.host);
-        console.log('[Telegram+Saldo] Protocol:', window.location.protocol);
     }
     
     function loadData() {
@@ -297,11 +348,28 @@ function jsonResponse(data) {
     }
     
     // ==========================================
-    // SALDO MODULE - VERSI GITHUB (TANPA PROXY)
+    // SALDO MODULE - VERSI FILE LOKAL DENGAN PROXY
     // ==========================================
     
     const SaldoModule = {
         transaksiAktif: null,
+        useProxy: true,
+        
+        // Proxy yang support POST dengan body
+        getProxyUrl: function(targetUrl, payload) {
+            // CORS Anywhere (perlu request access dulu di cors-anywhere.herokuapp.com)
+            // atau gunakan allorigins dengan method hack
+            const encodedPayload = encodeURIComponent(JSON.stringify(payload));
+            return `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}&_method=POST&_body=${encodedPayload}`;
+        },
+        
+        // Method alternatif: kirim via GET dengan data di query
+        buildGetUrl: function(baseUrl, data) {
+            const params = new URLSearchParams();
+            params.append('_method', 'POST');
+            params.append('_body', JSON.stringify(data));
+            return `${baseUrl}?${params.toString()}`;
+        },
         
         validateConfig: function() {
             const errors = [];
@@ -323,7 +391,35 @@ function jsonResponse(data) {
         renderSaldoSection: function() {
             const isWaiting = this.transaksiAktif !== null;
             const validation = this.validateConfig();
+            const isFileProtocol = window.location.protocol === 'file:';
             
+            // Warning untuk file lokal
+            let fileWarning = '';
+            if (isFileProtocol) {
+                fileWarning = `
+                    <div style="background: #e3f2fd; border: 2px solid #2196f3; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                        <div style="color: #1565c0; font-weight: 600; margin-bottom: 8px;">
+                            ℹ️ Mode File Lokal Terdeteksi
+                        </div>
+                        <div style="color: #1565c0; font-size: 13px; margin-bottom: 12px;">
+                            Menggunakan proxy untuk koneksi ke Google Sheets.
+                            <br>Untuk performa lebih baik, gunakan web server (Live Server).
+                        </div>
+                        <button onclick="TelegramModule.SaldoModule.testProxy()" 
+                                style="background: #2196f3; color: white; border: none; padding: 8px 16px; 
+                                       border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 8px;">
+                            🧪 Test Proxy
+                        </button>
+                        <button onclick="window.open('https://github.com/', '_blank')" 
+                                style="background: #333; color: white; border: none; padding: 8px 16px; 
+                                       border-radius: 6px; cursor: pointer; font-size: 12px;">
+                            📤 Upload ke GitHub
+                        </button>
+                    </div>
+                `;
+            }
+            
+            // Warning config belum lengkap
             let warningHtml = '';
             if (!validation.valid && !isWaiting) {
                 warningHtml = `
@@ -334,6 +430,9 @@ function jsonResponse(data) {
                         <ul style="margin: 0; padding-left: 20px; color: #e65100; font-size: 13px;">
                             ${validation.errors.map(e => `<li>${e}</li>`).join('')}
                         </ul>
+                        <div style="margin-top: 12px; font-size: 12px; color: #666;">
+                            Scroll ke bawah untuk mengisi konfigurasi di bagian "☁️ Konfigurasi Google Sheet"
+                        </div>
                     </div>
                 `;
             }
@@ -344,6 +443,7 @@ function jsonResponse(data) {
                         💰 Input Saldo ke Google Sheets
                     </h3>
                     
+                    ${fileWarning}
                     ${warningHtml}
                     ${isWaiting ? this.renderInputNominal() : this.renderPilihJenis()}
                     
@@ -357,7 +457,8 @@ function jsonResponse(data) {
             return `
                 <div style="margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 8px; font-size: 11px; font-family: monospace;">
                     <div style="font-weight: 600; margin-bottom: 8px;">🔧 Debug Info:</div>
-                    <div>Host: ${window.location.host}</div>
+                    <div>Protocol: ${window.location.protocol}</div>
+                    <div>Host: ${window.location.host || 'localhost'}</div>
                     <div>Script URL: ${saldoConfig.scriptUrl ? '✅ Set' : '❌ Empty'}</div>
                     <div>Sheet ID: ${saldoConfig.sheetId ? '✅ Set' : '❌ Empty'}</div>
                     <div>Config Valid: ${validation.valid ? '✅ Yes' : '❌ No'}</div>
@@ -385,10 +486,10 @@ function jsonResponse(data) {
                 <div class="tg-info-box" style="background: white; border-left: 4px solid #4caf50; padding: 16px; margin-bottom: 16px; border-radius: 8px;">
                     <strong style="color: #2e7d32;">📋 Cara Penggunaan:</strong>
                     <ol style="margin: 10px 0; padding-left: 20px; font-size: 14px; color: #555; line-height: 1.8;">
-                        <li>Klik jenis saldo (DANA/DIGIPOS/MASTERLOAD)</li>
+                        <li>Klik jenis saldo yang ingin diinput (DANA/DIGIPOS/MASTERLOAD)</li>
                         <li>Masukkan nominal saldo yang diterima</li>
-                        <li>Klik "✅ SIMPAN KE SHEET"</li>
-                        <li>Data otomatis masuk ke Google Sheet "TOP UP"</li>
+                        <li>Klik tombol "✅ Simpan ke Sheet"</li>
+                        <li>Data otomatis masuk ke Google Sheet "TOP UP" (sama seperti bot Telegram)</li>
                     </ol>
                 </div>
                 
@@ -413,6 +514,7 @@ function jsonResponse(data) {
                 <div style="background: white; padding: 24px; border-radius: 16px; border: 3px solid #4caf50; 
                             box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2); animation: slideIn 0.3s ease;">
                     
+                    <!-- Header -->
                     <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e8f5e9;">
                         <div style="font-size: 48px; background: #e8f5e9; width: 80px; height: 80px; 
                                     display: flex; align-items: center; justify-content: center; 
@@ -425,6 +527,7 @@ function jsonResponse(data) {
                         </div>
                     </div>
                     
+                    <!-- Input Nominal -->
                     <div style="margin-bottom: 24px;">
                         <label style="display: block; margin-bottom: 12px; font-weight: 600; color: #555; font-size: 15px;">
                             Masukkan Nominal Saldo (Rp)
@@ -442,6 +545,7 @@ function jsonResponse(data) {
                                                         color: #4caf50; font-weight: 600; min-height: 24px;"></div>
                     </div>
                     
+                    <!-- Tombol Aksi -->
                     <div style="display: flex; gap: 12px;">
                         <button onclick="TelegramModule.SaldoModule.kirimNominal()" 
                                 style="flex: 2; background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); 
@@ -463,9 +567,11 @@ function jsonResponse(data) {
                         </button>
                     </div>
                     
+                    <!-- Info tambahan -->
                     <div style="margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 8px; 
                                 font-size: 12px; color: #666; text-align: center;">
-                        Data akan disimpan ke Sheet: <strong>TOP UP</strong>
+                        Data akan disimpan ke Sheet: <strong>TOP UP</strong> | 
+                        Sheet ID: <code style="background: white; padding: 2px 6px; border-radius: 4px;">${saldoConfig.sheetId.substring(0, 15)}...</code>
                     </div>
                 </div>
                 
@@ -497,7 +603,7 @@ function jsonResponse(data) {
         },
         
         // ==========================================
-        // API CALL - VERSI GITHUB (FETCH LANGSUNG)
+        // API CALLS - VERSI FILE LOKAL DENGAN PROXY
         // ==========================================
         
         async apiCall(payload) {
@@ -507,20 +613,44 @@ function jsonResponse(data) {
                 throw new Error('Script URL belum diisi');
             }
             
-            // FETCH LANGSUNG - tanpa proxy (karena GitHub Pages pakai https://)
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload)
+            // Method 1: Coba langsung (kalau dari http:// atau https://)
+            if (window.location.protocol !== 'file:') {
+                try {
+                    const response = await fetch(targetUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    return await response.json();
+                } catch (e) {
+                    console.log('Direct fetch failed, trying proxy...');
+                }
+            }
+            
+            // Method 2: Gunakan proxy dengan GET + query params
+            // GAS akan handle _method dan _body
+            const getUrl = this.buildGetUrl(targetUrl, payload);
+            
+            console.log('[Proxy] URL:', getUrl.substring(0, 100) + '...');
+            
+            const response = await fetch(getUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
             });
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-            return await response.json();
+            // allorigins.wrap data dalam response.contents
+            const result = await response.json();
+            
+            if (result.contents) {
+                // allorigins format
+                return JSON.parse(result.contents);
+            }
+            
+            return result;
         },
         
         // ==========================================
@@ -528,11 +658,13 @@ function jsonResponse(data) {
         // ==========================================
         
         pilihJenis: async function(jenis) {
+            console.log('[Saldo] =======================================');
             console.log('[Saldo] STEP 1: Pilih Jenis =', jenis);
             
             const validation = this.validateConfig();
             if (!validation.valid) {
-                alert('❌ Konfigurasi belum lengkap:\n\n' + validation.errors.join('\n'));
+                alert('❌ Konfigurasi belum lengkap:\n\n' + validation.errors.join('\n') + 
+                      '\n\nSilahkan isi di bagian "☁️ Konfigurasi Google Sheet" di bawah.');
                 return;
             }
             
@@ -546,7 +678,7 @@ function jsonResponse(data) {
                     namaItem: jenis
                 };
                 
-                console.log('[Saldo] Sending:', payload);
+                console.log('[Saldo] Payload:', payload);
                 
                 const result = await this.apiCall(payload);
                 
@@ -565,6 +697,7 @@ function jsonResponse(data) {
                     showToast(`✅ Input nominal untuk ${jenis}`);
                     TelegramModule.renderPage();
                     
+                    // Auto focus ke input
                     setTimeout(() => {
                         const input = document.getElementById('saldoNominal');
                         if (input) {
@@ -574,12 +707,26 @@ function jsonResponse(data) {
                     }, 200);
                     
                 } else {
-                    throw new Error(result.error || 'Server error');
+                    throw new Error(result.error || 'Unknown error from server');
                 }
                 
             } catch (error) {
                 console.error('[Saldo] Error:', error);
-                alert('❌ Error:\n\n' + error.message);
+                
+                let errorMsg = error.message;
+                if (error.message.includes('Failed to fetch')) {
+                    errorMsg = 'Gagal terhubung ke Google Apps Script.\n\n' +
+                               'Penyebab umum:\n' +
+                               '1. Script URL salah atau GAS belum di-deploy\n' +
+                               '2. GAS di-deploy dengan "Access: Myself" (harus "Anyone")\n' +
+                               '3. Sheet ID salah atau tidak punya akses\n\n' +
+                               'Solusi:\n' +
+                               '• Cek Script URL dan Sheet ID\n' +
+                               '• Re-deploy GAS dengan "Who has access: Anyone"\n' +
+                               '• Atau upload ke GitHub Pages untuk menghindari CORS';
+                }
+                
+                alert('❌ Error:\n\n' + errorMsg);
             }
         },
         
@@ -591,16 +738,17 @@ function jsonResponse(data) {
             const nominalInput = document.getElementById('saldoNominal');
             const nominal = parseInt(nominalInput.value.replace(/\D/g, ''));
             
+            console.log('[Saldo] =======================================');
             console.log('[Saldo] STEP 2: Kirim Nominal =', nominal);
             
             if (!nominal || nominal <= 0) {
-                alert('❌ Nominal tidak valid!');
+                alert('❌ Nominal tidak valid!\n\nMasukkan angka lebih dari 0');
                 nominalInput.focus();
                 return;
             }
             
             if (!this.transaksiAktif) {
-                alert('❌ Tidak ada transaksi aktif!');
+                alert('❌ Tidak ada transaksi aktif!\n\nSilahkan pilih jenis saldo dulu.');
                 return;
             }
             
@@ -620,7 +768,7 @@ function jsonResponse(data) {
                 console.log('[Saldo] Response:', result);
                 
                 if (result.success) {
-                    // Simpan ke local
+                    // Simpan ke local tracking
                     const topup = {
                         id: this.transaksiAktif.transaksiId,
                         amount: nominal,
@@ -644,8 +792,13 @@ function jsonResponse(data) {
                     this.transaksiAktif = null;
                     localStorage.removeItem('saldo_transaksi_aktif');
                     
+                    // Tampilkan sukses dengan detail
                     const formattedNominal = new Intl.NumberFormat('id-ID').format(nominal);
-                    alert(`✅ BERHASIL!\n\n${jenisTemp}: Rp ${formattedNominal}\nTanggal: ${result.data?.tanggal}\nSheet: TOP UP (Row ${result.data?.row})`);
+                    alert(`✅ BERHASIL!\n\n` +
+                          `${jenisTemp}: Rp ${formattedNominal}\n` +
+                          `Tanggal: ${result.data?.tanggal}\n` +
+                          `Sheet: TOP UP (Row ${result.data?.row})\n\n` +
+                          `Data sudah masuk ke Google Sheets!`);
                     
                     showToast(`✅ ${jenisTemp}: Rp ${formattedNominal} tersimpan!`);
                     TelegramModule.renderPage();
@@ -667,11 +820,34 @@ function jsonResponse(data) {
             TelegramModule.renderPage();
         },
         
+        // Test proxy connection
+        testProxy: async function() {
+            showToast('🧪 Testing proxy...');
+            
+            try {
+                const testUrl = 'https://api.allorigins.win/get?url=' + 
+                               encodeURIComponent('https://httpbin.org/get');
+                
+                const response = await fetch(testUrl);
+                const result = await response.json();
+                
+                if (result.contents) {
+                    alert('✅ Proxy berfungsi!\n\nAllOrigins proxy aktif dan bisa digunakan.');
+                } else {
+                    alert('⚠️ Proxy response tidak sesuai format');
+                }
+                
+            } catch (error) {
+                alert('❌ Proxy error:\n\n' + error.message);
+            }
+        },
+        
         checkPending: async function() {
             const saved = localStorage.getItem('saldo_transaksi_aktif');
             if (saved) {
                 try {
                     this.transaksiAktif = JSON.parse(saved);
+                    console.log('[Saldo] Restored pending transaction:', this.transaksiAktif);
                 } catch (e) {
                     localStorage.removeItem('saldo_transaksi_aktif');
                 }
@@ -680,12 +856,15 @@ function jsonResponse(data) {
     };
     
     // ==========================================
-    // RENDER FUNCTIONS (SAMA)
+    // RENDER FUNCTIONS
     // ==========================================
     
     function renderPage() {
         const container = document.getElementById('mainContent');
-        if (!container) return;
+        if (!container) {
+            console.error('[Telegram+Saldo] mainContent not found');
+            return;
+        }
         
         const stats = getStats();
         const syncStatus = getSyncStatus();
@@ -705,6 +884,7 @@ function jsonResponse(data) {
         
         bindGasButtons();
         
+        // Restore focus jika ada transaksi aktif
         if (SaldoModule.transaksiAktif) {
             setTimeout(() => {
                 const input = document.getElementById('saldoNominal');
@@ -989,7 +1169,7 @@ function jsonResponse(data) {
             document.execCommand('copy');
             showToast(successMsg, 'success');
         } catch (err) {
-            showToast('❌ Gagal copy', 'error');
+            showToast('❌ Gagal copy, silakan copy manual', 'error');
         }
         
         document.body.removeChild(textArea);
@@ -1000,14 +1180,17 @@ function jsonResponse(data) {
             <div class="tg-backup-section">
                 <h3>☁️ Konfigurasi Google Sheet (WAJIB untuk Input Saldo)</h3>
                 <div class="tg-info-box" style="background: #e8f5e9; border-left-color: #4caf50;">
-                    <strong>✅ Penting:</strong> Input Saldo memerlukan konfigurasi ini untuk menyimpan ke Sheet "TOP UP".
+                    <strong>✅ Penting:</strong> Input Saldo memerlukan konfigurasi ini untuk menyimpan ke Sheet "TOP UP" 
+                    (sama seperti bot Telegram n8n Anda).
                 </div>
                 <div class="tg-form-row">
                     <div class="tg-form-group" style="flex: 2;">
                         <label>Google Sheet ID <span style="color: red;">*</span></label>
                         <input type="text" id="tgSheetId" value="${escapeHtml(config.sheetId)}" 
                                placeholder="1fvLqdzZJL0Nuf627MNuNPkLDu_HZ0oALR6-mGED5Ihs">
-                        <div class="tg-hint">Dari URL: docs.google.com/spreadsheets/d/<strong>SheetID</strong>/edit</div>
+                        <div class="tg-hint">
+                            Dari URL: docs.google.com/spreadsheets/d/<strong>SheetID</strong>/edit
+                        </div>
                     </div>
                     <div class="tg-form-group">
                         <label>Nama Sheet (Tab)</label>
@@ -1019,7 +1202,9 @@ function jsonResponse(data) {
                         <label>Script URL (GAS Web App) <span style="color: red;">*</span></label>
                         <input type="text" id="tgScriptUrl" value="${escapeHtml(config.scriptUrl || '')}" 
                                placeholder="https://script.google.com/macros/s/.../exec">
-                        <div class="tg-hint"><strong>WAJIB:</strong> Deploy dengan "Access: Anyone"</div>
+                        <div class="tg-hint">
+                            <strong>WAJIB:</strong> Deploy sebagai Web App dengan "Access: Anyone"
+                        </div>
                     </div>
                 </div>
                 <div class="tg-actions">
@@ -1203,6 +1388,10 @@ function jsonResponse(data) {
         }
     }
     
+    // ==========================================
+    // GOOGLE SHEETS INTEGRATION
+    // ==========================================
+    
     async function syncToSheet() {
         if (!config.sheetId || !config.scriptUrl) {
             showToast('❌ Sheet ID dan Script URL harus diisi!', 'error');
@@ -1276,6 +1465,7 @@ function jsonResponse(data) {
         
         const response = await fetch(config.scriptUrl, {
             method: 'POST',
+            mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
@@ -1293,7 +1483,10 @@ function jsonResponse(data) {
         resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
         
         try {
-            const response = await fetch(config.scriptUrl + '?action=test');
+            const response = await fetch(config.scriptUrl + '?action=test', {
+                method: 'GET',
+                mode: 'cors'
+            });
             const result = await response.json();
             
             if (result.success) {
@@ -1304,8 +1497,13 @@ function jsonResponse(data) {
             }
         } catch (e) {
             resultDiv.innerHTML = `<div style="color: red;">❌ Error: ${e.message}</div>`;
+            console.error('[TestSheet] Error:', e);
         }
     }
+    
+    // ==========================================
+    // PUBLIC API
+    // ==========================================
     
     return {
         init: init,
@@ -1325,6 +1523,11 @@ function jsonResponse(data) {
             const chat = document.getElementById('tgChat').value.trim();
             const webhook = document.getElementById('tgWebhook').value.trim();
             const secret = document.getElementById('tgSecret').value.trim();
+            
+            if (token && !token.includes(':')) {
+                alert('Format token salah. Harus ada tanda :');
+                return;
+            }
             
             config.botToken = token;
             config.chatId = chat;
@@ -1365,8 +1568,12 @@ function jsonResponse(data) {
             resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
             
             try {
-                const response = await fetch('https://api.telegram.org/bot' + token + '/getMe');
-                const result = await response.json();
+                const proxy = 'https://api.allorigins.win/get?url=';
+                const url = encodeURIComponent(`https://api.telegram.org/bot${token}/getMe`);
+                
+                const res = await fetch(proxy + url);
+                const data = await res.json();
+                const result = JSON.parse(data.contents);
                 
                 if (result.ok) {
                     resultDiv.innerHTML = `<div style="color: green;">✅ Bot: @${result.result.username}</div>`;
@@ -1411,6 +1618,10 @@ function jsonResponse(data) {
             
             showToast('✅ Topup ditambahkan!');
             renderPage();
+            
+            if (config.sheetId && config.scriptUrl) {
+                setTimeout(() => this.syncToSheet(), 500);
+            }
         },
         
         confirm: function(id) {
@@ -1452,9 +1663,9 @@ function jsonResponse(data) {
                 `Metode: ${t.method}\n` +
                 `Tanggal: ${new Date(t.timestamp).toLocaleDateString('id-ID')}\n\n` +
                 `⚠️ Catatan:\n` +
-                `• Data ini hanya dihapus dari tampilan HTML\n` +
+                `• Data ini hanya dihapus dari tampilan HTML (localStorage)\n` +
                 `• Data di Google Sheet TIDAK terhapus\n` +
-                `• Data bisa muncul lagi jika di-sync ulang`;
+                `• Data bisa muncul lagi jika di-sync ulang dari Sheet`;
             
             if (confirm(confirmMsg)) {
                 // Hapus dari array
@@ -1473,10 +1684,34 @@ function jsonResponse(data) {
             renderPage();
         },
         
+        simulateData: function() {
+            const methods = ['BCA', 'BNI', 'BRI', 'DANA', 'GoPay'];
+            const dummy = {
+                id: 'SIM_' + Date.now(),
+                amount: Math.floor(Math.random() * 500000) + 50000,
+                sender: 'Test User ' + Math.floor(Math.random() * 10),
+                method: methods[Math.floor(Math.random() * methods.length)],
+                transactionId: 'TRX' + Math.floor(Math.random() * 1000000),
+                timestamp: Date.now() - Math.floor(Math.random() * 86400000),
+                status: 'pending',
+                source: 'telegram',
+                syncedToSheet: false
+            };
+            
+            topups.push(dummy);
+            saveData();
+            showToast('✅ Data simulasi ditambahkan!');
+            renderPage();
+        },
+        
         exportData: function() {
             const data = {
                 exportDate: new Date().toISOString(),
-                config: config,
+                config: {
+                    ...config,
+                    botToken: config.botToken ? '***HIDDEN***' : '',
+                    secretKey: config.secretKey ? '***HIDDEN***' : ''
+                },
                 topups: topups,
                 stats: getStats()
             };
@@ -1505,8 +1740,9 @@ function jsonResponse(data) {
     };
 })();
 
+// Inisialisasi saat DOM ready
 document.addEventListener('DOMContentLoaded', function() {
     TelegramModule.init();
     TelegramModule.SaldoModule.checkPending();
-    console.log('[Telegram+Saldo] Module ready - GitHub Pages Version with Time Filter');
+    console.log('[Telegram+Saldo] Module ready - File Local Version with Time Filter');
 });
