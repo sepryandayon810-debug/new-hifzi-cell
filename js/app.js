@@ -1,4 +1,4 @@
-// Router System
+// Router System - PERBAIKAN
 const router = {
     currentPage: null,
     
@@ -109,10 +109,10 @@ const router = {
                 usersModule.init();
                 break;
             case 'telegram':
-                this.showModuleNotReady('Telegram');
+                telegramModule.init(); // PERBAIKAN: Panggil module telegram
                 break;
             case 'cloud':
-                this.showModuleNotReady('Cloud');
+                cloudModule.init(); // PERBAIKAN: Panggil module cloud
                 break;
         }
         window.scrollTo(0, 0);
@@ -308,36 +308,7 @@ const router = {
         if (modal) modal.remove();
     },
 
-    showModuleNotReady(moduleName) {
-        const modalHTML = `
-            <div class="modal active" id="moduleNotReadyModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">🚧</div>
-                    <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
-                        <span class="modal-title" style="font-size: 18px;">Modul ${moduleName}</span>
-                    </div>
-                    <div style="background: #fff3e0; border: 2px solid #ff9800; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                        <div style="color: #e65100; font-weight: 600; margin-bottom: 8px; font-size: 14px;">🛠️ Dalam Pengembangan</div>
-                        <div style="font-size: 13px; color: #666; line-height: 1.5;">
-                            Fitur ${moduleName} sedang dalam tahap pengembangan.<br>
-                            Silakan gunakan menu lain yang tersedia.
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="router.closeModuleNotReadyModal()" style="padding: 10px 30px;">
-                        Mengerti
-                    </button>
-                </div>
-            </div>
-        `;
-        const existingModal = document.getElementById('moduleNotReadyModal');
-        if (existingModal) existingModal.remove();
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    closeModuleNotReadyModal() {
-        const modal = document.getElementById('moduleNotReadyModal');
-        if (modal) modal.remove();
-    },
+    // PERBAIKAN: Hapus showModuleNotReady, ganti dengan init module yang sebenarnya
 
     // Render navigation tabs berdasarkan role user
     renderNavigation() {
@@ -379,7 +350,7 @@ const router = {
     }
 };
 
-// Global App
+// Global App - PERBAIKAN LOGIN
 const app = {
     data: null,
     currentUser: null,
