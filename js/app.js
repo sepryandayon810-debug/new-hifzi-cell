@@ -112,7 +112,7 @@ const router = {
                 TelegramModule.init(); // PERBAIKAN: Panggil module telegram
                 break;
             case 'cloud':
-                cloudModule.init(); // PERBAIKAN: Panggil module cloud
+                backupModule.init(); // PERBAIKAN: Panggil module cloud
                 break;
         }
         window.scrollTo(0, 0);
