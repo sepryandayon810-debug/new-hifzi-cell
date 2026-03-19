@@ -114,16 +114,20 @@ const cashModule = {
         const periodLabel = this.getFilterLabel();
         const { startDate, endDate } = this.getDateRange();
         
-        // ⬅️ TAMBAH: Hitung statistik untuk periode yang dipilih
+        // ⬅️ PERBARUI: Hitung statistik untuk periode yang dipilih
         const periodStats = this.calculatePeriodStats(startDate, endDate);
         
-        // ⬅️ TAMBAH: Format tanggal untuk display
+        // ⬅️ PERBARUI: Format tanggal untuk display
         const dateRangeText = this.getDateRangeText(startDate, endDate);
+        
+        // ⬅️ PENTING: Kas di Tangan selalu real-time, tidak berubah sesuai filter
+        const realTimeCash = dataManager.data.settings.currentCash || 0;
+        const realTimeModal = dataManager.data.settings.modalAwal || 0;
         
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 
-                <!-- ⬅️ PERBARUI: Header Card dengan Info Periode -->
+                <!-- Header Card dengan Info Periode -->
                 <div class="cash-header-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                      border-radius: 16px; padding: 24px; margin-bottom: 20px; color: white; position: relative; overflow: hidden;">
                     
@@ -146,19 +150,19 @@ const cashModule = {
                             </div>
                         </div>
                         
-                        <!-- Kas di Tangan (Real-time) -->
+                        <!-- Kas di Tangan (Real-time) - SELALU MENAMPILKAN KAS AKTUAL -->
                         <div style="margin-bottom: 20px;">
                             <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Kas di Tangan (Real-time)</div>
                             <div style="font-size: 42px; font-weight: 700; letter-spacing: -1px;">
-                                Rp ${utils.formatNumber(dataManager.data.settings.currentCash || 0)}
+                                Rp ${utils.formatNumber(realTimeCash)}
                             </div>
                         </div>
                         
-                        <!-- Info Row -->
+                        <!-- Info Row - Real-time data -->
                         <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; opacity: 0.9;">
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span>💰</span>
-                                <span>Modal: Rp ${utils.formatNumber(dataManager.data.settings.modalAwal || 0)}</span>
+                                <span>Modal: Rp ${utils.formatNumber(realTimeModal)}</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span>📝</span>
@@ -182,7 +186,7 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- Stat Cards -->
+                <!-- Stat Cards - Dinamis sesuai periode -->
                 <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px;">
                     <div class="stat-card" style="background: white; border-radius: 12px; padding: 20px; 
                          box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 16px;">
@@ -316,7 +320,7 @@ const cashModule = {
         }
     },
     
-    // ⬅️ TAMBAH: Method baru untuk menghitung statistik periode
+    // Method untuk menghitung statistik periode
     calculatePeriodStats(startDate, endDate) {
         const transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
@@ -339,7 +343,7 @@ const cashModule = {
         };
     },
     
-    // ⬅️ TAMBAH: Method baru untuk format teks tanggal range
+    // Method untuk format teks tanggal range
     getDateRangeText(startDate, endDate) {
         const options = { day: 'numeric', month: 'short', year: 'numeric' };
         
@@ -366,7 +370,7 @@ const cashModule = {
         
         this.filterState.preset = preset;
         
-        // ⬅️ PERBARUI: Re-render seluruh HTML untuk update semua komponen
+        // Re-render seluruh HTML untuk update semua komponen
         this.renderHTML();
         this.renderTransactions();
     },
@@ -434,7 +438,7 @@ const cashModule = {
     },
     
     updateStats() {
-        // ⬅️ PERBARUI: Method ini sekarang tidak digunakan karena renderHTML sudah menghitung semuanya
+        // Method ini sekarang tidak digunakan karena renderHTML sudah menghitung semuanya
         // Tetap dipertahankan untuk kompatibilitas
         const { startDate, endDate } = this.getDateRange();
         const stats = this.calculatePeriodStats(startDate, endDate);
@@ -650,7 +654,7 @@ const cashModule = {
         
         dataManager.save();
         app.updateHeader();
-        this.renderHTML(); // ⬅️ PERBARUI: Re-render untuk update semua stats
+        this.renderHTML();
         this.renderTransactions();
         app.showToast('Transaksi dihapus! Kas disesuaikan.');
     },
@@ -736,7 +740,7 @@ const cashModule = {
         dataManager.save();
         app.updateHeader();
         this.closeModal('cashModal');
-        this.renderHTML(); // ⬅️ PERBARUI: Re-render untuk update stats
+        this.renderHTML();
         this.renderTransactions();
         app.showToast('Transaksi kas tersimpan!');
     },
