@@ -25,11 +25,15 @@ const TelegramModule = {
     STORAGE_KEY_PENDING: 'saldo_pending',
 
     /**
-     * Initialize module
+     * Initialize module - DIPANGGIL OLEH ROUTER
      */
     init() {
-        if (this.isInitialized) return;
-        this.isInitialized = true;
+        console.log('[Telegram] init() called');
+        
+        if (this.isInitialized) {
+            this.render();
+            return;
+        }
         
         // Load saved data
         const savedTopups = localStorage.getItem(this.STORAGE_KEY_TOPUPS);
@@ -41,7 +45,18 @@ const TelegramModule = {
         // Check pending transaction
         this.checkPending();
         
+        this.isInitialized = true;
+        this.render();
+        
         console.log('[Telegram] Module initialized');
+    },
+
+    /**
+     * Render page - DIPANGGIL OLEH ROUTER (renderPage)
+     */
+    renderPage() {
+        console.log('[Telegram] renderPage() called');
+        this.init();
     },
 
     /**
@@ -71,12 +86,16 @@ const TelegramModule = {
     },
 
     /**
-     * Main render function - returns HTML string
+     * Main render function - render ke mainContent
      */
     render() {
-        this.init();
+        const container = document.getElementById('mainContent');
+        if (!container) {
+            console.error('[Telegram] mainContent not found!');
+            return;
+        }
         
-        return `
+        container.innerHTML = `
             <div class="telegram-container" style="padding: 20px; max-width: 1000px; margin: 0 auto;">
                 ${this.renderHeader()}
                 ${this.renderConfig()}
@@ -307,10 +326,7 @@ const TelegramModule = {
             alert('✅ Konfigurasi disimpan!');
         }
         
-        // Re-render to update UI
-        if (typeof router !== 'undefined') {
-            router.refresh();
-        }
+        this.render();
     },
 
     /**
@@ -372,12 +388,8 @@ const TelegramModule = {
                 };
                 localStorage.setItem(this.STORAGE_KEY_PENDING, JSON.stringify(this.transaksiAktif));
                 
-                // Re-render to show input form
-                if (typeof router !== 'undefined') {
-                    router.refresh();
-                }
+                this.render();
                 
-                // Focus input after render
                 setTimeout(() => {
                     const input = document.getElementById('tgNominalInput');
                     if (input) input.focus();
@@ -423,7 +435,6 @@ const TelegramModule = {
             const result = await response.json();
             
             if (result.success) {
-                // Save to local
                 this.topups.push({
                     id: this.transaksiAktif.transaksiId,
                     amount: nominal,
@@ -434,16 +445,12 @@ const TelegramModule = {
                 });
                 this.saveData();
                 
-                // Clear pending
                 this.transaksiAktif = null;
                 localStorage.removeItem(this.STORAGE_KEY_PENDING);
                 
                 alert(`✅ BERHASIL!\n\n${result.data.namaItem}: Rp ${nominal.toLocaleString('id-ID')}\nTanggal: ${result.data.tanggal}\nSheet: TOP UP (Row ${result.row})`);
                 
-                // Re-render
-                if (typeof router !== 'undefined') {
-                    router.refresh();
-                }
+                this.render();
             } else {
                 throw new Error(result.error);
             }
@@ -458,10 +465,7 @@ const TelegramModule = {
     batalSaldo() {
         this.transaksiAktif = null;
         localStorage.removeItem(this.STORAGE_KEY_PENDING);
-        
-        if (typeof router !== 'undefined') {
-            router.refresh();
-        }
+        this.render();
     },
 
     /**
