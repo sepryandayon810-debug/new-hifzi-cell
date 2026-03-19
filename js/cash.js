@@ -120,65 +120,42 @@ const cashModule = {
         // ⬅️ PERBARUI: Format tanggal untuk display
         const dateRangeText = this.getDateRangeText(startDate, endDate);
         
-        // ⬅️ PENTING: Kas di Tangan selalu real-time, tidak berubah sesuai filter
-        const realTimeCash = dataManager.data.settings.currentCash || 0;
-        const realTimeModal = dataManager.data.settings.modalAwal || 0;
-        
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 
-                <!-- Header Card dengan Info Periode - TANPA ANGKA 1 BESAR -->
-                <div class="cash-header-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                     border-radius: 16px; padding: 24px; margin-bottom: 20px; color: white; position: relative; overflow: hidden;">
+                <!-- CARD UNGU DIHAPUS - Karena data sudah ada di header atas -->
+
+                <!-- Filter Periode -->
+                <div style="background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
+                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 14px; color: #666; font-weight: 600;">📅 Periode:</span>
+                        <span id="periodBadge" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600;">${periodLabel}</span>
+                        <span id="dateRangeText" style="font-size: 13px; color: #999;">${dateRangeText}</span>
+                    </div>
                     
-                    <!-- Background decoration - diperkecil dan diubah posisi -->
-                    <div style="position: absolute; top: -30%; right: -5%; width: 150px; height: 150px; 
-                         background: rgba(255,255,255,0.08); border-radius: 50%;"></div>
-                    <div style="position: absolute; bottom: -20%; left: -3%; width: 100px; height: 100px; 
-                         background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
-                    
-                    <div style="position: relative; z-index: 1;">
-                        <!-- Badge Periode -->
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <div style="background: rgba(255,255,255,0.2); padding: 6px 16px; border-radius: 20px; 
-                                 font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                                <span>📅</span>
-                                <span id="periodBadge">${periodLabel}</span>
-                            </div>
-                            <div style="font-size: 12px; opacity: 0.9; text-align: right;">
-                                <div id="dateRangeText">${dateRangeText}</div>
-                            </div>
-                        </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="filterPreset" onchange="cashModule.applyFilter()" 
+                                style="padding: 8px 16px; border-radius: 8px; border: 2px solid #e0e0e0; font-size: 14px; background: white; cursor: pointer;">
+                            <option value="today">📅 Hari Ini</option>
+                            <option value="yesterday">📅 Kemarin</option>
+                            <option value="week">📆 Minggu Ini</option>
+                            <option value="month">🗓️ Bulan Ini</option>
+                            <option value="year">📊 Tahun Ini</option>
+                            <option value="custom">🔍 Custom...</option>
+                        </select>
                         
-                        <!-- Kas di Tangan (Real-time) - UKURAN FONT DIKECILKAN -->
-                        <div style="margin-bottom: 20px;">
-                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Kas di Tangan (Real-time)</div>
-                            <div style="font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
-                                Rp ${utils.formatNumber(realTimeCash)}
-                            </div>
+                        <div id="customDateRange" style="display: none; gap: 8px; align-items: center;">
+                            <input type="date" id="filterStartDate" onchange="cashModule.applyFilter()" 
+                                   style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
+                            <span style="color: #666;">s/d</span>
+                            <input type="date" id="filterEndDate" onchange="cashModule.applyFilter()" 
+                                   style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
                         </div>
-                        
-                        <!-- Info Row - Real-time data -->
-                        <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; opacity: 0.9;">
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                                <span>💰</span>
-                                <span>Modal: Rp ${utils.formatNumber(realTimeModal)}</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                                <span>📝</span>
-                                <span>Total Transaksi: ${periodStats.totalTransactions}</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                                <span>👤</span>
-                                <span>Shift: ${dataManager.data.settings.currentUser || 'Administrator'}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Laba Card - DIPINDAH KE BAWAH AGAR LEBIH JELAS -->
                     </div>
                 </div>
 
-                <!-- LABA CARD - DIPISAH DAN DIPERBESAR -->
+                <!-- LABA CARD -->
                 <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; 
                      box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid ${periodStats.net >= 0 ? '#4caf50' : '#f44336'};">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -197,7 +174,7 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- Stat Cards - DIPERKECIL DAN DISEDERHANAKAN -->
+                <!-- Stat Cards Pemasukan & Pengeluaran -->
                 <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
                     <div style="background: white; border-radius: 10px; padding: 16px; 
                          box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
@@ -279,24 +256,6 @@ const cashModule = {
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
                         <span class="card-title" style="font-size: 18px; font-weight: 600; color: #333;">Riwayat Transaksi Kas</span>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                            <select id="filterPreset" onchange="cashModule.applyFilter()" 
-                                    style="padding: 8px 16px; border-radius: 8px; border: 2px solid #e0e0e0; font-size: 14px; background: white; cursor: pointer;">
-                                <option value="today">📅 Hari Ini</option>
-                                <option value="yesterday">📅 Kemarin</option>
-                                <option value="week">📆 Minggu Ini</option>
-                                <option value="month">🗓️ Bulan Ini</option>
-                                <option value="year">📊 Tahun Ini</option>
-                                <option value="custom">🔍 Custom...</option>
-                            </select>
-                            
-                            <div id="customDateRange" style="display: none; gap: 8px; align-items: center;">
-                                <input type="date" id="filterStartDate" onchange="cashModule.applyFilter()" 
-                                       style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
-                                <span style="color: #666;">s/d</span>
-                                <input type="date" id="filterEndDate" onchange="cashModule.applyFilter()" 
-                                       style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
-                            </div>
-                            
                             <button class="btn btn-sm btn-secondary" onclick="cashModule.recalculateCash()" 
                                     style="font-size: 13px; padding: 8px 16px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 8px; cursor: pointer;">
                                 🔄 Recalculate
