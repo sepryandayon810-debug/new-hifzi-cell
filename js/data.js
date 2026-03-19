@@ -18,7 +18,7 @@ const dataManager = {
         cashTransactions: [],
         debts: [],
         shiftHistory: [],
-        loginHistory: [], // ⭐ Ditambahkan
+        loginHistory: [],
         
         settings: {
             storeName: 'Hifzi Cell',
@@ -46,10 +46,10 @@ const dataManager = {
         }
     },
     
-    // ⭐ Default users baru dengan role owner, admin, kasir
+    // PERBAIKAN: Gunakan ID tetap untuk default users agar konsisten
     defaultUsers: [
         {
-            id: 'owner_' + Date.now(),
+            id: 'owner_default',
             username: 'owner',
             password: 'owner123',
             name: 'Pemilik Usaha',
@@ -58,7 +58,7 @@ const dataManager = {
             lastLogin: null
         },
         {
-            id: 'admin_' + Date.now(),
+            id: 'admin_default',
             username: 'admin',
             password: 'admin123',
             name: 'Administrator',
@@ -67,7 +67,7 @@ const dataManager = {
             lastLogin: null
         },
         {
-            id: 'kasir_' + Date.now(),
+            id: 'kasir_default',
             username: 'kasir1',
             password: 'kasir123',
             name: 'Kasir 1',
@@ -87,33 +87,76 @@ const dataManager = {
         }
         
         if (!this.data.kasir) {
-            this.data.kasir = { isOpen: false, openTime: null, closeTime: null, date: null, currentUser: null, lastCheckDate: null };
+            this.data.kasir = { 
+                isOpen: false, 
+                openTime: null, 
+                closeTime: null, 
+                date: null, 
+                currentUser: null, 
+                lastCheckDate: null 
+            };
         }
 
-        if (!this.data.loginHistory) this.data.loginHistory = []; // ⭐ Pastikan loginHistory ada
+        if (!this.data.loginHistory) this.data.loginHistory = [];
         if (!this.data.settings.phone) this.data.settings.phone = '';
         if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
 
         this.checkAutoCloseMidnight();
         
-        let users = JSON.parse(localStorage.getItem(this.USERS_KEY));
-        if (!users) {
-            users = this.defaultUsers;
-            localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
-        }
+        // PERBAIKAN: Inisialisasi users dengan pengecekan lebih baik
+        this.initUsers();
         
         this.save();
         return this.data;
     },
 
+    // PERBAIKAN: Fungsi inisialisasi users yang lebih robust
+    initUsers() {
+        let users = JSON.parse(localStorage.getItem(this.USERS_KEY));
+        
+        if (!users || !Array.isArray(users) || users.length === 0) {
+            // Belum ada users, buat default
+            users = [...this.defaultUsers];
+            localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
+            console.log('[DataManager] Default users created');
+        } else {
+            // PERBAIKAN: Pastikan owner selalu ada
+            const ownerExists = users.some(u => u.role === 'owner');
+            if (!ownerExists) {
+                console.log('[DataManager] Owner not found, creating default owner');
+                users.unshift({
+                    id: 'owner_default',
+                    username: 'owner',
+                    password: 'owner123',
+                    name: 'Pemilik Usaha',
+                    role: 'owner',
+                    createdAt: new Date().toISOString(),
+                    lastLogin: null
+                });
+                localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
+            }
+            
+            // PERBAIKAN: Pastikan tidak ada duplikat username
+            const uniqueUsers = [];
+            const seenUsernames = new Set();
+            for (const user of users) {
+                if (!seenUsernames.has(user.username)) {
+                    seenUsernames.add(user.username);
+                    uniqueUsers.push(user);
+                } else {
+                    console.log('[DataManager] Duplicate username found:', user.username);
+                }
+            }
+            if (uniqueUsers.length !== users.length) {
+                localStorage.setItem(this.USERS_KEY, JSON.stringify(uniqueUsers));
+            }
+        }
+    },
+
     //========== CREATE DEFAULT DATA ==========
     createDefaultData() {
         const defaultData = {
-            users: [
-                { id: 'owner_' + Date.now(), username: 'owner', password: 'owner123', name: 'Pemilik Usaha', role: 'owner', createdAt: new Date().toISOString(), lastLogin: null },
-                { id: 'admin_' + Date.now(), username: 'admin', password: 'admin123', name: 'Administrator', role: 'admin', createdAt: new Date().toISOString(), lastLogin: null },
-                { id: 'kasir_' + Date.now(), username: 'kasir1', password: 'kasir123', name: 'Kasir 1', role: 'kasir', createdAt: new Date().toISOString(), lastLogin: null }
-            ],
+            users: this.defaultUsers,
             loginHistory: [],
             categories: this.data.categories,
             products: [],
@@ -177,10 +220,14 @@ const dataManager = {
             cashTransactions: this.data.cashTransactions || [],
             debts: this.data.debts || [],
             shiftHistory: this.data.shiftHistory || [],
-            loginHistory: this.data.loginHistory || [], // ⭐ Ditambahkan
+            loginHistory: this.data.loginHistory || [],
             settings: this.data.settings || {},
             kasir: this.data.kasir || {},
-            _meta: { lastModified: new Date().toISOString(), deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', version: '1.0' }
+            _meta: { 
+                lastModified: new Date().toISOString(), 
+                deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', 
+                version: '1.0' 
+            }
         };
     },
 
@@ -193,7 +240,7 @@ const dataManager = {
         if (cleanData.cashTransactions) this.data.cashTransactions = cleanData.cashTransactions;
         if (cleanData.debts) this.data.debts = cleanData.debts;
         if (cleanData.shiftHistory) this.data.shiftHistory = cleanData.shiftHistory;
-        if (cleanData.loginHistory) this.data.loginHistory = cleanData.loginHistory; // ⭐ Restore loginHistory
+        if (cleanData.loginHistory) this.data.loginHistory = cleanData.loginHistory;
         if (cleanData.settings) this.data.settings = { ...this.data.settings, ...cleanData.settings };
         if (cleanData.kasir) this.data.kasir = { ...this.data.kasir, ...cleanData.kasir };
         this.save();
@@ -219,7 +266,10 @@ const dataManager = {
         }
         return output;
     },
-    isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); },
+    
+    isObject(item) { 
+        return (item && typeof item === 'object' && !Array.isArray(item)); 
+    },
 
     // ========== BACKWARD COMPATIBILITY ==========
     load() { return this.init(); },
@@ -271,14 +321,25 @@ const dataManager = {
 
     // ========== USER MANAGEMENT ==========
     
-    getUsers() { return JSON.parse(localStorage.getItem(this.USERS_KEY)) || this.defaultUsers; },
-    saveUsers(users) { localStorage.setItem(this.USERS_KEY, JSON.stringify(users)); },
+    getUsers() { 
+        const users = JSON.parse(localStorage.getItem(this.USERS_KEY));
+        // PERBAIKAN: Pastikan selalu return array
+        if (!users || !Array.isArray(users)) {
+            this.initUsers();
+            return this.defaultUsers;
+        }
+        return users;
+    },
+    
+    saveUsers(users) { 
+        localStorage.setItem(this.USERS_KEY, JSON.stringify(users)); 
+    },
 
     addUser(user) {
         const users = this.getUsers();
         user.id = 'user_' + Date.now();
         user.createdAt = new Date().toISOString();
-        user.lastLogin = null; // ⭐ Tambahkan lastLogin
+        user.lastLogin = null;
         users.push(user);
         this.saveUsers(users);
         return user;
@@ -288,6 +349,16 @@ const dataManager = {
         const users = this.getUsers();
         const userIndex = users.findIndex(u => u.id === userId);
         if (userIndex === -1) return false;
+        
+        // PERBAIKAN: Cek duplikat username saat update
+        if (updateData.username) {
+            const existingUser = users.find(u => u.username === updateData.username && u.id !== userId);
+            if (existingUser) {
+                console.error('[DataManager] Username already exists:', updateData.username);
+                return false;
+            }
+        }
+        
         if (updateData.name) users[userIndex].name = updateData.name;
         if (updateData.username) users[userIndex].username = updateData.username;
         if (updateData.role) users[userIndex].role = updateData.role;
@@ -297,23 +368,64 @@ const dataManager = {
     },
 
     deleteUser(userId) {
-        let users = this.getUsers();
-        users = users.filter(u => u.id !== userId);
-        this.saveUsers(users);
+        // PERBAIKAN: Cegah hapus user yang sedang login
+        const currentUser = this.getCurrentUser();
+        if (currentUser && currentUser.userId === userId) {
+            console.error('[DataManager] Cannot delete currently logged in user');
+            return false;
+        }
+        
+        // PERBAIKAN: Cegah hapus owner terakhir
+        const users = this.getUsers();
+        const userToDelete = users.find(u => u.id === userId);
+        if (userToDelete && userToDelete.role === 'owner') {
+            const ownerCount = users.filter(u => u.role === 'owner').length;
+            if (ownerCount <= 1) {
+                console.error('[DataManager] Cannot delete the last owner');
+                return false;
+            }
+        }
+        
+        const filteredUsers = users.filter(u => u.id !== userId);
+        this.saveUsers(filteredUsers);
+        return true;
     },
 
     // ========== AUTHENTICATION ==========
     
     login(username, password) {
+        console.log('[DataManager] Login attempt:', username);
+        
+        // PERBAIKAN: Validasi input
+        if (!username || !password) {
+            return { success: false, message: 'Username dan password wajib diisi!' };
+        }
+        
         const users = this.getUsers();
-        const user = users.find(u => u.username === username && u.password === password);
+        
+        // PERBAIKAN: Cari user dengan case-insensitive username
+        const user = users.find(u => 
+            u.username.toLowerCase() === username.toLowerCase() && 
+            u.password === password
+        );
         
         if (user) {
-            const session = { userId: user.id, username: user.username, name: user.name, role: user.role, loginTime: new Date().toISOString() };
+            console.log('[DataManager] Login successful for:', user.username, 'Role:', user.role);
+            
+            const session = { 
+                userId: user.id, 
+                username: user.username, 
+                name: user.name, 
+                role: user.role, 
+                loginTime: new Date().toISOString() 
+            };
+            
             localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify(session));
-            this.recordLogin(user.id); // ⭐ Record login history
+            this.recordLogin(user.id);
             return { success: true, user: session };
         }
+        
+        console.log('[DataManager] Login failed: Invalid credentials');
         return { success: false, message: 'Username atau password salah!' };
     },
 
@@ -324,12 +436,22 @@ const dataManager = {
 
     getCurrentUser() {
         const session = localStorage.getItem(this.CURRENT_USER_KEY);
-        return session ? JSON.parse(session) : null;
+        if (!session) return null;
+        
+        try {
+            return JSON.parse(session);
+        } catch (e) {
+            console.error('[DataManager] Error parsing current user:', e);
+            localStorage.removeItem(this.CURRENT_USER_KEY);
+            return null;
+        }
     },
 
-    isLoggedIn() { return this.getCurrentUser() !== null; },
+    isLoggedIn() { 
+        return this.getCurrentUser() !== null; 
+    },
 
-    // ==================== ⭐ LOGIN HISTORY MANAGEMENT ====================
+    // ========== LOGIN HISTORY MANAGEMENT ==========
     
     recordLogin(userId) {
         const data = this.getData();
@@ -359,7 +481,9 @@ const dataManager = {
         // Cleanup: Hanya simpan 6 bulan terakhir (180 hari)
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
-        data.loginHistory = data.loginHistory.filter(log => new Date(log.timestamp) >= sixMonthsAgo);
+        data.loginHistory = data.loginHistory.filter(log => 
+            new Date(log.timestamp) >= sixMonthsAgo
+        );
         
         this.saveData(data);
         return loginRecord;
@@ -373,9 +497,15 @@ const dataManager = {
         history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
         // Apply filters
-        if (filters.startDate) history = history.filter(log => new Date(log.timestamp) >= filters.startDate);
-        if (filters.endDate) history = history.filter(log => new Date(log.timestamp) < filters.endDate);
-        if (filters.userId) history = history.filter(log => log.userId === filters.userId);
+        if (filters.startDate) {
+            history = history.filter(log => new Date(log.timestamp) >= filters.startDate);
+        }
+        if (filters.endDate) {
+            history = history.filter(log => new Date(log.timestamp) < filters.endDate);
+        }
+        if (filters.userId) {
+            history = history.filter(log => log.userId === filters.userId);
+        }
         
         return history;
     },
@@ -413,14 +543,39 @@ const dataManager = {
         const kasir = this.data.kasir;
         this.checkAutoCloseMidnight();
         
-        if (!kasir.isOpen) return { canOpen: true, shouldReset: true, reason: 'closed' };
-        
-        if (kasir.currentUser === userId) {
-            if (kasir.date === today) return { canOpen: false, shouldReset: false, reason: 'already_open_same_user', message: 'Kasir sudah buka dengan akun Anda. Lanjutkan shift.' };
-            else return { canOpen: true, shouldReset: true, reason: 'new_day_same_user', message: 'Shift baru untuk hari ini. Modal akan direset.' };
+        if (!kasir.isOpen) {
+            return { 
+                canOpen: true, 
+                shouldReset: true, 
+                reason: 'closed',
+                message: 'Kasir tutup. Silakan buka kasir untuk memulai shift.' 
+            };
         }
         
-        return { canOpen: false, shouldReset: false, reason: 'different_user', message: 'Kasir sedang digunakan oleh user lain. Silakan tunggu atau hubungi admin.' };
+        if (kasir.currentUser === userId) {
+            if (kasir.date === today) {
+                return { 
+                    canOpen: false, 
+                    shouldReset: false, 
+                    reason: 'already_open_same_user', 
+                    message: 'Kasir sudah buka dengan akun Anda. Lanjutkan shift.' 
+                };
+            } else {
+                return { 
+                    canOpen: true, 
+                    shouldReset: true, 
+                    reason: 'new_day_same_user', 
+                    message: 'Shift baru untuk hari ini. Modal akan direset.' 
+                };
+            }
+        }
+        
+        return { 
+            canOpen: false, 
+            shouldReset: false, 
+            reason: 'different_user', 
+            message: 'Kasir sedang digunakan oleh user lain. Silakan tunggu atau hubungi admin.' 
+        };
     },
 
     openKasir(userId, forceReset = false) {
@@ -431,23 +586,45 @@ const dataManager = {
             this.data.kasir.currentUser = userId;
             this.data.kasir.lastLoginTime = new Date().toISOString();
             this.save();
-            return { success: true, reset: false, message: 'Selamat datang kembali! Shift Anda dilanjutkan.' };
+            return { 
+                success: true, 
+                reset: false, 
+                message: 'Selamat datang kembali! Shift Anda dilanjutkan.' 
+            };
         }
         
         if (status.shouldReset || forceReset) {
-            if (this.data.kasir.date && this.data.kasir.date !== today) this.saveShiftHistory();
+            if (this.data.kasir.date && this.data.kasir.date !== today) {
+                this.saveShiftHistory();
+            }
             this.data.settings.modalAwal = 0;
         }
         
-        this.data.kasir = { isOpen: true, openTime: new Date().toISOString(), closeTime: null, date: today, currentUser: userId, lastLoginTime: new Date().toISOString(), lastCheckDate: today };
+        this.data.kasir = { 
+            isOpen: true, 
+            openTime: new Date().toISOString(), 
+            closeTime: null, 
+            date: today, 
+            currentUser: userId, 
+            lastLoginTime: new Date().toISOString(), 
+            lastCheckDate: today 
+        };
         this.save();
-        return { success: true, reset: status.shouldReset, message: status.shouldReset ? 'Kasir dibuka dengan shift baru!' : 'Kasir dibuka!' };
+        
+        return { 
+            success: true, 
+            reset: status.shouldReset, 
+            message: status.shouldReset ? 'Kasir dibuka dengan shift baru!' : 'Kasir dibuka!' 
+        };
     },
 
     saveShiftHistory() {
         if (!this.data.shiftHistory) this.data.shiftHistory = [];
         const kasirDate = this.data.kasir.date;
-        const dayTrans = this.data.transactions.filter(t => new Date(t.date).toDateString() === kasirDate && t.status !== 'voided');
+        const dayTrans = this.data.transactions.filter(t => 
+            new Date(t.date).toDateString() === kasirDate && 
+            t.status !== 'voided'
+        );
 
         const shiftSummary = {
             date: kasirDate,
@@ -462,13 +639,18 @@ const dataManager = {
         };
 
         const existingIndex = this.data.shiftHistory.findIndex(s => s.date === kasirDate);
-        if (existingIndex !== -1) this.data.shiftHistory[existingIndex] = shiftSummary;
-        else this.data.shiftHistory.push(shiftSummary);
+        if (existingIndex !== -1) {
+            this.data.shiftHistory[existingIndex] = shiftSummary;
+        } else {
+            this.data.shiftHistory.push(shiftSummary);
+        }
         this.save();
     },
 
     closeKasir() {
-        if (!this.data.kasir.isOpen) return { success: false, message: 'Kasir sudah tutup!' };
+        if (!this.data.kasir.isOpen) {
+            return { success: false, message: 'Kasir sudah tutup!' };
+        }
         this.saveShiftHistory();
         this.data.kasir.isOpen = false;
         this.data.kasir.closeTime = new Date().toISOString();
@@ -481,7 +663,11 @@ const dataManager = {
     
     getTodayStats() {
         const today = new Date().toDateString();
-        const todayTrans = this.data.transactions.filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted' && t.status !== 'voided');
+        const todayTrans = this.data.transactions.filter(t => 
+            new Date(t.date).toDateString() === today && 
+            t.status !== 'deleted' && 
+            t.status !== 'voided'
+        );
         return {
             transactionCount: todayTrans.length,
             totalSales: todayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
@@ -490,7 +676,12 @@ const dataManager = {
     }
 };
 
-// Inisialisasi otomatis saat load
+// PERBAIKAN: Inisialisasi otomatis dengan pengecekan
 if (typeof dataManager !== 'undefined') {
-    dataManager.init();
+    try {
+        dataManager.init();
+        console.log('[DataManager] Initialized successfully');
+    } catch (e) {
+        console.error('[DataManager] Initialization error:', e);
+    }
 }
