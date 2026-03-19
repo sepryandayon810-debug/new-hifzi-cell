@@ -1,5 +1,5 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (FIXED VERSION)
+// BACKUP MODULE - HIFZI CELL (FIXED RENDER)
 // Firebase + Google Sheets + Local
 // ============================================
 
@@ -51,7 +51,7 @@ const backupModule = {
         window.addEventListener('online', () => {
             this.isOnline = true;
             this.showToast('🌐 Online');
-            if (this.pendingSync) this.manualSync();
+            if (this.pendingSync) this.manualUpload();
         });
         
         window.addEventListener('offline', () => {
@@ -65,6 +65,29 @@ const backupModule = {
         } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
             this.checkNewDeviceGAS();
         }
+
+        // Listen untuk render saat navigasi
+        this.setupRenderListener();
+    },
+
+    setupRenderListener() {
+        // Override fungsi navigasi app jika ada
+        if (typeof app !== 'undefined' && app.navigateTo) {
+            const originalNavigate = app.navigateTo.bind(app);
+            app.navigateTo = (page) => {
+                originalNavigate(page);
+                if (page === 'cloud' || page === 'backup') {
+                    setTimeout(() => this.render(), 100);
+                }
+            };
+        }
+
+        // Also check URL hash
+        window.addEventListener('hashchange', () => {
+            if (location.hash.includes('cloud') || location.hash.includes('backup')) {
+                setTimeout(() => this.render(), 100);
+            }
+        });
     },
 
     // ============================================
@@ -72,32 +95,21 @@ const backupModule = {
     // ============================================
 
     getBackupData() {
-        // Ambil semua data kecuali module telegram
-        const allData = dataManager.getAllData ? dataManager.getAllData() : dataManager.data;
+        const allData = (typeof dataManager !== 'undefined' && dataManager.getAllData) 
+            ? dataManager.getAllData() 
+            : (typeof dataManager !== 'undefined' ? dataManager.data : {});
         
-        // Data yang akan dibackup
-        const backupData = {
-            // Data Produk
+        return {
             products: allData.products || [],
             categories: allData.categories || [],
-            
-            // Data Transaksi & Keuangan
             transactions: allData.transactions || [],
             shifts: allData.shifts || [],
-            
-            // Data Hutang
             debts: allData.debts || [],
-            
-            // Data Pengaturan & Kas
             settings: allData.settings || {},
             cashHistory: allData.cashHistory || [],
-            
-            // Data User & Login History (BARU)
             users: allData.users || [],
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
-            
-            // Metadata
             _backupMeta: {
                 version: '2.0',
                 deviceId: this.deviceId,
@@ -106,28 +118,29 @@ const backupModule = {
                 provider: this.currentProvider
             }
         };
-        
-        return backupData;
     },
 
     saveBackupData(backupData) {
-        // Simpan data ke dataManager (kecuali telegram)
+        const telegramBackup = (typeof dataManager !== 'undefined' && dataManager.data) 
+            ? dataManager.data.telegram 
+            : {};
+        
         const dataToSave = {
             ...backupData,
-            // Pertahankan data telegram yang ada di local (tidak dihapus)
-            telegram: dataManager.data?.telegram || {}
+            telegram: telegramBackup
         };
         
-        if (dataManager.saveAllData) {
-            dataManager.saveAllData(dataToSave);
-        } else {
-            // Fallback untuk struktur data lama
-            Object.keys(backupData).forEach(key => {
-                if (key !== '_backupMeta' && key !== 'telegram') {
-                    dataManager.data[key] = backupData[key];
-                }
-            });
-            dataManager.saveData();
+        if (typeof dataManager !== 'undefined') {
+            if (dataManager.saveAllData) {
+                dataManager.saveAllData(dataToSave);
+            } else {
+                Object.keys(backupData).forEach(key => {
+                    if (key !== '_backupMeta' && key !== 'telegram') {
+                        dataManager.data[key] = backupData[key];
+                    }
+                });
+                if (dataManager.saveData) dataManager.saveData();
+            }
         }
     },
 
@@ -165,11 +178,10 @@ const backupModule = {
             return;
         }
         
-        // Sync setiap 3 menit
         this.autoSyncInterval = setInterval(() => {
             console.log('[Backup] Running auto-sync...');
             this.syncToCloud(true);
-        }, 180000); // 3 menit
+        }, 180000);
         
         console.log(`[Backup] Auto-sync started for ${this.currentProvider}`);
     },
@@ -194,7 +206,7 @@ const backupModule = {
             this.showToast('⚪ Auto-sync dimatikan');
         }
         
-        if (this.isBackupPage()) this.render();
+        this.render();
     },
 
     // ============================================
@@ -209,7 +221,6 @@ const backupModule = {
         } else if (this.currentProvider === 'googlesheet') {
             return this.uploadToGAS(data, false);
         } else {
-            // Local - download JSON
             this.downloadJSON();
             return Promise.resolve();
         }
@@ -242,7 +253,6 @@ const backupModule = {
         }
         
         try {
-            // Hapus instance lama jika ada
             if (firebase.apps?.length) {
                 firebase.apps.forEach(app => app.delete());
             }
@@ -262,21 +272,17 @@ const backupModule = {
                         displayName: user.displayName || ''
                     }));
                     
-                    // Start auto sync jika aktif
                     if (this.isAutoSyncEnabled) {
                         this.startAutoSync();
                     }
                     
-                    // Cek device baru
                     this.checkNewDeviceFirebase();
+                    this.addLoginHistory('firebase', user.email);
                 } else {
                     this.currentUser = null;
                 }
                 
-                // Re-render jika di halaman backup
-                if (this.isBackupPage()) {
-                    this.render();
-                }
+                this.render();
             });
             
         } catch (err) {
@@ -286,12 +292,13 @@ const backupModule = {
     },
 
     checkNewDeviceFirebase() {
-        const hasLocalData = dataManager.data?.products?.length > 0 || 
-                            dataManager.data?.transactions?.length > 0;
+        const hasLocalData = (typeof dataManager !== 'undefined' && dataManager.data) 
+            ? (dataManager.data.products?.length > 0 || dataManager.data.transactions?.length > 0)
+            : false;
         
         if (!hasLocalData && this.currentUser) {
             console.log('[Firebase] New device detected, auto-downloading...');
-            this.showToast('📱 Device baru terdeteksi, mengunduh data...');
+            this.showToast('📱 Device baru, mengunduh data...');
             setTimeout(() => this.downloadFromFirebase(true), 1000);
         }
     },
@@ -306,11 +313,8 @@ const backupModule = {
             .then((cred) => {
                 this.currentUser = cred.user;
                 this.showToast('✅ Login berhasil!');
-                
-                // Simpan login history
                 this.addLoginHistory('firebase', cred.user.email);
-                
-                if (this.isBackupPage()) this.render();
+                this.render();
                 return cred.user;
             })
             .catch((err) => {
@@ -330,14 +334,10 @@ const backupModule = {
                 this.currentUser = cred.user;
                 this.showToast('✅ Daftar berhasil!');
                 
-                // Upload data awal
                 const data = this.getBackupData();
                 this.uploadToFirebase(data, true);
-                
-                // Simpan login history
                 this.addLoginHistory('firebase', cred.user.email);
-                
-                if (this.isBackupPage()) this.render();
+                this.render();
                 return cred.user;
             })
             .catch((err) => {
@@ -354,7 +354,7 @@ const backupModule = {
             localStorage.removeItem(this.KEYS.FB_USER);
             this.stopAutoSync();
             this.showToast('✅ Logout berhasil');
-            if (this.isBackupPage()) this.render();
+            this.render();
         });
     },
 
@@ -380,7 +380,7 @@ const backupModule = {
             .then(() => {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                if (!silent) this.showToast('✅ Upload ke Firebase berhasil!');
+                if (!silent) this.showToast('✅ Upload berhasil!');
                 this.updateSyncStatus('Synced');
                 return true;
             })
@@ -434,7 +434,9 @@ const backupModule = {
     // ============================================
 
     checkNewDeviceGAS() {
-        const hasLocalData = dataManager.data?.products?.length > 0;
+        const hasLocalData = (typeof dataManager !== 'undefined' && dataManager.data) 
+            ? dataManager.data.products?.length > 0 
+            : false;
         
         if (!hasLocalData && this.gasUrl) {
             console.log('[GAS] New device detected, auto-downloading...');
@@ -473,7 +475,7 @@ const backupModule = {
             if (result?.success) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                if (!silent) this.showToast('✅ Upload ke GAS berhasil!');
+                if (!silent) this.showToast('✅ Upload berhasil!');
                 this.updateSyncStatus('Synced');
                 return result;
             } else {
@@ -481,8 +483,6 @@ const backupModule = {
             }
         })
         .catch((err) => {
-            // Fallback ke JSONP
-            console.log('[GAS] Fetch failed, trying JSONP...');
             return this.uploadGAS_JSONP(payload, silent);
         });
     },
@@ -493,7 +493,7 @@ const backupModule = {
             const jsonStr = JSON.stringify(payload);
             
             if (jsonStr.length > 8000) {
-                reject(new Error('Data terlalu besar untuk JSONP'));
+                reject(new Error('Data terlalu besar'));
                 return;
             }
             
@@ -636,7 +636,7 @@ const backupModule = {
     },
 
     // ============================================
-    // LOGIN HISTORY (BARU)
+    // LOGIN HISTORY
     // ============================================
 
     addLoginHistory(provider, email) {
@@ -650,15 +650,11 @@ const backupModule = {
             deviceName: this.deviceName
         });
         
-        // Simpan hanya 50 entry terakhir
-        if (history.length > 50) {
-            history.pop();
-        }
+        if (history.length > 50) history.pop();
         
         localStorage.setItem('hifzi_login_history', JSON.stringify(history));
         
-        // Juga simpan ke dataManager untuk dibackup
-        if (dataManager.data) {
+        if (typeof dataManager !== 'undefined' && dataManager.data) {
             dataManager.data.loginHistory = history;
             if (dataManager.saveData) dataManager.saveData();
         }
@@ -671,12 +667,12 @@ const backupModule = {
     clearLoginHistory() {
         if (confirm('Hapus riwayat login?')) {
             localStorage.removeItem('hifzi_login_history');
-            if (dataManager.data) {
+            if (typeof dataManager !== 'undefined' && dataManager.data) {
                 dataManager.data.loginHistory = [];
                 if (dataManager.saveData) dataManager.saveData();
             }
             this.showToast('✅ Riwayat login dihapus');
-            if (this.isBackupPage()) this.render();
+            this.render();
         }
     },
 
@@ -696,8 +692,7 @@ const backupModule = {
         }
         
         this.showToast(`✅ Provider: ${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}`);
-        
-        if (this.isBackupPage()) this.render();
+        this.render();
     },
 
     saveFirebaseConfig() {
@@ -721,7 +716,7 @@ const backupModule = {
         this.showToast('✅ Config Firebase disimpan!');
         
         this.initFirebase();
-        if (this.isBackupPage()) this.render();
+        this.render();
     },
 
     saveGasUrl() {
@@ -740,7 +735,7 @@ const backupModule = {
             this.checkNewDeviceGAS();
         }
         
-        if (this.isBackupPage()) this.render();
+        this.render();
     },
 
     // ============================================
@@ -751,13 +746,13 @@ const backupModule = {
         if (!confirm('⚠️ Hapus SEMUA data lokal?')) return;
         if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') return;
         
-        // Simpan telegram config
-        const telegramBackup = dataManager.data?.telegram;
+        const telegramBackup = (typeof dataManager !== 'undefined' && dataManager.data) 
+            ? dataManager.data.telegram 
+            : {};
         
-        localStorage.removeItem(dataManager.STORAGE_KEY || 'hifzi_data');
+        localStorage.removeItem('hifzi_data');
         
-        // Restore telegram
-        if (telegramBackup && dataManager.data) {
+        if (telegramBackup && typeof dataManager !== 'undefined' && dataManager.data) {
             dataManager.data.telegram = telegramBackup;
             if (dataManager.saveData) dataManager.saveData();
         }
@@ -796,22 +791,15 @@ const backupModule = {
     // UI HELPERS
     // ============================================
 
-    isBackupPage() {
-        return document.getElementById('mainContent')?.querySelector('.backup-container') !== null;
-    },
-
     updateSyncStatus(status) {
         const syncText = document.getElementById('syncText');
-        if (syncText) {
-            syncText.textContent = status;
-        }
+        if (syncText) syncText.textContent = status;
     },
 
     showToast(msg) {
         if (typeof app !== 'undefined' && app.showToast) {
             app.showToast(msg);
         } else {
-            // Fallback toast
             const existing = document.querySelector('.backup-toast');
             if (existing) existing.remove();
             
@@ -829,12 +817,27 @@ const backupModule = {
     },
 
     // ============================================
-    // RENDER UI (FIXED)
+    // RENDER UI (FIXED - LANGSUNG KE mainContent)
     // ============================================
 
     render() {
-        const container = document.getElementById('mainContent');
-        if (!container) return;
+        // Coba cari container dengan berbagai cara
+        let container = document.getElementById('mainContent');
+        
+        // Jika tidak ada, coba cari container lain yang umum
+        if (!container) {
+            container = document.querySelector('.main-content') || 
+                       document.querySelector('#content') || 
+                       document.querySelector('.content') ||
+                       document.querySelector('main');
+        }
+        
+        if (!container) {
+            console.error('[Backup] No container found for rendering');
+            return;
+        }
+        
+        console.log('[Backup] Rendering to:', container.id || container.className);
         
         const isFirebase = this.currentProvider === 'firebase';
         const isGAS = this.currentProvider === 'googlesheet';
@@ -842,23 +845,22 @@ const backupModule = {
         const isFBConfigured = !!this.firebaseConfig.apiKey;
         const isFBLoggedIn = !!this.currentUser;
 
-        // Stats
+        const data = (typeof dataManager !== 'undefined') ? dataManager.data : {};
         const stats = {
-            products: dataManager.data?.products?.length || 0,
-            transactions: dataManager.data?.transactions?.length || 0,
-            debts: dataManager.data?.debts?.length || 0,
-            cash: dataManager.data?.settings?.currentCash || 0
+            products: data.products?.length || 0,
+            transactions: data.transactions?.length || 0,
+            debts: data.debts?.length || 0,
+            cash: data.settings?.currentCash || 0
         };
 
-        // Login history
         const loginHistory = this.getLoginHistory();
         const recentLogins = loginHistory.slice(0, 5);
 
-        container.innerHTML = `
-            <div class="backup-container" style="padding: 20px; max-width: 900px; margin: 0 auto;">
+        const html = `
+            <div class="backup-container" style="padding: 20px; max-width: 900px; margin: 0 auto; font-family: system-ui, -apple-system, sans-serif;">
                 
                 <!-- Header Status -->
-                <div class="backup-status-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Provider Aktif</div>
@@ -883,23 +885,23 @@ const backupModule = {
                 </div>
 
                 <!-- Stats Grid -->
-                <div class="backup-stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
-                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+                    <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size: 28px; margin-bottom: 4px;">📦</div>
                         <div style="font-size: 12px; color: #718096;">Produk</div>
                         <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.products}</div>
                     </div>
-                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size: 28px; margin-bottom: 4px;">📝</div>
                         <div style="font-size: 12px; color: #718096;">Transaksi</div>
                         <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.transactions}</div>
                     </div>
-                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size: 28px; margin-bottom: 4px;">💳</div>
                         <div style="font-size: 12px; color: #718096;">Hutang</div>
                         <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.debts}</div>
                     </div>
-                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size: 28px; margin-bottom: 4px;">💰</div>
                         <div style="font-size: 12px; color: #718096;">Kas</div>
                         <div style="font-size: 16px; font-weight: 700; color: #2d3748;">Rp ${stats.cash.toLocaleString('id-ID')}</div>
@@ -907,7 +909,7 @@ const backupModule = {
                 </div>
 
                 <!-- Provider Selection -->
-                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">☁️ Pilih Metode Backup</div>
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
                         <button onclick="backupModule.setProvider('local')" 
@@ -937,8 +939,8 @@ const backupModule = {
                 <!-- Google Sheets Section -->
                 ${isGAS ? this.renderGASSection() : ''}
 
-                <!-- Manual Sync Section (BARU - UTAMA) -->
-                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #667eea;">
+                <!-- Manual Sync Section -->
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #667eea;">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔄 Sinkronisasi Manual</div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                         <button onclick="backupModule.manualUpload()" 
@@ -964,7 +966,7 @@ const backupModule = {
                 </div>
 
                 <!-- Local Backup -->
-                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">💾 Backup File Lokal (JSON)</div>
                     <button onclick="backupModule.downloadJSON()" 
                         style="width: 100%; padding: 14px; background: #4a5568; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -978,8 +980,8 @@ const backupModule = {
                     </label>
                 </div>
 
-                <!-- Login History (BARU) -->
-                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <!-- Login History -->
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                         <div style="font-size: 16px; font-weight: 600; color: #2d3748;">📋 Riwayat Login</div>
                         ${loginHistory.length > 0 ? `<button onclick="backupModule.clearLoginHistory()" style="padding: 6px 12px; background: #fed7d7; color: #c53030; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Hapus</button>` : ''}
@@ -1021,12 +1023,16 @@ const backupModule = {
 
             </div>
         `;
+
+        // Set HTML ke container
+        container.innerHTML = html;
+        console.log('[Backup] Render completed');
     },
 
     renderFirebaseSection(isConfigured, isLoggedIn) {
         if (!isConfigured) {
             return `
-                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Konfigurasi Firebase</div>
                     <div style="display: grid; gap: 12px; margin-bottom: 16px;">
                         <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
@@ -1044,7 +1050,7 @@ const backupModule = {
         
         if (!isLoggedIn) {
             return `
-                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Login Firebase</div>
                     <div style="display: grid; gap: 12px; margin-bottom: 16px;">
                         <input type="email" id="fb_email" placeholder="Email" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
@@ -1065,7 +1071,7 @@ const backupModule = {
         }
         
         return `
-            <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
+            <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <div>
                         <div style="font-weight: 600; color: #2d3748;">🔥 Firebase Connected</div>
@@ -1095,7 +1101,7 @@ const backupModule = {
         const hasUrl = this.gasUrl.length > 10;
         
         return `
-            <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
+            <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
                 <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets</div>
                 <div style="margin-bottom: 16px;">
                     <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" 
@@ -1124,7 +1130,7 @@ const backupModule = {
 };
 
 // ============================================
-// AUTO INIT
+// AUTO INIT & EXPOSE
 // ============================================
 
 if (typeof dataManager !== 'undefined') {
@@ -1137,5 +1143,5 @@ if (typeof dataManager !== 'undefined') {
     }
 }
 
-// Expose to window
+// Expose globally
 window.backupModule = backupModule;
