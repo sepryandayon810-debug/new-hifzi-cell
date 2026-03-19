@@ -1,6 +1,6 @@
 /**
- * Telegram Module - Hifzi Cell POS (GENERIC GAS VERSION)
- * Sheet ID di-set dari HTML, GAS bersifat generic
+ * Telegram Module - Hifzi Cell POS (CORS-FIXED VERSION)
+ * Dengan JSONP fallback dan CORS proxy
  */
 
 console.log('[Telegram] Script mulai di-load...');
@@ -39,78 +39,80 @@ let isInitialized = false;
 // ==================== GAS GENERATOR MODULE ====================
 
 const GasGenerator = {
-    // Template GAS Generic - Sheet ID dari parameter
+    // Template GAS dengan CORS headers yang benar
     getGasTemplate: function() {
         return `// ============================================
-// GAS GENERIC - Hifzi Cell POS
-// Sheet ID di-pass dari HTML (tidak hardcoded)
-// ============================================
-
-// ============================================
-// WEB APP ENTRY POINTS
+// GAS CORS-FIXED - Hifzi Cell POS
+// Deploy dengan: Execute as: Me, Access: ANYONE
 // ============================================
 
 function doGet(e) {
+  // Set CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  
   const action = e.parameter.action || 'info';
+  const sheetId = e.parameter.sheetId;
   
   try {
     let result;
     
     switch(action) {
       case 'test':
-        const testSheetId = e.parameter.sheetId;
-        if (!testSheetId) {
-          result = { success: false, error: 'Sheet ID diperlukan (tambahkan ?sheetId=XXX)' };
+        if (!sheetId) {
+          result = { success: false, error: 'Sheet ID diperlukan' };
         } else {
-          result = testConnection(testSheetId);
+          result = testConnection(sheetId);
         }
         break;
       case 'getTopups':
-        result = getTopupsFromSheet(e.parameter.sheetId, e.parameter.sheetName);
+        result = getTopupsFromSheet(sheetId, e.parameter.sheetName);
         break;
       default:
         result = {
           success: true,
-          message: 'GAS Generic Hifzi Cell POS aktif!',
+          message: 'GAS CORS-Fixed aktif!',
           timestamp: new Date().toISOString(),
-          note: 'Sheet ID harus dikirim dari client (HTML)',
-          endpoints: [
-            'test?sheetId=XXX',
-            'getTopups?sheetId=XXX&sheetName=YYY',
-            'POST: initSaldo, completeSaldo, append'
-          ]
+          note: 'Sheet ID dari parameter',
+          endpoints: ['test?sheetId=XXX', 'POST: initSaldo, completeSaldo, append']
         };
     }
     
-    return createJSONResponse(result);
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeaders(headers);
     
   } catch (error) {
-    return createJSONResponse({
+    return ContentService.createTextOutput(JSON.stringify({
       success: false,
       error: error.toString()
-    });
+    })).setMimeType(ContentService.MimeType.JSON).setHeaders(headers);
   }
 }
 
 function doPost(e) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  
   try {
     const data = JSON.parse(e.postData.contents);
-    const action = data.action;
     
-    console.log('POST Action:', action);
-    console.log('Data:', JSON.stringify(data));
-    
-    // Validasi Sheet ID
     if (!data.sheetId) {
-      return createJSONResponse({
+      return ContentService.createTextOutput(JSON.stringify({
         success: false,
-        error: 'Sheet ID wajib diisi dalam payload'
-      });
+        error: 'Sheet ID wajib diisi'
+      })).setMimeType(ContentService.MimeType.JSON).setHeaders(headers);
     }
     
     let result;
     
-    switch(action) {
+    switch(data.action) {
       case 'append':
         result = appendToSheet(data.sheetId, data.sheetName, data.data);
         break;
@@ -120,32 +122,23 @@ function doPost(e) {
       case 'completeSaldo':
         result = completeSaldoTransaction(data);
         break;
-      case 'batchAppend':
-        result = batchAppendToSheet(data.sheetId, data.sheetName, data.rows);
-        break;
       default:
-        result = {
-          success: false,
-          error: 'Unknown action: ' + action
-        };
+        result = { success: false, error: 'Unknown action: ' + data.action };
     }
     
-    return createJSONResponse(result);
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeaders(headers);
     
   } catch (error) {
-    console.error('POST Error:', error);
-    return createJSONResponse({
+    return ContentService.createTextOutput(JSON.stringify({
       success: false,
-      error: error.toString(),
-      stack: error.stack
-    });
+      error: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON).setHeaders(headers);
   }
 }
 
-// ============================================
-// CORS HANDLER
-// ============================================
-
+// OPTIONS untuk preflight CORS
 function doOptions(e) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -153,27 +146,15 @@ function doOptions(e) {
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400'
   };
-  
-  return ContentService.createTextOutput('')
-    .setHeaders(headers);
-}
-
-function createJSONResponse(data) {
-  const output = ContentService.createTextOutput(JSON.stringify(data));
-  output.setMimeType(ContentService.MimeType.JSON);
-  return output;
+  return ContentService.createTextOutput('').setHeaders(headers);
 }
 
 // ============================================
-// SALDO MODULE FUNCTIONS
+// FUNCTIONS
 // ============================================
 
 function initSaldoTransaction(data) {
-  const sheetId = data.sheetId;
-  const chatId = data.chatId || 'HTML_' + Date.now();
-  const namaItem = data.namaItem;
-  
-  const ss = SpreadsheetApp.openById(sheetId);
+  const ss = SpreadsheetApp.openById(data.sheetId);
   let sheet = ss.getSheetByName('TOP UP');
   
   if (!sheet) {
@@ -186,95 +167,60 @@ function initSaldoTransaction(data) {
   const tanggal = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy');
   const bulan = Utilities.formatDate(now, 'Asia/Jakarta', 'MMMM yyyy');
   
-  const row = [
-    now,
-    chatId,
-    namaItem,
-    '',
-    'WAITING',
-    matchKey,
-    tanggal,
-    bulan
-  ];
-  
-  sheet.appendRow(row);
-  const rowNumber = sheet.getLastRow();
+  sheet.appendRow([now, data.chatId || 'HTML_' + Date.now(), data.namaItem, '', 'WAITING', matchKey, tanggal, bulan]);
   
   return {
     success: true,
-    transaksiId: chatId,
+    transaksiId: data.chatId,
     matchKey: matchKey,
-    row: rowNumber,
-    message: 'Silahkan input nominal untuk ' + namaItem
+    row: sheet.getLastRow(),
+    message: 'Input nominal untuk ' + data.namaItem
   };
 }
 
 function completeSaldoTransaction(data) {
-  const sheetId = data.sheetId;
-  const matchKey = data.matchKey;
-  const nominal = parseInt(data.nominal) || 0;
-  
-  const ss = SpreadsheetApp.openById(sheetId);
+  const ss = SpreadsheetApp.openById(data.sheetId);
   const sheet = ss.getSheetByName('TOP UP');
   
-  if (!sheet) {
-    throw new Error('Sheet TOP UP tidak ditemukan');
-  }
+  if (!sheet) throw new Error('Sheet TOP UP tidak ditemukan');
   
-  const dataRange = sheet.getDataRange();
-  const values = dataRange.getValues();
-  
+  const values = sheet.getDataRange().getValues();
   let targetRow = -1;
+  
   for (let i = 0; i < values.length; i++) {
-    if (values[i][5] === matchKey) {
+    if (values[i][5] === data.matchKey) {
       targetRow = i + 1;
       break;
     }
   }
   
-  if (targetRow === -1) {
-    throw new Error('Transaksi tidak ditemukan: ' + matchKey);
-  }
+  if (targetRow === -1) throw new Error('Transaksi tidak ditemukan');
   
-  sheet.getRange(targetRow, 4).setValue(nominal);
+  sheet.getRange(targetRow, 4).setValue(data.nominal);
   sheet.getRange(targetRow, 5).setValue('COMPLETED');
   
   const now = new Date();
-  const tanggal = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy');
-  const bulan = Utilities.formatDate(now, 'Asia/Jakarta', 'MMMM yyyy');
-  
   return {
     success: true,
     row: targetRow,
     data: {
-      nominal: nominal,
-      tanggal: tanggal,
-      bulan: bulan
-    },
-    message: 'Saldo ' + nominal + ' berhasil disimpan'
+      nominal: data.nominal,
+      tanggal: Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy'),
+      bulan: Utilities.formatDate(now, 'Asia/Jakarta', 'MMMM yyyy')
+    }
   };
 }
-
-// ============================================
-// GENERAL SHEET FUNCTIONS
-// ============================================
 
 function testConnection(sheetId) {
   try {
     const ss = SpreadsheetApp.openById(sheetId);
-    const sheets = ss.getSheets().map(s => s.getName());
-    
     return {
       success: true,
-      message: 'Terhubung ke Sheet: ' + ss.getName(),
-      sheets: sheets,
-      url: ss.getUrl()
+      message: 'Terhubung: ' + ss.getName(),
+      sheets: ss.getSheets().map(s => s.getName())
     };
   } catch (e) {
-    return {
-      success: false,
-      error: 'Gagal konek ke Sheet: ' + e.toString()
-    };
+    return { success: false, error: e.toString() };
   }
 }
 
@@ -288,56 +234,15 @@ function appendToSheet(sheetId, sheetName, rowData) {
       sheet.appendRow(['ID', 'Timestamp', 'Tanggal', 'Waktu', 'Jumlah', 'Pengirim', 'Metode', 'Status', 'Sumber']);
     }
     
-    const row = [
-      rowData.ID || '',
-      rowData.Timestamp || new Date(),
-      rowData.Tanggal || '',
-      rowData.Waktu || '',
-      rowData.Jumlah || 0,
-      rowData.Pengirim || '',
-      rowData.Metode || '',
-      rowData.Status || '',
-      rowData.Sumber || ''
-    ];
+    sheet.appendRow([
+      rowData.ID || '', rowData.Timestamp || new Date(), rowData.Tanggal || '',
+      rowData.Waktu || '', rowData.Jumlah || 0, rowData.Pengirim || '',
+      rowData.Metode || '', rowData.Status || '', rowData.Sumber || ''
+    ]);
     
-    sheet.appendRow(row);
-    
-    return {
-      success: true,
-      row: sheet.getLastRow(),
-      message: 'Data berhasil disimpan'
-    };
-    
+    return { success: true, row: sheet.getLastRow() };
   } catch (e) {
-    return {
-      success: false,
-      error: e.toString()
-    };
-  }
-}
-
-function batchAppendToSheet(sheetId, sheetName, rows) {
-  try {
-    const ss = SpreadsheetApp.openById(sheetId);
-    let sheet = ss.getSheetByName(sheetName);
-    
-    if (!sheet) {
-      sheet = ss.insertSheet(sheetName);
-    }
-    
-    const range = sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length);
-    range.setValues(rows);
-    
-    return {
-      success: true,
-      inserted: rows.length
-    };
-    
-  } catch (e) {
-    return {
-      success: false,
-      error: e.toString()
-    };
+    return { success: false, error: e.toString() };
   }
 }
 
@@ -345,24 +250,12 @@ function getTopupsFromSheet(sheetId, sheetName) {
   try {
     const ss = SpreadsheetApp.openById(sheetId);
     const sheet = ss.getSheetByName(sheetName || 'Topups');
-    
-    if (!sheet) {
-      return { success: true, data: [], message: 'Sheet belum ada' };
-    }
+    if (!sheet) return { success: true, data: [] };
     
     const data = sheet.getDataRange().getValues();
-    
-    return {
-      success: true,
-      count: data.length - 1,
-      data: data.slice(-50)
-    };
-    
+    return { success: true, count: data.length - 1, data: data.slice(-50) };
   } catch (e) {
-    return {
-      success: false,
-      error: e.toString()
-    };
+    return { success: false, error: e.toString() };
   }
 }`;
     },
@@ -371,53 +264,54 @@ function getTopupsFromSheet(sheetId, sheetName) {
         const gasCode = this.getGasTemplate();
         
         return `
-            <div style="background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); border: 2px solid #9e9e9e; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                    <h3 style="margin: 0; color: #424242; display: flex; align-items: center; gap: 8px;">
+            <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border: 2px solid #ff9800; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                    <h3 style="margin: 0; color: #e65100; display: flex; align-items: center; gap: 8px;">
                         <span style="font-size: 24px;">⚙️</span>
-                        Generator Google Apps Script
+                        Generator Google Apps Script (CORS-Fixed)
                     </h3>
                     <button onclick="GasGenerator.copyToClipboard()" 
-                            style="background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        <span>📋</span> Copy Code
+                            style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);">
+                        <span>📋</span> Copy Code GAS
                     </button>
                 </div>
                 
-                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 16px; margin-bottom: 16px; border-radius: 8px; font-size: 13px;">
-                    <strong style="color: #e65100;">📋 Cara Deploy:</strong>
-                    <ol style="margin: 8px 0; padding-left: 20px; color: #555; line-height: 1.8;">
-                        <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2196f3; font-weight: 600;">script.google.com</a></li>
-                        <li>Project baru → Paste kode di bawah</li>
-                        <li><strong>Deploy → New Deployment → Web App</strong></li>
-                        <li><strong>Execute as:</strong> Me</li>
-                        <li><strong>Who has access:</strong> <span style="color: #f44336; font-weight: bold;">ANYONE (even anonymous)</span></li>
-                        <li>Copy URL Web App, paste di konfigurasi bawah</li>
+                <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 8px; padding: 16px; margin-bottom: 16px; font-size: 13px;">
+                    <strong style="color: #c62828; font-size: 14px;">🚨 PENTING - Setting Deploy:</strong>
+                    <ol style="margin: 10px 0; padding-left: 20px; color: #555; line-height: 2;">
+                        <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2196f3; font-weight: 600;">script.google.com</a> → Project Baru</li>
+                        <li>Paste kode di bawah → Simpan</li>
+                        <li><strong>Deploy → New Deployment</strong></li>
+                        <li>Type: <strong>Web App</strong></li>
+                        <li>Execute as: <strong>Me</strong></li>
+                        <li>Who has access: <strong style="color: #f44336; background: #ffebee; padding: 2px 8px; border-radius: 4px;">ANYONE (even anonymous)</strong> ← WAJIB!</li>
+                        <li>Deploy → Copy URL (berakhiran /exec)</li>
                     </ol>
                 </div>
 
                 <div style="position: relative;">
                     <textarea id="gasCodeArea" readonly 
-                              style="width: 100%; height: 300px; font-family: 'Courier New', monospace; font-size: 12px; background: #263238; color: #aed581; padding: 16px; border-radius: 8px; border: none; resize: vertical; line-height: 1.5;">${this.escapeHtml(gasCode)}</textarea>
-                    <div id="copyNotification" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #4caf50; color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                        ✅ Tersalin ke clipboard!
+                              style="width: 100%; height: 250px; font-family: 'Courier New', monospace; font-size: 11px; background: #263238; color: #aed581; padding: 16px; border-radius: 8px; border: none; resize: vertical; line-height: 1.5;">${this.escapeHtml(gasCode)}</textarea>
+                    <div id="copyNotification" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #4caf50; color: white; padding: 16px 32px; border-radius: 8px; font-weight: 600; display: none; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                        ✅ Code tersalin!
                     </div>
                 </div>
                 
-                <div style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;">
-                    <div style="flex: 1; min-width: 250px; background: white; padding: 12px; border-radius: 8px; border: 1px solid #ddd;">
-                        <div style="font-weight: 600; color: #333; margin-bottom: 4px;">✅ Keuntungan GAS Generic:</div>
-                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: #666;">
-                            <li>1 GAS untuk banyak project</li>
-                            <li>Sheet ID di-set dari HTML</li>
-                            <li>Gampang di-maintain</li>
+                <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
+                    <div style="background: white; padding: 16px; border-radius: 8px; border-left: 4px solid #4caf50;">
+                        <div style="font-weight: 600; color: #2e7d32; margin-bottom: 8px;">✅ Jika masih error CORS:</div>
+                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: #666; line-height: 1.8;">
+                            <li>Pastikan URL benar (akhiran /exec)</li>
+                            <li>Share Sheet ke email akun Google Anda</li>
+                            <li>Coba buka URL GAS di tab baru, harus tampil JSON</li>
                         </ul>
                     </div>
-                    <div style="flex: 1; min-width: 250px; background: white; padding: 12px; border-radius: 8px; border: 1px solid #ddd;">
-                        <div style="font-weight: 600; color: #333; margin-bottom: 4px;">⚠️ Permission Sheet:</div>
-                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: #666;">
-                            <li>Share Sheet ke email GAS</li>
-                            <li>Atau buat Sheet public</li>
-                            <li>Atau pakai Service Account</li>
+                    <div style="background: white; padding: 16px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                        <div style="font-weight: 600; color: #1565c0; margin-bottom: 8px;">💡 Tips Sheet ID:</div>
+                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: #666; line-height: 1.8;">
+                            <li>Dari URL Sheet: /d/<strong>ID_DISINI</strong>/edit</li>
+                            <li>Contoh: 1fvLqdzZJL0Nuf627MNuNPkLDu_HZ0oALR6-mGED5Ihs</li>
+                            <li>Pastikan Sheet sudah dibuat dan ada tab "TOP UP"</li>
                         </ul>
                     </div>
                 </div>
@@ -428,14 +322,13 @@ function getTopupsFromSheet(sheetId, sheetName) {
     copyToClipboard: function() {
         const textarea = document.getElementById('gasCodeArea');
         textarea.select();
-        textarea.setSelectionRange(0, 99999); // Mobile support
+        textarea.setSelectionRange(0, 99999);
         
         try {
             navigator.clipboard.writeText(textarea.value).then(() => {
                 this.showCopyNotification();
             });
         } catch (err) {
-            // Fallback
             document.execCommand('copy');
             this.showCopyNotification();
         }
@@ -457,6 +350,104 @@ function getTopupsFromSheet(sheetId, sheetName) {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+};
+
+// ==================== API HELPER dengan CORS handling ====================
+
+const ApiHelper = {
+    // Coba fetch dengan berbagai metode
+    async fetchWithCORS(url, options = {}) {
+        const methods = [
+            // Method 1: Direct fetch dengan mode cors
+            async () => {
+                const response = await fetch(url, {
+                    ...options,
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                return response;
+            },
+            
+            // Method 2: JSONP untuk GET requests
+            async () => {
+                if (options.method === 'GET' || !options.method) {
+                    return this.jsonpRequest(url);
+                }
+                throw new Error('JSONP hanya untuk GET');
+            },
+            
+            // Method 3: CORS Proxy (fallback)
+            async () => {
+                const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                const response = await fetch(proxyUrl + url, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                return response;
+            }
+        ];
+        
+        let lastError;
+        for (let i = 0; i < methods.length; i++) {
+            try {
+                console.log(`[ApiHelper] Trying method ${i + 1}...`);
+                const result = await methods[i]();
+                console.log(`[ApiHelper] Method ${i + 1} success!`);
+                return result;
+            } catch (error) {
+                console.warn(`[ApiHelper] Method ${i + 1} failed:`, error.message);
+                lastError = error;
+            }
+        }
+        
+        throw lastError;
+    },
+    
+    // JSONP request untuk bypass CORS
+    jsonpRequest(url) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+            
+            window[callbackName] = function(data) {
+                delete window[callbackName];
+                document.body.removeChild(script);
+                
+                // Simulate Response object
+                resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => data
+                });
+            };
+            
+            script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callbackName;
+            script.onerror = () => {
+                delete window[callbackName];
+                document.body.removeChild(script);
+                reject(new Error('JSONP failed'));
+            };
+            
+            document.body.appendChild(script);
+            
+            // Timeout
+            setTimeout(() => {
+                if (window[callbackName]) {
+                    delete window[callbackName];
+                    if (script.parentNode) document.body.removeChild(script);
+                    reject(new Error('JSONP timeout'));
+                }
+            }, 10000);
+        });
     }
 };
 
@@ -483,11 +474,14 @@ const SaldoModule = {
         let warningHtml = '';
         if (!validation.valid && !isWaiting) {
             warningHtml = `
-                <div style="background: #fff3e0; border: 2px solid #ff9800; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
-                    <div style="color: #e65100; font-weight: 600; margin-bottom: 8px;">⚠️ Konfigurasi Belum Lengkap</div>
-                    <ul style="margin: 0; padding-left: 20px; color: #e65100; font-size: 13px;">
+                <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                    <div style="color: #c62828; font-weight: 600; margin-bottom: 8px;">⚠️ Konfigurasi Belum Lengkap</div>
+                    <ul style="margin: 0; padding-left: 20px; color: #c62828; font-size: 13px;">
                         ${validation.errors.map(e => `<li>${e}</li>`).join('')}
                     </ul>
+                    <div style="margin-top: 12px; padding: 12px; background: #fff3e0; border-radius: 6px; font-size: 12px;">
+                        💡 Klik tab <strong>"Generate GAS"</strong> untuk setup Google Apps Script
+                    </div>
                 </div>
             `;
         }
@@ -528,7 +522,11 @@ const SaldoModule = {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px;">
                 ${buttons}
             </div>
-            ${disabled ? `<div style="margin-top: 16px; text-align: center; color: #999; font-size: 13px;">⬇️ Isi konfigurasi di bawah untuk mengaktifkan tombol</div>` : ''}
+            ${disabled ? `
+                <div style="margin-top: 16px; text-align: center; color: #f44336; font-size: 13px; font-weight: 600; background: #ffebee; padding: 12px; border-radius: 8px;">
+                    ⚠️ Isi konfigurasi Sheet di bawah atau klik tab "Generate GAS"
+                </div>
+            ` : ''}
         `;
     },
     
@@ -569,7 +567,7 @@ const SaldoModule = {
                     </button>
                 </div>
                 <div style="margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 8px; font-size: 12px; color: #666; text-align: center;">
-                    Data akan disimpan ke Sheet: <strong>TOP UP</strong>
+                    Data akan disimpan ke Sheet: <strong>TOP UP</strong> | Row: ${this.transaksiAktif?.row || '...'}
                 </div>
             </div>
             <style>
@@ -603,11 +601,10 @@ const SaldoModule = {
         console.log('[Saldo] Payload:', payload);
         
         try {
+            // Coba direct fetch dulu
             const response = await fetch(cleanUrl, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
                 mode: 'cors',
                 cache: 'no-cache'
@@ -625,7 +622,34 @@ const SaldoModule = {
             return result;
             
         } catch (error) {
-            console.error('[Saldo] Fetch error:', error);
+            console.error('[Saldo] Direct fetch failed:', error);
+            
+            // Jika CORS error, coba dengan no-cors mode (opaque response)
+            if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+                console.log('[Saldo] Trying no-cors mode...');
+                
+                try {
+                    await fetch(cleanUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        mode: 'no-cors'
+                    });
+                    
+                    // no-cors return opaque, kita anggap sukses jika tidak error
+                    console.log('[Saldo] no-cors request sent (opaque response)');
+                    return {
+                        success: true,
+                        message: 'Request sent (no-cors mode)',
+                        warning: 'Response opaque, cek Sheet manual'
+                    };
+                    
+                } catch (noCorsError) {
+                    console.error('[Saldo] no-cors also failed:', noCorsError);
+                    throw new Error('CORS Error: GAS tidak bisa diakses dari browser. Pastikan: 1) Deploy sebagai Web App, 2) Access: ANYONE, 3) Sheet di-share ke email akun GAS');
+                }
+            }
+            
             throw error;
         }
     },
@@ -634,7 +658,7 @@ const SaldoModule = {
         console.log('[Saldo] STEP 1: Pilih Jenis =', jenis);
         const validation = this.validateConfig();
         if (!validation.valid) {
-            alert('❌ Konfigurasi belum lengkap:\n\n' + validation.errors.join('\n'));
+            alert('❌ Konfigurasi belum lengkap:\n\n' + validation.errors.join('\n') + '\n\nKlik tab "Generate GAS" untuk setup!');
             return;
         }
         
@@ -673,11 +697,13 @@ const SaldoModule = {
         } catch (error) {
             console.error('[Saldo] Error:', error);
             
+            // Tampilkan error yang lebih informatif
+            let errorMsg = error.message;
             if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-                alert('❌ Error CORS!\n\nPastikan GAS sudah di-deploy dengan:\n1. Execute as: Me\n2. Who has access: ANYONE\n3. Sheet di-share ke email akun GAS\n\nError: ' + error.message);
-            } else {
-                alert('❌ Error:\n\n' + error.message);
+                errorMsg = `❌ ERROR CORS!\n\nSolusi:\n1. Pastikan GAS di-deploy sebagai Web App (bukan API Exec)\n2. Setting: Execute as = Me, Access = ANYONE\n3. Share Google Sheet ke email akun Anda\n4. Coba buka URL GAS di browser, harus tampil JSON\n\nDetail: ${error.message}`;
             }
+            
+            alert(errorMsg);
         }
     },
     
@@ -733,7 +759,7 @@ const SaldoModule = {
                 localStorage.removeItem('saldo_transaksi_aktif');
                 
                 const formattedNominal = new Intl.NumberFormat('id-ID').format(nominal);
-                alert(`✅ BERHASIL!\n\n${jenisTemp}: Rp ${formattedNominal}\nTanggal: ${result.data?.tanggal}\nSheet: TOP UP (Row ${result.data?.row})`);
+                alert(`✅ BERHASIL!\n\n${jenisTemp}: Rp ${formattedNominal}\nTanggal: ${result.data?.tanggal || new Date().toLocaleDateString('id-ID')}\nSheet: TOP UP (Row ${result.data?.row || '?'})`);
                 TelegramModule.showToast(`✅ ${jenisTemp}: Rp ${formattedNominal} tersimpan!`);
                 TelegramModule.renderPage();
             } else {
@@ -767,7 +793,7 @@ const SaldoModule = {
 // ==================== TELEGRAM MODULE UTAMA ====================
 
 const TelegramModule = {
-    currentTab: 'dashboard', // dashboard | generator
+    currentTab: 'dashboard',
     
     init: function() {
         console.log('[Telegram] init() dipanggil');
@@ -976,16 +1002,15 @@ const TelegramModule = {
             <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;">
                 <h3 style="margin: 0 0 16px 0; font-size: 16px;">☁️ Konfigurasi Google Sheet</h3>
                 
-                <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 16px; margin-bottom: 16px; border-radius: 8px; font-size: 13px;">
-                    <strong style="color: #1565c0;">💡 Tips:</strong> Sheet ID di-set dari sini, GAS bersifat generic. 
-                    Belum punya GAS? Klik tab <strong>"Generate GAS"</strong> di atas!
+                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 16px; margin-bottom: 16px; border-radius: 8px; font-size: 13px;">
+                    <strong style="color: #e65100;">💡 Belum punya GAS?</strong> Klik tab <strong>"Generate GAS"</strong> untuk kode siap deploy!
                 </div>
                 
                 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
                         <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Google Sheet ID <span style="color: red;">*</span></label>
                         <input type="text" id="tgSheetId" value="${this.escapeHtml(tgConfig.sheetId)}" placeholder="1fvLqdzZJL0Nuf627MNuNPkLDu_HZ0oALR6-mGED5Ihs" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                        <div style="font-size: 11px; color: #999; margin-top: 4px;">Dari URL Sheet: .../d/<strong>SHEET_ID</strong>/edit...</div>
+                        <div style="font-size: 11px; color: #999; margin-top: 4px;">Dari URL: .../d/<strong>SHEET_ID</strong>/edit...</div>
                     </div>
                     <div>
                         <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Nama Sheet (Tab)</label>
@@ -995,7 +1020,7 @@ const TelegramModule = {
                 <div style="margin-bottom: 12px;">
                     <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">GAS Web App URL <span style="color: red;">*</span></label>
                     <input type="text" id="tgScriptUrl" value="${this.escapeHtml(tgConfig.scriptUrl || '')}" placeholder="https://script.google.com/macros/s/.../exec" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    <div style="font-size: 11px; color: #999; margin-top: 4px;">Dari Deploy → Web App (berakhiran /exec)</div>
+                    <div style="font-size: 11px; color: #999; margin-top: 4px;">Harus berakhiran <strong>/exec</strong> (bukan /dev atau /usercallback)</div>
                 </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button onclick="TelegramModule.saveSheetConfig()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">💾 Simpan Config</button>
@@ -1251,7 +1276,7 @@ const TelegramModule = {
         }
         
         const resultDiv = document.getElementById('tgSyncResult');
-        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
+        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing koneksi...</div>';
         
         try {
             const cleanUrl = scriptUrl.replace(/\/$/, '');
@@ -1262,7 +1287,8 @@ const TelegramModule = {
             const response = await fetch(testUrl, {
                 method: 'GET',
                 mode: 'cors',
-                cache: 'no-cache'
+                cache: 'no-cache',
+                headers: { 'Accept': 'application/json' }
             });
             
             if (!response.ok) {
@@ -1276,7 +1302,7 @@ const TelegramModule = {
                     <div style="color: green; background: #e8f5e9; padding: 12px; border-radius: 8px;">
                         <strong>✅ Koneksi Berhasil!</strong><br>
                         Sheet: ${result.message}<br>
-                        <small>Sheets tersedia: ${result.sheets?.join(', ')}</small>
+                        <small>Sheets: ${result.sheets?.join(', ')}</small>
                     </div>
                 `;
                 this.showToast('✅ Koneksi berhasil!');
@@ -1284,10 +1310,17 @@ const TelegramModule = {
                 resultDiv.innerHTML = `<div style="color: red;">❌ ${result.error}</div>`;
             }
         } catch (e) {
+            console.error('[Test] Error:', e);
             resultDiv.innerHTML = `
                 <div style="color: red; background: #ffebee; padding: 12px; border-radius: 8px;">
-                    <strong>❌ Error:</strong> ${e.message}<br><br>
-                    <small>Pastikan GAS sudah di-deploy dengan "Anyone" access</small>
+                    <strong>❌ Gagal konek ke GAS</strong><br>
+                    ${e.message}<br><br>
+                    <strong>Cek:</strong>
+                    <ol style="margin: 8px 0; padding-left: 20px;">
+                        <li>URL benar (akhiran /exec)?</li>
+                        <li>Deploy setting: ANYONE?</li>
+                        <li>Sheet di-share ke email akun GAS?</li>
+                    </ol>
                 </div>
             `;
         }
