@@ -149,7 +149,11 @@ const router = {
                     usersModule.init();
                     break;
                 case 'telegram':
-                    TelegramModule.init();
+                    // PERBAIKAN: Inisialisasi dan render TelegramModule
+                    if (typeof TelegramModule !== 'undefined') {
+                        TelegramModule.init();
+                        TelegramModule.renderPage();
+                    }
                     break;
                 case 'cloud':
                 case 'backup':
