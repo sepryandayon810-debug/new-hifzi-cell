@@ -1,5 +1,5 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL
+// BACKUP MODULE - HIFZI CELL (FIXED VERSION)
 // Firebase + Google Sheets + Local
 // ============================================
 
@@ -36,6 +36,10 @@ const backupModule = {
         FB_USER: 'hifzi_fb_user'
     },
 
+    // ============================================
+    // INIT & SETUP
+    // ============================================
+
     init() {
         console.log('[Backup] Initializing... Provider:', this.currentProvider);
         
@@ -43,12 +47,7 @@ const backupModule = {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
         }
         
-        if (this.currentProvider === 'firebase') {
-            this.initFirebase();
-        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-            this.checkNewDeviceGAS();
-        }
-        
+        // Setup online/offline listeners
         window.addEventListener('online', () => {
             this.isOnline = true;
             this.showToast('🌐 Online');
@@ -59,38 +58,178 @@ const backupModule = {
             this.isOnline = false;
             this.showToast('📴 Offline');
         });
+
+        // Initialize provider
+        if (this.currentProvider === 'firebase') {
+            this.initFirebase();
+        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
+            this.checkNewDeviceGAS();
+        }
     },
+
+    // ============================================
+    // DATA COLLECTION (Exclude Telegram)
+    // ============================================
+
+    getBackupData() {
+        // Ambil semua data kecuali module telegram
+        const allData = dataManager.getAllData ? dataManager.getAllData() : dataManager.data;
+        
+        // Data yang akan dibackup
+        const backupData = {
+            // Data Produk
+            products: allData.products || [],
+            categories: allData.categories || [],
+            
+            // Data Transaksi & Keuangan
+            transactions: allData.transactions || [],
+            shifts: allData.shifts || [],
+            
+            // Data Hutang
+            debts: allData.debts || [],
+            
+            // Data Pengaturan & Kas
+            settings: allData.settings || {},
+            cashHistory: allData.cashHistory || [],
+            
+            // Data User & Login History (BARU)
+            users: allData.users || [],
+            loginHistory: allData.loginHistory || [],
+            currentUser: allData.currentUser || null,
+            
+            // Metadata
+            _backupMeta: {
+                version: '2.0',
+                deviceId: this.deviceId,
+                deviceName: this.deviceName,
+                backupDate: new Date().toISOString(),
+                provider: this.currentProvider
+            }
+        };
+        
+        return backupData;
+    },
+
+    saveBackupData(backupData) {
+        // Simpan data ke dataManager (kecuali telegram)
+        const dataToSave = {
+            ...backupData,
+            // Pertahankan data telegram yang ada di local (tidak dihapus)
+            telegram: dataManager.data?.telegram || {}
+        };
+        
+        if (dataManager.saveAllData) {
+            dataManager.saveAllData(dataToSave);
+        } else {
+            // Fallback untuk struktur data lama
+            Object.keys(backupData).forEach(key => {
+                if (key !== '_backupMeta' && key !== 'telegram') {
+                    dataManager.data[key] = backupData[key];
+                }
+            });
+            dataManager.saveData();
+        }
+    },
+
+    // ============================================
+    // AUTO SYNC
+    // ============================================
 
     shouldSync() {
         return this.currentProvider !== 'local' && this.isAutoSyncEnabled && this.isOnline;
     },
 
-    syncToCloud(data) {
-        if (!this.shouldSync()) return;
+    syncToCloud(silent = true) {
+        if (!this.shouldSync()) {
+            console.log('[Backup] Skip sync - conditions not met');
+            return Promise.resolve();
+        }
         
         console.log('[Backup] Auto-sync to', this.currentProvider);
         
+        const data = this.getBackupData();
+        
         if (this.currentProvider === 'firebase' && this.currentUser) {
-            this.uploadToFirebase(data, true);
+            return this.uploadToFirebase(data, silent);
         } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-            this.uploadToGAS(data, true);
+            return this.uploadToGAS(data, silent);
+        }
+        
+        return Promise.resolve();
+    },
+
+    startAutoSync() {
+        this.stopAutoSync();
+        
+        if (!this.isAutoSyncEnabled || this.currentProvider === 'local') {
+            return;
+        }
+        
+        // Sync setiap 3 menit
+        this.autoSyncInterval = setInterval(() => {
+            console.log('[Backup] Running auto-sync...');
+            this.syncToCloud(true);
+        }, 180000); // 3 menit
+        
+        console.log(`[Backup] Auto-sync started for ${this.currentProvider}`);
+    },
+
+    stopAutoSync() {
+        if (this.autoSyncInterval) {
+            clearInterval(this.autoSyncInterval);
+            this.autoSyncInterval = null;
+            console.log('[Backup] Auto-sync stopped');
         }
     },
 
-    manualSync() {
-        const data = dataManager.getAllData();
+    toggleAutoSync() {
+        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
+        localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
+        
+        if (this.isAutoSyncEnabled) {
+            this.startAutoSync();
+            this.showToast('🟢 Auto-sync aktif (3 menit)');
+        } else {
+            this.stopAutoSync();
+            this.showToast('⚪ Auto-sync dimatikan');
+        }
+        
+        if (this.isBackupPage()) this.render();
+    },
+
+    // ============================================
+    // MANUAL SYNC (UPLOAD/DOWNLOAD)
+    // ============================================
+
+    manualUpload() {
+        const data = this.getBackupData();
         
         if (this.currentProvider === 'firebase') {
-            return this.uploadToFirebase(data);
+            return this.uploadToFirebase(data, false);
         } else if (this.currentProvider === 'googlesheet') {
-            return this.uploadToGAS(data);
+            return this.uploadToGAS(data, false);
         } else {
-            this.showToast('💾 Mode Local - Tidak ada sync');
+            // Local - download JSON
+            this.downloadJSON();
+            return Promise.resolve();
         }
     },
 
-    // ========== FIREBASE ==========
-    
+    manualDownload() {
+        if (this.currentProvider === 'firebase') {
+            return this.downloadFromFirebase(false);
+        } else if (this.currentProvider === 'googlesheet') {
+            return this.downloadFromGAS(false);
+        } else {
+            this.showToast('💾 Mode Local - Gunakan Import JSON');
+            return Promise.resolve();
+        }
+    },
+
+    // ============================================
+    // FIREBASE
+    // ============================================
+
     initFirebase() {
         if (typeof firebase === 'undefined') {
             console.error('[Firebase] SDK not loaded');
@@ -98,11 +237,12 @@ const backupModule = {
         }
         
         if (!this.firebaseConfig.apiKey) {
-            console.log('[Firebase] No config');
+            console.log('[Firebase] No config found');
             return;
         }
         
         try {
+            // Hapus instance lama jika ada
             if (firebase.apps?.length) {
                 firebase.apps.forEach(app => app.delete());
             }
@@ -111,40 +251,48 @@ const backupModule = {
             this.database = firebase.database();
             this.auth = firebase.auth();
             
-            console.log('[Firebase] Initialized');
+            console.log('[Firebase] Initialized successfully');
             
             this.auth.onAuthStateChanged((user) => {
                 if (user) {
                     this.currentUser = user;
                     localStorage.setItem(this.KEYS.FB_USER, JSON.stringify({
                         uid: user.uid,
-                        email: user.email
+                        email: user.email,
+                        displayName: user.displayName || ''
                     }));
                     
+                    // Start auto sync jika aktif
                     if (this.isAutoSyncEnabled) {
-                        this.startAutoSyncFirebase();
+                        this.startAutoSync();
                     }
                     
+                    // Cek device baru
                     this.checkNewDeviceFirebase();
                 } else {
                     this.currentUser = null;
                 }
                 
-                if (this.isBackupPage()) this.render();
+                // Re-render jika di halaman backup
+                if (this.isBackupPage()) {
+                    this.render();
+                }
             });
             
         } catch (err) {
             console.error('[Firebase] Init error:', err);
+            this.showToast('❌ Error Firebase: ' + err.message);
         }
     },
 
     checkNewDeviceFirebase() {
-        const hasLocalData = dataManager.data.products?.length > 0 || 
-                            dataManager.data.transactions?.length > 0;
+        const hasLocalData = dataManager.data?.products?.length > 0 || 
+                            dataManager.data?.transactions?.length > 0;
         
         if (!hasLocalData && this.currentUser) {
-            console.log('[Firebase] New device, downloading...');
-            this.downloadFromFirebase(true);
+            console.log('[Firebase] New device detected, auto-downloading...');
+            this.showToast('📱 Device baru terdeteksi, mengunduh data...');
+            setTimeout(() => this.downloadFromFirebase(true), 1000);
         }
     },
 
@@ -157,7 +305,11 @@ const backupModule = {
         return this.auth.signInWithEmailAndPassword(email, password)
             .then((cred) => {
                 this.currentUser = cred.user;
-                this.showToast('✅ Login Firebase berhasil!');
+                this.showToast('✅ Login berhasil!');
+                
+                // Simpan login history
+                this.addLoginHistory('firebase', cred.user.email);
+                
                 if (this.isBackupPage()) this.render();
                 return cred.user;
             })
@@ -177,7 +329,14 @@ const backupModule = {
             .then((cred) => {
                 this.currentUser = cred.user;
                 this.showToast('✅ Daftar berhasil!');
-                this.uploadToFirebase(dataManager.getAllData());
+                
+                // Upload data awal
+                const data = this.getBackupData();
+                this.uploadToFirebase(data, true);
+                
+                // Simpan login history
+                this.addLoginHistory('firebase', cred.user.email);
+                
                 if (this.isBackupPage()) this.render();
                 return cred.user;
             })
@@ -194,7 +353,7 @@ const backupModule = {
             this.currentUser = null;
             localStorage.removeItem(this.KEYS.FB_USER);
             this.stopAutoSync();
-            this.showToast('✅ Logout Firebase');
+            this.showToast('✅ Logout berhasil');
             if (this.isBackupPage()) this.render();
         });
     },
@@ -205,12 +364,15 @@ const backupModule = {
             return Promise.reject('Not authenticated');
         }
         
+        if (!silent) this.showToast('⬆️ Mengupload ke Firebase...');
+        
         const payload = {
             ...data,
             _syncMeta: {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '1.0'
+                deviceName: this.deviceName,
+                version: '2.0'
             }
         };
         
@@ -218,8 +380,9 @@ const backupModule = {
             .then(() => {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                if (!silent) this.showToast('✅ Upload Firebase OK!');
+                if (!silent) this.showToast('✅ Upload ke Firebase berhasil!');
                 this.updateSyncStatus('Synced');
+                return true;
             })
             .catch((err) => {
                 if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
@@ -228,23 +391,25 @@ const backupModule = {
             });
     },
 
-    downloadFromFirebase(silent = false) {
+    downloadFromFirebase(silent = false, force = false) {
         if (!this.database || !this.currentUser) {
             if (!silent) this.showToast('❌ Belum login Firebase');
             return Promise.reject('Not authenticated');
         }
         
-        if (!silent && !confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) {
-            return Promise.resolve();
+        if (!silent && !force) {
+            if (!confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) {
+                return Promise.resolve();
+            }
         }
         
-        if (!silent) this.showToast('⬇️ Mengunduh...');
+        if (!silent) this.showToast('⬇️ Mengunduh dari Firebase...');
         
         return this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value')
             .then((snapshot) => {
                 const cloudData = snapshot.val();
                 if (cloudData) {
-                    dataManager.saveAllData(cloudData);
+                    this.saveBackupData(cloudData);
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
                     
@@ -252,6 +417,10 @@ const backupModule = {
                         this.showToast('✅ Download berhasil! Reload...');
                         setTimeout(() => location.reload(), 1500);
                     }
+                    return cloudData;
+                } else {
+                    if (!silent) this.showToast('ℹ️ Tidak ada data di cloud');
+                    return null;
                 }
             })
             .catch((err) => {
@@ -260,27 +429,20 @@ const backupModule = {
             });
     },
 
-    startAutoSyncFirebase() {
-        this.stopAutoSync();
-        this.autoSyncInterval = setInterval(() => {
-            this.uploadToFirebase(dataManager.getAllData(), true);
-        }, 180000); // 3 menit
-        
-        console.log('[Firebase] Auto-sync started (3 menit)');
-    },
+    // ============================================
+    // GOOGLE SHEETS
+    // ============================================
 
-    // ========== GOOGLE SHEETS ==========
-    
     checkNewDeviceGAS() {
-        const hasLocalData = dataManager.data.products?.length > 0;
+        const hasLocalData = dataManager.data?.products?.length > 0;
         
         if (!hasLocalData && this.gasUrl) {
-            console.log('[GAS] New device, auto-download...');
+            console.log('[GAS] New device detected, auto-downloading...');
             setTimeout(() => this.downloadFromGAS(true), 1000);
         }
         
         if (this.isAutoSyncEnabled && this.gasUrl) {
-            this.startAutoSyncGAS();
+            this.startAutoSync();
         }
     },
 
@@ -290,10 +452,13 @@ const backupModule = {
             return Promise.reject('No URL');
         }
         
+        if (!silent) this.showToast('⬆️ Mengupload ke Google Sheets...');
+        
         const payload = {
             action: 'sync',
             data: data,
             deviceId: this.deviceId,
+            deviceName: this.deviceName,
             timestamp: new Date().toISOString()
         };
         
@@ -308,15 +473,16 @@ const backupModule = {
             if (result?.success) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                if (!silent) this.showToast('✅ Upload GAS berhasil!');
+                if (!silent) this.showToast('✅ Upload ke GAS berhasil!');
                 this.updateSyncStatus('Synced');
                 return result;
             } else {
-                throw new Error('Upload failed');
+                throw new Error(result?.message || 'Upload failed');
             }
         })
         .catch((err) => {
             // Fallback ke JSONP
+            console.log('[GAS] Fetch failed, trying JSONP...');
             return this.uploadGAS_JSONP(payload, silent);
         });
     },
@@ -327,7 +493,7 @@ const backupModule = {
             const jsonStr = JSON.stringify(payload);
             
             if (jsonStr.length > 8000) {
-                reject(new Error('Data too large for JSONP'));
+                reject(new Error('Data terlalu besar untuk JSONP'));
                 return;
             }
             
@@ -338,7 +504,7 @@ const backupModule = {
                     if (!silent) this.showToast('✅ Upload berhasil!');
                     resolve(result);
                 } else {
-                    reject(new Error('Upload failed'));
+                    reject(new Error(result?.message || 'Upload failed'));
                 }
                 delete window[cbName];
             };
@@ -359,17 +525,19 @@ const backupModule = {
         });
     },
 
-    downloadFromGAS(silent = false) {
+    downloadFromGAS(silent = false, force = false) {
         if (!this.gasUrl) {
             if (!silent) this.showToast('❌ URL GAS belum diisi');
             return Promise.reject('No URL');
         }
         
-        if (!silent && !confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) {
-            return Promise.resolve();
+        if (!silent && !force) {
+            if (!confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) {
+                return Promise.resolve();
+            }
         }
         
-        if (!silent) this.showToast('⬇️ Mengunduh...');
+        if (!silent) this.showToast('⬇️ Mengunduh dari Google Sheets...');
         
         return fetch(`${this.gasUrl}?action=restore&_t=${Date.now()}`)
             .then(r => r.json())
@@ -405,7 +573,7 @@ const backupModule = {
 
     handleGASDownload(result, silent) {
         if (result?.success && result.data) {
-            dataManager.saveAllData(result.data);
+            this.saveBackupData(result.data);
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
             
@@ -415,24 +583,17 @@ const backupModule = {
             }
             return result;
         } else {
-            if (!silent) this.showToast('❌ Download gagal');
+            if (!silent) this.showToast('❌ Download gagal: ' + (result?.message || 'Invalid data'));
             throw new Error('Invalid data');
         }
     },
 
-    startAutoSyncGAS() {
-        this.stopAutoSync();
-        this.autoSyncInterval = setInterval(() => {
-            this.uploadToGAS(dataManager.getAllData(), true);
-        }, 180000);
-        
-        console.log('[GAS] Auto-sync started (3 menit)');
-    },
+    // ============================================
+    // LOCAL FILE BACKUP
+    // ============================================
 
-    // ========== LOCAL FILE ==========
-    
     downloadJSON() {
-        const data = dataManager.getAllData();
+        const data = this.getBackupData();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         
@@ -444,14 +605,14 @@ const backupModule = {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        this.showToast('✅ JSON didownload!');
+        this.showToast('✅ File JSON didownload!');
     },
 
     importJSON(input) {
         const file = input.files[0];
         if (!file) return;
         
-        if (!confirm('⚠️ Import akan menimpa data lokal. Lanjutkan?')) {
+        if (!confirm('⚠️ Import akan menimpa data lokal (kecuali Telegram). Lanjutkan?')) {
             input.value = '';
             return;
         }
@@ -460,19 +621,69 @@ const backupModule = {
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
-                dataManager.saveAllData(data);
+                this.saveBackupData(data);
                 this.showToast('✅ Import berhasil! Reload...');
                 setTimeout(() => location.reload(), 1500);
             } catch (err) {
                 this.showToast('❌ Error: ' + err.message);
             }
         };
+        reader.onerror = () => {
+            this.showToast('❌ Error membaca file');
+        };
         reader.readAsText(file);
         input.value = '';
     },
 
-    // ========== CONFIG & SETTINGS ==========
-    
+    // ============================================
+    // LOGIN HISTORY (BARU)
+    // ============================================
+
+    addLoginHistory(provider, email) {
+        const history = JSON.parse(localStorage.getItem('hifzi_login_history') || '[]');
+        
+        history.unshift({
+            timestamp: new Date().toISOString(),
+            provider: provider,
+            email: email,
+            deviceId: this.deviceId,
+            deviceName: this.deviceName
+        });
+        
+        // Simpan hanya 50 entry terakhir
+        if (history.length > 50) {
+            history.pop();
+        }
+        
+        localStorage.setItem('hifzi_login_history', JSON.stringify(history));
+        
+        // Juga simpan ke dataManager untuk dibackup
+        if (dataManager.data) {
+            dataManager.data.loginHistory = history;
+            if (dataManager.saveData) dataManager.saveData();
+        }
+    },
+
+    getLoginHistory() {
+        return JSON.parse(localStorage.getItem('hifzi_login_history') || '[]');
+    },
+
+    clearLoginHistory() {
+        if (confirm('Hapus riwayat login?')) {
+            localStorage.removeItem('hifzi_login_history');
+            if (dataManager.data) {
+                dataManager.data.loginHistory = [];
+                if (dataManager.saveData) dataManager.saveData();
+            }
+            this.showToast('✅ Riwayat login dihapus');
+            if (this.isBackupPage()) this.render();
+        }
+    },
+
+    // ============================================
+    // CONFIG & SETTINGS
+    // ============================================
+
     setProvider(provider) {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
@@ -484,8 +695,9 @@ const backupModule = {
             this.checkNewDeviceGAS();
         }
         
-        if (this.isBackupPage()) this.render();
         this.showToast(`✅ Provider: ${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}`);
+        
+        if (this.isBackupPage()) this.render();
     },
 
     saveFirebaseConfig() {
@@ -531,39 +743,25 @@ const backupModule = {
         if (this.isBackupPage()) this.render();
     },
 
-    toggleAutoSync() {
-        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
-        localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
-        
-        if (this.isAutoSyncEnabled) {
-            if (this.currentProvider === 'firebase' && this.currentUser) {
-                this.startAutoSyncFirebase();
-            } else if (this.currentProvider === 'googlesheet') {
-                this.startAutoSyncGAS();
-            }
-            this.showToast('🟢 Auto-sync aktif');
-        } else {
-            this.stopAutoSync();
-            this.showToast('⚪ Auto-sync mati');
-        }
-        
-        if (this.isBackupPage()) this.render();
-    },
+    // ============================================
+    // RESET & DANGER ZONE
+    // ============================================
 
-    stopAutoSync() {
-        if (this.autoSyncInterval) {
-            clearInterval(this.autoSyncInterval);
-            this.autoSyncInterval = null;
-        }
-    },
-
-    // ========== RESET & DANGER ZONE ==========
-    
     resetLocal() {
         if (!confirm('⚠️ Hapus SEMUA data lokal?')) return;
         if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') return;
         
-        localStorage.removeItem(dataManager.STORAGE_KEY);
+        // Simpan telegram config
+        const telegramBackup = dataManager.data?.telegram;
+        
+        localStorage.removeItem(dataManager.STORAGE_KEY || 'hifzi_data');
+        
+        // Restore telegram
+        if (telegramBackup && dataManager.data) {
+            dataManager.data.telegram = telegramBackup;
+            if (dataManager.saveData) dataManager.saveData();
+        }
+        
         this.showToast('✅ Data lokal dihapus! Reload...');
         setTimeout(() => location.reload(), 1500);
     },
@@ -594,8 +792,10 @@ const backupModule = {
         }
     },
 
-    // ========== UI HELPERS ==========
-    
+    // ============================================
+    // UI HELPERS
+    // ============================================
+
     isBackupPage() {
         return document.getElementById('mainContent')?.querySelector('.backup-container') !== null;
     },
@@ -611,16 +811,27 @@ const backupModule = {
         if (typeof app !== 'undefined' && app.showToast) {
             app.showToast(msg);
         } else {
+            // Fallback toast
+            const existing = document.querySelector('.backup-toast');
+            if (existing) existing.remove();
+            
             const toast = document.createElement('div');
-            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:8px;z-index:9999;';
+            toast.className = 'backup-toast';
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:white;padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;animation:slideDown 0.3s ease;';
             toast.textContent = msg;
             document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(-20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
     },
 
-    // ========== RENDER UI ==========
-    
+    // ============================================
+    // RENDER UI (FIXED)
+    // ============================================
+
     render() {
         const container = document.getElementById('mainContent');
         if (!container) return;
@@ -633,79 +844,89 @@ const backupModule = {
 
         // Stats
         const stats = {
-            products: dataManager.data.products?.length || 0,
-            transactions: dataManager.data.transactions?.length || 0,
-            debts: dataManager.data.debts?.length || 0,
-            cash: dataManager.data.settings?.currentCash || 0
+            products: dataManager.data?.products?.length || 0,
+            transactions: dataManager.data?.transactions?.length || 0,
+            debts: dataManager.data?.debts?.length || 0,
+            cash: dataManager.data?.settings?.currentCash || 0
         };
 
+        // Login history
+        const loginHistory = this.getLoginHistory();
+        const recentLogins = loginHistory.slice(0, 5);
+
         container.innerHTML = `
-            <div class="backup-container">
+            <div class="backup-container" style="padding: 20px; max-width: 900px; margin: 0 auto;">
                 
-                <!-- Status Card -->
-                <div class="backup-status-card">
-                    <div class="backup-status-header">
+                <!-- Header Status -->
+                <div class="backup-status-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div class="backup-status-info">Provider Aktif</div>
-                            <div class="backup-provider">
+                            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Provider Aktif</div>
+                            <div style="font-size: 24px; font-weight: 700;">
                                 ${isLocal ? '💾 Local' : isFirebase ? '🔥 Firebase' : '📊 Google Sheets'}
                             </div>
-                            <div class="backup-status-info" style="margin-top: 4px;">
+                            <div style="font-size: 13px; margin-top: 8px; opacity: 0.9;">
                                 ${this.isOnline ? '🟢 Online' : '🔴 Offline'} 
-                                ${this.isAutoSyncEnabled ? '• Auto-sync ON' : ''}
+                                ${this.isAutoSyncEnabled ? '• Auto-sync ON' : '• Auto-sync OFF'}
                             </div>
                         </div>
-                        <div class="backup-last-sync">
-                            <div class="backup-last-sync-label">Last Sync</div>
-                            <div style="font-size: 16px; font-weight: 600;">
-                                ${this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID', {hour:'2-digit', minute:'2-digit'}) : 'Belum'}
+                        <div style="text-align: right;">
+                            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Last Sync</div>
+                            <div style="font-size: 18px; font-weight: 600;">
+                                ${this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}) : 'Belum'}
+                            </div>
+                            <div style="font-size: 11px; margin-top: 4px; opacity: 0.8;">
+                                Device: ${this.deviceName}
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Stats -->
-                <div class="backup-stats-grid">
-                    <div class="backup-stat-card">
-                        <div class="backup-stat-icon">📦</div>
-                        <div class="backup-stat-label">Produk</div>
-                        <div class="backup-stat-value">${stats.products}</div>
+                <!-- Stats Grid -->
+                <div class="backup-stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="font-size: 28px; margin-bottom: 4px;">📦</div>
+                        <div style="font-size: 12px; color: #718096;">Produk</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.products}</div>
                     </div>
-                    <div class="backup-stat-card">
-                        <div class="backup-stat-icon">📝</div>
-                        <div class="backup-stat-label">Transaksi</div>
-                        <div class="backup-stat-value">${stats.transactions}</div>
+                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="font-size: 28px; margin-bottom: 4px;">📝</div>
+                        <div style="font-size: 12px; color: #718096;">Transaksi</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.transactions}</div>
                     </div>
-                    <div class="backup-stat-card">
-                        <div class="backup-stat-icon">💳</div>
-                        <div class="backup-stat-label">Hutang</div>
-                        <div class="backup-stat-value">${stats.debts}</div>
+                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="font-size: 28px; margin-bottom: 4px;">💳</div>
+                        <div style="font-size: 12px; color: #718096;">Hutang</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.debts}</div>
                     </div>
-                    <div class="backup-stat-card">
-                        <div class="backup-stat-icon">💰</div>
-                        <div class="backup-stat-label">Kas</div>
-                        <div class="backup-stat-value">Rp ${stats.cash.toLocaleString('id-ID')}</div>
+                    <div class="backup-stat-card" style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="font-size: 28px; margin-bottom: 4px;">💰</div>
+                        <div style="font-size: 12px; color: #718096;">Kas</div>
+                        <div style="font-size: 16px; font-weight: 700; color: #2d3748;">Rp ${stats.cash.toLocaleString('id-ID')}</div>
                     </div>
                 </div>
 
                 <!-- Provider Selection -->
-                <div class="backup-section">
-                    <div class="backup-section-title">☁️ Pilih Metode Backup</div>
-                    <div class="backup-provider-grid">
-                        <button class="backup-provider-btn ${isLocal ? 'active' : ''}" onclick="backupModule.setProvider('local')">
-                            <div class="backup-provider-icon">💾</div>
-                            <div class="backup-provider-name">Local File</div>
-                            <div class="backup-provider-desc">Simpan di device</div>
+                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">☁️ Pilih Metode Backup</div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                        <button onclick="backupModule.setProvider('local')" 
+                            style="padding: 16px; border: 2px solid ${isLocal ? '#667eea' : '#e2e8f0'}; border-radius: 12px; background: ${isLocal ? '#f7fafc' : 'white'}; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">💾</div>
+                            <div style="font-weight: 600; color: #2d3748;">Local File</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Simpan di device</div>
                         </button>
-                        <button class="backup-provider-btn ${isFirebase ? 'active' : ''}" onclick="backupModule.setProvider('firebase')">
-                            <div class="backup-provider-icon">🔥</div>
-                            <div class="backup-provider-name">Firebase</div>
-                            <div class="backup-provider-desc">Real-time sync</div>
+                        <button onclick="backupModule.setProvider('firebase')" 
+                            style="padding: 16px; border: 2px solid ${isFirebase ? '#ff6b35' : '#e2e8f0'}; border-radius: 12px; background: ${isFirebase ? '#fff5f0' : 'white'}; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🔥</div>
+                            <div style="font-weight: 600; color: #2d3748;">Firebase</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Real-time sync</div>
                         </button>
-                        <button class="backup-provider-btn ${isGAS ? 'active' : ''}" onclick="backupModule.setProvider('googlesheet')">
-                            <div class="backup-provider-icon">📊</div>
-                            <div class="backup-provider-name">Google Sheets</div>
-                            <div class="backup-provider-desc">Via GAS</div>
+                        <button onclick="backupModule.setProvider('googlesheet')" 
+                            style="padding: 16px; border: 2px solid ${isGAS ? '#34a853' : '#e2e8f0'}; border-radius: 12px; background: ${isGAS ? '#f0fff4' : 'white'}; cursor: pointer; transition: all 0.2s;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
+                            <div style="font-weight: 600; color: #2d3748;">Google Sheets</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Via GAS</div>
                         </button>
                     </div>
                 </div>
@@ -716,43 +937,83 @@ const backupModule = {
                 <!-- Google Sheets Section -->
                 ${isGAS ? this.renderGASSection() : ''}
 
+                <!-- Manual Sync Section (BARU - UTAMA) -->
+                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #667eea;">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔄 Sinkronisasi Manual</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                        <button onclick="backupModule.manualUpload()" 
+                            style="padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <span style="font-size: 20px;">⬆️</span>
+                            <div>
+                                <div>Upload ke Cloud</div>
+                                <div style="font-size: 11px; opacity: 0.9; font-weight: normal;">Kirim data ke ${isLocal ? 'JSON' : isFirebase ? 'Firebase' : 'Sheets'}</div>
+                            </div>
+                        </button>
+                        <button onclick="backupModule.manualDownload()" 
+                            style="padding: 16px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <span style="font-size: 20px;">⬇️</span>
+                            <div>
+                                <div>Download dari Cloud</div>
+                                <div style="font-size: 11px; opacity: 0.9; font-weight: normal;">Ambil data untuk device ini</div>
+                            </div>
+                        </button>
+                    </div>
+                    <div style="background: #ebf8ff; border-left: 4px solid #4299e1; padding: 12px; border-radius: 6px; font-size: 13px; color: #2c5282;">
+                        <strong>💡 Tips:</strong> Gunakan Upload sebelum pindah device, lalu Download di device baru. Data Telegram tidak ikut tersimpan di cloud.
+                    </div>
+                </div>
+
                 <!-- Local Backup -->
-                <div class="backup-section">
-                    <div class="backup-section-title">💾 Backup File (JSON)</div>
-                    <button class="backup-btn backup-btn-primary backup-btn-block" onclick="backupModule.downloadJSON()" style="margin-bottom: 12px;">
-                        ⬇️ Download JSON
+                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">💾 Backup File Lokal (JSON)</div>
+                    <button onclick="backupModule.downloadJSON()" 
+                        style="width: 100%; padding: 14px; background: #4a5568; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <span>⬇️</span> Download JSON
                     </button>
-                    <label class="backup-file-drop">
+                    <label style="display: block; padding: 24px; border: 2px dashed #cbd5e0; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='#cbd5e0'">
                         <input type="file" accept=".json" onchange="backupModule.importJSON(this)" style="display: none;">
-                        <div style="font-size: 32px;">📤</div>
-                        <div style="font-weight: 600; margin-top: 8px;">Import JSON</div>
+                        <div style="font-size: 40px; margin-bottom: 8px;">📤</div>
+                        <div style="font-weight: 600; color: #2d3748;">Import JSON</div>
                         <div style="font-size: 12px; color: #718096; margin-top: 4px;">Klik atau drag file ke sini</div>
                     </label>
                 </div>
 
-                <!-- Manual Sync -->
-                ${!isLocal ? `
-                    <div class="backup-section">
-                        <div class="backup-section-title">🔄 Sinkron Manual</div>
-                        <div class="backup-sync-actions">
-                            <button class="backup-btn backup-btn-success" onclick="backupModule.manualSync()">
-                                ⬆️ Upload Sekarang
-                            </button>
-                            <button class="backup-btn backup-btn-primary" onclick="backupModule.${isFirebase ? 'downloadFromFirebase' : 'downloadFromGAS'}()">
-                                ⬇️ Download Sekarang
-                            </button>
-                        </div>
+                <!-- Login History (BARU) -->
+                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div style="font-size: 16px; font-weight: 600; color: #2d3748;">📋 Riwayat Login</div>
+                        ${loginHistory.length > 0 ? `<button onclick="backupModule.clearLoginHistory()" style="padding: 6px 12px; background: #fed7d7; color: #c53030; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Hapus</button>` : ''}
                     </div>
-                ` : ''}
+                    ${loginHistory.length === 0 ? 
+                        `<div style="text-align: center; padding: 20px; color: #a0aec0; font-size: 13px;">Belum ada riwayat login</div>` :
+                        `<div style="max-height: 200px; overflow-y: auto;">
+                            ${recentLogins.map(login => `
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f7fafc; border-radius: 8px; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 13px; color: #2d3748;">${login.email}</div>
+                                        <div style="font-size: 11px; color: #718096;">${login.provider === 'firebase' ? '🔥 Firebase' : '📊 Sheets'} • ${login.deviceName}</div>
+                                    </div>
+                                    <div style="font-size: 11px; color: #a0aec0; text-align: right;">
+                                        ${new Date(login.timestamp).toLocaleDateString('id-ID')}<br>
+                                        ${new Date(login.timestamp).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}
+                                    </div>
+                                </div>
+                            `).join('')}
+                            ${loginHistory.length > 5 ? `<div style="text-align: center; font-size: 12px; color: #718096; margin-top: 8px;">... dan ${loginHistory.length - 5} login lainnya</div>` : ''}
+                        </div>`
+                    }
+                </div>
 
                 <!-- Danger Zone -->
-                <div class="backup-danger-zone">
-                    <div class="backup-danger-title">🗑️ Zona Bahaya</div>
-                    <button class="backup-btn backup-btn-danger backup-btn-block" onclick="backupModule.resetLocal()">
+                <div style="background: #fff5f5; border: 1px solid #feb2b2; padding: 20px; border-radius: 12px;">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #c53030;">🗑️ Zona Bahaya</div>
+                    <button onclick="backupModule.resetLocal()" 
+                        style="width: 100%; padding: 14px; background: #fc8181; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 8px;">
                         🗑️ Hapus Data Lokal
                     </button>
                     ${!isLocal ? `
-                        <button class="backup-btn backup-btn-warning backup-btn-block" onclick="backupModule.resetCloud()" style="margin-top: 8px;">
+                        <button onclick="backupModule.resetCloud()" 
+                            style="width: 100%; padding: 14px; background: #f6ad55; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                             ☁️ Reset Cloud (${isFirebase ? 'Firebase' : 'GAS'})
                         </button>
                     ` : ''}
@@ -765,21 +1026,16 @@ const backupModule = {
     renderFirebaseSection(isConfigured, isLoggedIn) {
         if (!isConfigured) {
             return `
-                <div class="backup-section" style="border: 2px solid #ff6b35;">
-                    <div class="backup-section-title">🔥 Konfigurasi Firebase</div>
-                    <div class="backup-input-group">
-                        <input type="text" id="fb_apiKey" class="backup-input" placeholder="API Key *">
+                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Konfigurasi Firebase</div>
+                    <div style="display: grid; gap: 12px; margin-bottom: 16px;">
+                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_projectId" placeholder="Project ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                     </div>
-                    <div class="backup-input-group">
-                        <input type="text" id="fb_authDomain" class="backup-input" placeholder="Auth Domain *">
-                    </div>
-                    <div class="backup-input-group">
-                        <input type="text" id="fb_databaseURL" class="backup-input" placeholder="Database URL *">
-                    </div>
-                    <div class="backup-input-group">
-                        <input type="text" id="fb_projectId" class="backup-input" placeholder="Project ID">
-                    </div>
-                    <button class="backup-btn backup-btn-primary backup-btn-block" onclick="backupModule.saveFirebaseConfig()">
+                    <button onclick="backupModule.saveFirebaseConfig()" 
+                        style="width: 100%; padding: 14px; background: #ff6b35; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                         💾 Simpan & Connect
                     </button>
                 </div>
@@ -788,20 +1044,20 @@ const backupModule = {
         
         if (!isLoggedIn) {
             return `
-                <div class="backup-section" style="border: 2px solid #ff6b35;">
-                    <div class="backup-section-title">🔥 Login Firebase</div>
-                    <div class="backup-input-group">
-                        <input type="email" id="fb_email" class="backup-input" placeholder="Email">
+                <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Login Firebase</div>
+                    <div style="display: grid; gap: 12px; margin-bottom: 16px;">
+                        <input type="email" id="fb_email" placeholder="Email" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="password" id="fb_password" placeholder="Password" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                     </div>
-                    <div class="backup-input-group">
-                        <input type="password" id="fb_password" class="backup-input" placeholder="Password">
-                    </div>
-                    <div class="backup-grid-2">
-                        <button class="backup-btn backup-btn-primary backup-btn-block" onclick="backupModule.firebaseLogin(document.getElementById('fb_email').value, document.getElementById('fb_password').value)">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <button onclick="backupModule.firebaseLogin(document.getElementById('fb_email').value, document.getElementById('fb_password').value)" 
+                            style="padding: 14px; background: #ff6b35; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                             Login
                         </button>
-                        <button class="backup-btn backup-btn-success backup-btn-block" onclick="backupModule.firebaseRegister(document.getElementById('fb_email').value, document.getElementById('fb_password').value)">
-                            Daftar
+                        <button onclick="backupModule.firebaseRegister(document.getElementById('fb_email').value, document.getElementById('fb_password').value)" 
+                            style="padding: 14px; background: #48bb78; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                            Daftar Baru
                         </button>
                     </div>
                 </div>
@@ -809,22 +1065,26 @@ const backupModule = {
         }
         
         return `
-            <div class="backup-section" style="border: 2px solid #ff6b35;">
+            <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <div>
-                        <div style="font-weight: 600;">🔥 Firebase Connected</div>
-                        <div style="font-size: 13px; color: #276749;">✅ ${this.currentUser?.email}</div>
+                        <div style="font-weight: 600; color: #2d3748;">🔥 Firebase Connected</div>
+                        <div style="font-size: 13px; color: #38a169; margin-top: 4px;">✅ ${this.currentUser?.email}</div>
                     </div>
-                    <button class="backup-btn backup-btn-danger" onclick="backupModule.firebaseLogout()">Logout</button>
+                    <button onclick="backupModule.firebaseLogout()" 
+                        style="padding: 8px 16px; background: #fc8181; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                        Logout
+                    </button>
                 </div>
                 
-                <div class="backup-toggle">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f7fafc; border-radius: 10px;">
                     <div>
-                        <div style="font-weight: 600;">Auto Sync</div>
-                        <div style="font-size: 12px; color: #718096;">Sinkron otomatis tiap 3 menit</div>
+                        <div style="font-weight: 600; color: #2d3748;">Auto Sync</div>
+                        <div style="font-size: 12px; color: #718096; margin-top: 2px;">Sinkron otomatis tiap 3 menit</div>
                     </div>
-                    <div class="backup-toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}" onclick="backupModule.toggleAutoSync()">
-                        <div class="backup-toggle-knob"></div>
+                    <div onclick="backupModule.toggleAutoSync()" 
+                        style="width: 50px; height: 28px; background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
+                        <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
                     </div>
                 </div>
             </div>
@@ -835,23 +1095,26 @@ const backupModule = {
         const hasUrl = this.gasUrl.length > 10;
         
         return `
-            <div class="backup-section" style="border: 2px solid #34a853;">
-                <div class="backup-section-title">📊 Google Sheets</div>
-                <div class="backup-input-group">
-                    <input type="text" id="gasUrlInput" class="backup-input" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec">
+            <div class="backup-section" style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets</div>
+                <div style="margin-bottom: 16px;">
+                    <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" 
+                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; margin-bottom: 12px;">
+                    <button onclick="backupModule.saveGasUrl()" 
+                        style="width: 100%; padding: 14px; background: #34a853; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        💾 Simpan URL
+                    </button>
                 </div>
-                <button class="backup-btn backup-btn-success backup-btn-block" onclick="backupModule.saveGasUrl()" style="margin-bottom: 16px;">
-                    💾 Simpan URL
-                </button>
                 
                 ${hasUrl ? `
-                    <div class="backup-toggle">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f0fff4; border-radius: 10px;">
                         <div>
-                            <div style="font-weight: 600;">Auto Sync</div>
-                            <div style="font-size: 12px; color: #718096;">Cek tiap 3 menit</div>
+                            <div style="font-weight: 600; color: #2d3748;">Auto Sync</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 2px;">Sinkron otomatis tiap 3 menit</div>
                         </div>
-                        <div class="backup-toggle-switch ${this.isAutoSyncEnabled ? 'active' : ''}" onclick="backupModule.toggleAutoSync()">
-                            <div class="backup-toggle-knob"></div>
+                        <div onclick="backupModule.toggleAutoSync()" 
+                            style="width: 50px; height: 28px; background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
+                            <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
                         </div>
                     </div>
                 ` : ''}
@@ -860,9 +1123,19 @@ const backupModule = {
     }
 };
 
-// Auto-init
+// ============================================
+// AUTO INIT
+// ============================================
+
 if (typeof dataManager !== 'undefined') {
-    document.addEventListener('DOMContentLoaded', () => {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            backupModule.init();
+        });
+    } else {
         backupModule.init();
-    });
+    }
 }
+
+// Expose to window
+window.backupModule = backupModule;
