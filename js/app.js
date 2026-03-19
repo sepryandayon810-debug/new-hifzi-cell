@@ -25,7 +25,7 @@ const router = {
         'receipt': 'Struk',
         'backup': 'Backup',
         'debt': 'Hutang',
-        'users': 'Manajemen Pengguna',
+        'users': 'Users',
         'telegram': 'Telegram',
         'cloud': 'Cloud'
     },
