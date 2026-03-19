@@ -1,7 +1,6 @@
 /**
- * Telegram Module - Hifzi Cell POS (FIXED VERSION)
- * Integrasi dengan n8n, MasterLoad, DigiPOS, ML, dan Input Saldo
- * VERSI STANDALONE - Dengan CORS Proxy & Error Handling
+ * Telegram Module - Hifzi Cell POS (GENERIC GAS VERSION)
+ * Sheet ID di-set dari HTML, GAS bersifat generic
  */
 
 console.log('[Telegram] Script mulai di-load...');
@@ -36,6 +35,430 @@ let topups = [];
 let currentFilter = 'all';
 let currentTimeFilter = 'month';
 let isInitialized = false;
+
+// ==================== GAS GENERATOR MODULE ====================
+
+const GasGenerator = {
+    // Template GAS Generic - Sheet ID dari parameter
+    getGasTemplate: function() {
+        return `// ============================================
+// GAS GENERIC - Hifzi Cell POS
+// Sheet ID di-pass dari HTML (tidak hardcoded)
+// ============================================
+
+// ============================================
+// WEB APP ENTRY POINTS
+// ============================================
+
+function doGet(e) {
+  const action = e.parameter.action || 'info';
+  
+  try {
+    let result;
+    
+    switch(action) {
+      case 'test':
+        const testSheetId = e.parameter.sheetId;
+        if (!testSheetId) {
+          result = { success: false, error: 'Sheet ID diperlukan (tambahkan ?sheetId=XXX)' };
+        } else {
+          result = testConnection(testSheetId);
+        }
+        break;
+      case 'getTopups':
+        result = getTopupsFromSheet(e.parameter.sheetId, e.parameter.sheetName);
+        break;
+      default:
+        result = {
+          success: true,
+          message: 'GAS Generic Hifzi Cell POS aktif!',
+          timestamp: new Date().toISOString(),
+          note: 'Sheet ID harus dikirim dari client (HTML)',
+          endpoints: [
+            'test?sheetId=XXX',
+            'getTopups?sheetId=XXX&sheetName=YYY',
+            'POST: initSaldo, completeSaldo, append'
+          ]
+        };
+    }
+    
+    return createJSONResponse(result);
+    
+  } catch (error) {
+    return createJSONResponse({
+      success: false,
+      error: error.toString()
+    });
+  }
+}
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
+    
+    console.log('POST Action:', action);
+    console.log('Data:', JSON.stringify(data));
+    
+    // Validasi Sheet ID
+    if (!data.sheetId) {
+      return createJSONResponse({
+        success: false,
+        error: 'Sheet ID wajib diisi dalam payload'
+      });
+    }
+    
+    let result;
+    
+    switch(action) {
+      case 'append':
+        result = appendToSheet(data.sheetId, data.sheetName, data.data);
+        break;
+      case 'initSaldo':
+        result = initSaldoTransaction(data);
+        break;
+      case 'completeSaldo':
+        result = completeSaldoTransaction(data);
+        break;
+      case 'batchAppend':
+        result = batchAppendToSheet(data.sheetId, data.sheetName, data.rows);
+        break;
+      default:
+        result = {
+          success: false,
+          error: 'Unknown action: ' + action
+        };
+    }
+    
+    return createJSONResponse(result);
+    
+  } catch (error) {
+    console.error('POST Error:', error);
+    return createJSONResponse({
+      success: false,
+      error: error.toString(),
+      stack: error.stack
+    });
+  }
+}
+
+// ============================================
+// CORS HANDLER
+// ============================================
+
+function doOptions(e) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400'
+  };
+  
+  return ContentService.createTextOutput('')
+    .setHeaders(headers);
+}
+
+function createJSONResponse(data) {
+  const output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}
+
+// ============================================
+// SALDO MODULE FUNCTIONS
+// ============================================
+
+function initSaldoTransaction(data) {
+  const sheetId = data.sheetId;
+  const chatId = data.chatId || 'HTML_' + Date.now();
+  const namaItem = data.namaItem;
+  
+  const ss = SpreadsheetApp.openById(sheetId);
+  let sheet = ss.getSheetByName('TOP UP');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('TOP UP');
+    sheet.appendRow(['Timestamp', 'Chat ID', 'Jenis', 'Nominal', 'Status', 'Match Key', 'Tanggal', 'Bulan']);
+  }
+  
+  const matchKey = 'SALDO_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  const now = new Date();
+  const tanggal = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy');
+  const bulan = Utilities.formatDate(now, 'Asia/Jakarta', 'MMMM yyyy');
+  
+  const row = [
+    now,
+    chatId,
+    namaItem,
+    '',
+    'WAITING',
+    matchKey,
+    tanggal,
+    bulan
+  ];
+  
+  sheet.appendRow(row);
+  const rowNumber = sheet.getLastRow();
+  
+  return {
+    success: true,
+    transaksiId: chatId,
+    matchKey: matchKey,
+    row: rowNumber,
+    message: 'Silahkan input nominal untuk ' + namaItem
+  };
+}
+
+function completeSaldoTransaction(data) {
+  const sheetId = data.sheetId;
+  const matchKey = data.matchKey;
+  const nominal = parseInt(data.nominal) || 0;
+  
+  const ss = SpreadsheetApp.openById(sheetId);
+  const sheet = ss.getSheetByName('TOP UP');
+  
+  if (!sheet) {
+    throw new Error('Sheet TOP UP tidak ditemukan');
+  }
+  
+  const dataRange = sheet.getDataRange();
+  const values = dataRange.getValues();
+  
+  let targetRow = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i][5] === matchKey) {
+      targetRow = i + 1;
+      break;
+    }
+  }
+  
+  if (targetRow === -1) {
+    throw new Error('Transaksi tidak ditemukan: ' + matchKey);
+  }
+  
+  sheet.getRange(targetRow, 4).setValue(nominal);
+  sheet.getRange(targetRow, 5).setValue('COMPLETED');
+  
+  const now = new Date();
+  const tanggal = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy');
+  const bulan = Utilities.formatDate(now, 'Asia/Jakarta', 'MMMM yyyy');
+  
+  return {
+    success: true,
+    row: targetRow,
+    data: {
+      nominal: nominal,
+      tanggal: tanggal,
+      bulan: bulan
+    },
+    message: 'Saldo ' + nominal + ' berhasil disimpan'
+  };
+}
+
+// ============================================
+// GENERAL SHEET FUNCTIONS
+// ============================================
+
+function testConnection(sheetId) {
+  try {
+    const ss = SpreadsheetApp.openById(sheetId);
+    const sheets = ss.getSheets().map(s => s.getName());
+    
+    return {
+      success: true,
+      message: 'Terhubung ke Sheet: ' + ss.getName(),
+      sheets: sheets,
+      url: ss.getUrl()
+    };
+  } catch (e) {
+    return {
+      success: false,
+      error: 'Gagal konek ke Sheet: ' + e.toString()
+    };
+  }
+}
+
+function appendToSheet(sheetId, sheetName, rowData) {
+  try {
+    const ss = SpreadsheetApp.openById(sheetId);
+    let sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.appendRow(['ID', 'Timestamp', 'Tanggal', 'Waktu', 'Jumlah', 'Pengirim', 'Metode', 'Status', 'Sumber']);
+    }
+    
+    const row = [
+      rowData.ID || '',
+      rowData.Timestamp || new Date(),
+      rowData.Tanggal || '',
+      rowData.Waktu || '',
+      rowData.Jumlah || 0,
+      rowData.Pengirim || '',
+      rowData.Metode || '',
+      rowData.Status || '',
+      rowData.Sumber || ''
+    ];
+    
+    sheet.appendRow(row);
+    
+    return {
+      success: true,
+      row: sheet.getLastRow(),
+      message: 'Data berhasil disimpan'
+    };
+    
+  } catch (e) {
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+function batchAppendToSheet(sheetId, sheetName, rows) {
+  try {
+    const ss = SpreadsheetApp.openById(sheetId);
+    let sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+    
+    const range = sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length);
+    range.setValues(rows);
+    
+    return {
+      success: true,
+      inserted: rows.length
+    };
+    
+  } catch (e) {
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+function getTopupsFromSheet(sheetId, sheetName) {
+  try {
+    const ss = SpreadsheetApp.openById(sheetId);
+    const sheet = ss.getSheetByName(sheetName || 'Topups');
+    
+    if (!sheet) {
+      return { success: true, data: [], message: 'Sheet belum ada' };
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    
+    return {
+      success: true,
+      count: data.length - 1,
+      data: data.slice(-50)
+    };
+    
+  } catch (e) {
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}`;
+    },
+
+    renderGeneratorSection: function() {
+        const gasCode = this.getGasTemplate();
+        
+        return `
+            <div style="background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); border: 2px solid #9e9e9e; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                    <h3 style="margin: 0; color: #424242; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 24px;">⚙️</span>
+                        Generator Google Apps Script
+                    </h3>
+                    <button onclick="GasGenerator.copyToClipboard()" 
+                            style="background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <span>📋</span> Copy Code
+                    </button>
+                </div>
+                
+                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 16px; margin-bottom: 16px; border-radius: 8px; font-size: 13px;">
+                    <strong style="color: #e65100;">📋 Cara Deploy:</strong>
+                    <ol style="margin: 8px 0; padding-left: 20px; color: #555; line-height: 1.8;">
+                        <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2196f3; font-weight: 600;">script.google.com</a></li>
+                        <li>Project baru → Paste kode di bawah</li>
+                        <li><strong>Deploy → New Deployment → Web App</strong></li>
+                        <li><strong>Execute as:</strong> Me</li>
+                        <li><strong>Who has access:</strong> <span style="color: #f44336; font-weight: bold;">ANYONE (even anonymous)</span></li>
+                        <li>Copy URL Web App, paste di konfigurasi bawah</li>
+                    </ol>
+                </div>
+
+                <div style="position: relative;">
+                    <textarea id="gasCodeArea" readonly 
+                              style="width: 100%; height: 300px; font-family: 'Courier New', monospace; font-size: 12px; background: #263238; color: #aed581; padding: 16px; border-radius: 8px; border: none; resize: vertical; line-height: 1.5;">${this.escapeHtml(gasCode)}</textarea>
+                    <div id="copyNotification" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #4caf50; color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        ✅ Tersalin ke clipboard!
+                    </div>
+                </div>
+                
+                <div style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 250px; background: white; padding: 12px; border-radius: 8px; border: 1px solid #ddd;">
+                        <div style="font-weight: 600; color: #333; margin-bottom: 4px;">✅ Keuntungan GAS Generic:</div>
+                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: #666;">
+                            <li>1 GAS untuk banyak project</li>
+                            <li>Sheet ID di-set dari HTML</li>
+                            <li>Gampang di-maintain</li>
+                        </ul>
+                    </div>
+                    <div style="flex: 1; min-width: 250px; background: white; padding: 12px; border-radius: 8px; border: 1px solid #ddd;">
+                        <div style="font-weight: 600; color: #333; margin-bottom: 4px;">⚠️ Permission Sheet:</div>
+                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: #666;">
+                            <li>Share Sheet ke email GAS</li>
+                            <li>Atau buat Sheet public</li>
+                            <li>Atau pakai Service Account</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    copyToClipboard: function() {
+        const textarea = document.getElementById('gasCodeArea');
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // Mobile support
+        
+        try {
+            navigator.clipboard.writeText(textarea.value).then(() => {
+                this.showCopyNotification();
+            });
+        } catch (err) {
+            // Fallback
+            document.execCommand('copy');
+            this.showCopyNotification();
+        }
+    },
+
+    showCopyNotification: function() {
+        const notif = document.getElementById('copyNotification');
+        notif.style.display = 'block';
+        setTimeout(() => {
+            notif.style.display = 'none';
+        }, 2000);
+    },
+
+    escapeHtml: function(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+};
 
 // ==================== SALDO MODULE ====================
 
@@ -170,12 +593,10 @@ const SaldoModule = {
         if (display) display.textContent = value ? `Rp ${formatted}` : '';
     },
     
-    // FIXED: API Call dengan better error handling dan CORS workaround
     async apiCall(payload) {
         const targetUrl = saldoConfig.scriptUrl;
         if (!targetUrl) throw new Error('Script URL belum diisi');
         
-        // Bersihkan URL
         const cleanUrl = targetUrl.trim().replace(/\/$/, '');
         
         console.log('[Saldo] API Call to:', cleanUrl);
@@ -188,7 +609,6 @@ const SaldoModule = {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(payload),
-                // Tambahkan mode cors eksplisit
                 mode: 'cors',
                 cache: 'no-cache'
             });
@@ -206,44 +626,8 @@ const SaldoModule = {
             
         } catch (error) {
             console.error('[Saldo] Fetch error:', error);
-            
-            // Jika CORS error, coba dengan mode no-cors (tapi response jadi opaque)
-            if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-                console.log('[Saldo] CORS error detected, trying alternative...');
-                
-                // Coba dengan GET request sebagai fallback
-                if (payload.action === 'initSaldo') {
-                    return await this.apiCallGetFallback(payload);
-                }
-            }
-            
             throw error;
         }
-    },
-    
-    // Fallback menggunakan GET dengan query params
-    async apiCallGetFallback(payload) {
-        const baseUrl = saldoConfig.scriptUrl.trim().replace(/\/$/, '');
-        const params = new URLSearchParams({
-            action: payload.action,
-            sheetId: payload.sheetId,
-            chatId: payload.chatId,
-            namaItem: payload.namaItem
-        });
-        
-        const url = `${baseUrl}?${params.toString()}`;
-        console.log('[Saldo] GET Fallback URL:', url);
-        
-        const response = await fetch(url, {
-            method: 'GET',
-            mode: 'cors'
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        return await response.json();
     },
     
     pilihJenis: async function(jenis) {
@@ -289,9 +673,8 @@ const SaldoModule = {
         } catch (error) {
             console.error('[Saldo] Error:', error);
             
-            // Error spesifik untuk CORS
             if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-                alert('❌ Error CORS!\n\nGoogle Apps Script harus di-deploy dengan setting:\n1. Execute as: Me\n2. Who has access: ANYONE (even anonymous)\n3. Pastikan URL benar dan tidak ada redirect\n\nError: ' + error.message);
+                alert('❌ Error CORS!\n\nPastikan GAS sudah di-deploy dengan:\n1. Execute as: Me\n2. Who has access: ANYONE\n3. Sheet di-share ke email akun GAS\n\nError: ' + error.message);
             } else {
                 alert('❌ Error:\n\n' + error.message);
             }
@@ -384,27 +767,21 @@ const SaldoModule = {
 // ==================== TELEGRAM MODULE UTAMA ====================
 
 const TelegramModule = {
+    currentTab: 'dashboard', // dashboard | generator
+    
     init: function() {
         console.log('[Telegram] init() dipanggil');
-        if (isInitialized) {
-            console.log('[Telegram] Sudah di-init sebelumnya');
-            return;
-        }
+        if (isInitialized) return;
         isInitialized = true;
         
-        console.log('[Telegram] Initializing...');
         this.loadData();
         SaldoModule.checkPending();
-        
-        console.log('[Telegram] Host:', window.location.host);
-        console.log('[Telegram] Protocol:', window.location.protocol);
     },
     
     loadData: function() {
         try {
             const savedConfig = localStorage.getItem(STORAGE_KEY_CONFIG);
             if (savedConfig) tgConfig = JSON.parse(savedConfig);
-            console.log('[Telegram] Config loaded:', tgConfig.botToken ? 'Ada token' : 'No token');
         } catch (e) {
             console.error('[Telegram] Error loading config:', e);
         }
@@ -419,18 +796,14 @@ const TelegramModule = {
         try {
             const savedTopups = localStorage.getItem(STORAGE_KEY_TOPUPS);
             if (savedTopups) topups = JSON.parse(savedTopups);
-            console.log('[Telegram] Topups loaded:', topups.length, 'items');
         } catch (e) {
-            console.error('[Telegram] Error loading topups:', e);
             topups = [];
         }
         
         try {
             const savedTimeFilter = localStorage.getItem('tg_time_filter');
             if (savedTimeFilter) currentTimeFilter = savedTimeFilter;
-        } catch (e) {
-            console.error('[Telegram] Error loading time filter:', e);
-        }
+        } catch (e) {}
     },
     
     saveData: function() {
@@ -439,36 +812,32 @@ const TelegramModule = {
             localStorage.setItem(STORAGE_KEY_SALDO, JSON.stringify(saldoConfig));
             localStorage.setItem(STORAGE_KEY_TOPUPS, JSON.stringify(topups));
             localStorage.setItem('tg_time_filter', currentTimeFilter);
-            console.log('[Telegram] Data saved');
         } catch (e) {
             console.error('[Telegram+Saldo] Error saving:', e);
         }
     },
     
+    setTab: function(tab) {
+        this.currentTab = tab;
+        this.renderPage();
+    },
+    
     renderPage: function() {
-        console.log('[Telegram] renderPage() dipanggil');
         const container = document.getElementById('mainContent');
         if (!container) {
             console.error('[Telegram] mainContent tidak ditemukan!');
             return;
         }
         
-        const stats = this.getStats();
-        const syncStatus = this.getSyncStatus();
-        
         container.innerHTML = `
             <div class="tg-container" style="padding: 20px; max-width: 1000px; margin: 0 auto;">
                 ${this.renderHeader()}
-                ${this.renderTimeFilter()}
-                ${this.renderStats(stats)}
-                ${SaldoModule.renderSaldoSection()}
-                ${this.renderConfig()}
-                ${this.renderBackupSection(syncStatus)}
-                ${this.renderTopupList()}
+                ${this.renderTabs()}
+                ${this.currentTab === 'generator' ? GasGenerator.renderGeneratorSection() : this.renderDashboard()}
             </div>
         `;
         
-        if (SaldoModule.transaksiAktif) {
+        if (SaldoModule.transaksiAktif && this.currentTab === 'dashboard') {
             setTimeout(() => {
                 const input = document.getElementById('saldoNominal');
                 if (input) { input.focus(); input.select(); }
@@ -477,9 +846,6 @@ const TelegramModule = {
     },
     
     renderHeader: function() {
-        const isConfigured = tgConfig.botToken && tgConfig.botToken.length > 10;
-        const statusText = isConfigured ? (tgConfig.isPolling ? 'Aktif' : 'Siap') : 'Belum Setup';
-        
         return `
             <div class="tg-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
                 <div class="tg-title-area" style="display: flex; align-items: center; gap: 12px;">
@@ -489,8 +855,40 @@ const TelegramModule = {
                         <p style="margin: 0; opacity: 0.9; font-size: 13px;">Integrasi Bot n8n & Input Manual</p>
                     </div>
                 </div>
-                <div class="tg-status" style="background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">${statusText}</div>
             </div>
+        `;
+    },
+    
+    renderTabs: function() {
+        const tabs = [
+            { key: 'dashboard', label: 'Dashboard', icon: '📊' },
+            { key: 'generator', label: 'Generate GAS', icon: '⚙️' }
+        ];
+        
+        return `
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; background: white; padding: 8px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                ${tabs.map(tab => `
+                    <button onclick="TelegramModule.setTab('${tab.key}')" 
+                            style="flex: 1; padding: 12px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; background: ${this.currentTab === tab.key ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent'}; color: ${this.currentTab === tab.key ? 'white' : '#555'};">
+                        <span style="font-size: 18px;">${tab.icon}</span>
+                        <span>${tab.label}</span>
+                    </button>
+                `).join('')}
+            </div>
+        `;
+    },
+    
+    renderDashboard: function() {
+        const stats = this.getStats();
+        const syncStatus = this.getSyncStatus();
+        
+        return `
+            ${this.renderTimeFilter()}
+            ${this.renderStats(stats)}
+            ${SaldoModule.renderSaldoSection()}
+            ${this.renderConfig()}
+            ${this.renderBackupSection(syncStatus)}
+            ${this.renderTopupList()}
         `;
     },
     
@@ -576,24 +974,18 @@ const TelegramModule = {
     renderBackupSection: function(syncStatus) {
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;">
-                <h3 style="margin: 0 0 16px 0; font-size: 16px;">☁️ Konfigurasi Google Sheet (WAJIB untuk Input Saldo)</h3>
+                <h3 style="margin: 0 0 16px 0; font-size: 16px;">☁️ Konfigurasi Google Sheet</h3>
                 
-                <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 8px; padding: 16px; margin-bottom: 16px; font-size: 13px;">
-                    <strong style="color: #c62828;">⚠️ PENTING - Setting Deploy GAS:</strong>
-                    <ol style="margin: 8px 0; padding-left: 20px; color: #555; line-height: 1.8;">
-                        <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2196f3;">script.google.com</a></li>
-                        <li>Project Settings → Google Apps Script API: ON</li>
-                        <li>Deploy → New Deployment → Web App</li>
-                        <li><strong>Execute as:</strong> Me</li>
-                        <li><strong>Who has access:</strong> ANYONE (even anonymous) ← PENTING!</li>
-                        <li>Copy Web App URL ke bawah ini</li>
-                    </ol>
+                <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 16px; margin-bottom: 16px; border-radius: 8px; font-size: 13px;">
+                    <strong style="color: #1565c0;">💡 Tips:</strong> Sheet ID di-set dari sini, GAS bersifat generic. 
+                    Belum punya GAS? Klik tab <strong>"Generate GAS"</strong> di atas!
                 </div>
                 
                 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
                         <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Google Sheet ID <span style="color: red;">*</span></label>
                         <input type="text" id="tgSheetId" value="${this.escapeHtml(tgConfig.sheetId)}" placeholder="1fvLqdzZJL0Nuf627MNuNPkLDu_HZ0oALR6-mGED5Ihs" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                        <div style="font-size: 11px; color: #999; margin-top: 4px;">Dari URL Sheet: .../d/<strong>SHEET_ID</strong>/edit...</div>
                     </div>
                     <div>
                         <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Nama Sheet (Tab)</label>
@@ -601,9 +993,9 @@ const TelegramModule = {
                     </div>
                 </div>
                 <div style="margin-bottom: 12px;">
-                    <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Script URL (GAS Web App) <span style="color: red;">*</span></label>
+                    <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">GAS Web App URL <span style="color: red;">*</span></label>
                     <input type="text" id="tgScriptUrl" value="${this.escapeHtml(tgConfig.scriptUrl || '')}" placeholder="https://script.google.com/macros/s/.../exec" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    <div style="font-size: 12px; color: #666; margin-top: 4px;">🔗 URL harus berakhiran /exec</div>
+                    <div style="font-size: 11px; color: #999; margin-top: 4px;">Dari Deploy → Web App (berakhiran /exec)</div>
                 </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button onclick="TelegramModule.saveSheetConfig()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">💾 Simpan Config</button>
@@ -687,8 +1079,6 @@ const TelegramModule = {
             </div>
         `;
     },
-    
-    // ==================== UTILITY FUNCTIONS ====================
     
     getStats: function() {
         const timeFiltered = this.getTimeFilteredTopups();
@@ -793,8 +1183,6 @@ const TelegramModule = {
         }
     },
     
-    // ==================== ACTIONS ====================
-    
     setTimeFilter: function(filter) {
         currentTimeFilter = filter;
         this.saveData();
@@ -820,7 +1208,7 @@ const TelegramModule = {
         tgConfig.sheetName = document.getElementById('tgSheetName').value.trim();
         tgConfig.scriptUrl = document.getElementById('tgScriptUrl').value.trim();
         
-        saldoConfig.sheetId = tgConfig.sheetId || '1fvLqdzZJL0Nuf627MNuNPkLDu_HZ0oALR6-mGED5Ihs';
+        saldoConfig.sheetId = tgConfig.sheetId;
         saldoConfig.scriptUrl = tgConfig.scriptUrl;
         
         this.saveData();
@@ -853,22 +1241,21 @@ const TelegramModule = {
         }
     },
     
-    // FIXED: Test Sheet dengan better error handling
     testSheet: async function() {
         const scriptUrl = document.getElementById('tgScriptUrl').value.trim();
+        const sheetId = document.getElementById('tgSheetId').value.trim();
         
-        if (!scriptUrl) {
-            this.showToast('❌ Script URL belum diisi!');
+        if (!scriptUrl || !sheetId) {
+            this.showToast('❌ Script URL dan Sheet ID harus diisi!');
             return;
         }
         
         const resultDiv = document.getElementById('tgSyncResult');
-        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing koneksi ke GAS...</div>';
+        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
         
         try {
-            // Bersihkan URL
             const cleanUrl = scriptUrl.replace(/\/$/, '');
-            const testUrl = cleanUrl + '?action=test';
+            const testUrl = `${cleanUrl}?action=test&sheetId=${encodeURIComponent(sheetId)}`;
             
             console.log('[Test] URL:', testUrl);
             
@@ -878,39 +1265,29 @@ const TelegramModule = {
                 cache: 'no-cache'
             });
             
-            console.log('[Test] Status:', response.status);
-            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             const result = await response.json();
-            console.log('[Test] Result:', result);
             
             if (result.success) {
                 resultDiv.innerHTML = `
                     <div style="color: green; background: #e8f5e9; padding: 12px; border-radius: 8px;">
                         <strong>✅ Koneksi Berhasil!</strong><br>
                         Sheet: ${result.message}<br>
-                        <small>Available sheets: ${result.sheets?.join(', ')}</small>
+                        <small>Sheets tersedia: ${result.sheets?.join(', ')}</small>
                     </div>
                 `;
-                this.showToast('✅ Koneksi ke Sheet berhasil!');
+                this.showToast('✅ Koneksi berhasil!');
             } else {
                 resultDiv.innerHTML = `<div style="color: red;">❌ ${result.error}</div>`;
             }
         } catch (e) {
-            console.error('[Test] Error:', e);
             resultDiv.innerHTML = `
                 <div style="color: red; background: #ffebee; padding: 12px; border-radius: 8px;">
-                    <strong>❌ Error Koneksi</strong><br>
-                    ${e.message}<br><br>
-                    <strong>Kemungkinan penyebab:</strong>
-                    <ol style="margin: 8px 0; padding-left: 20px;">
-                        <li>URL salah atau belum di-deploy</li>
-                        <li>GAS belum di-set "Anyone" access</li>
-                        <li>CORS policy (cek console browser)</li>
-                    </ol>
+                    <strong>❌ Error:</strong> ${e.message}<br><br>
+                    <small>Pastikan GAS sudah di-deploy dengan "Anyone" access</small>
                 </div>
             `;
         }
@@ -955,7 +1332,7 @@ const TelegramModule = {
         
         if (failCount === 0) {
             resultDiv.innerHTML = `<div style="color: green;">✅ ${successCount} data berhasil disync</div>`;
-            this.showToast(`✅ ${successCount} data tersync ke Sheet!`);
+            this.showToast(`✅ ${successCount} data tersync!`);
         } else {
             resultDiv.innerHTML = `<div style="color: orange;">⚠️ ${successCount} sukses, ${failCount} gagal</div>`;
         }
