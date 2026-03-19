@@ -1,8 +1,12 @@
-// Router System - Dipisah dari app.js
+/**
+ * Router System - Hifzi Cell POS
+ * Menangani navigasi dan kontrol akses antar modul
+ */
+
 const router = {
     currentPage: null,
     
-    // Menu yang bisa diakses saat kasir TUTUP
+    // Menu yang bisa diakses saat kasir TUTUP (tanpa membuka kasir baru)
     allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram'],
     
     // Menu yang butuh kasir BUKA
@@ -11,10 +15,11 @@ const router = {
     // Definisi akses menu berdasarkan role
     menuAccess: {
         'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud'],
-        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'telegram', 'cloud'],
+        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud'],
         'kasir': ['pos', 'products', 'transactions']
     },
 
+    // Definisi label menu untuk pesan error
     menuLabels: {
         'pos': 'Kasir',
         'products': 'Produk',
@@ -47,7 +52,14 @@ const router = {
         return modules[moduleName] || false;
     },
 
+    /**
+     * Navigasi ke halaman tertentu
+     * @param {string} page - Nama halaman tujuan
+     * @param {HTMLElement} element - Element yang diklik (untuk styling)
+     */
     navigate(page, element) {
+        console.log(`[Router] Navigating to: ${page}`);
+        
         const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
         const currentUser = dataManager.getCurrentUser();
         const kasirCurrentUser = app.data && app.data.kasir ? app.data.kasir.currentUser : null;
@@ -73,14 +85,17 @@ const router = {
             return;
         }
 
-        // Cek apakah user saat ini adalah yang membuka kasir
+        // Cek apakah user saat ini adalah yang membuka kasir (untuk menu operasional)
         if (isKasirOpen && this.requiresKasirOpen.includes(page)) {
+            // Owner dan Admin bisa override (mengambil alih kasir)
             if (currentUser.role === 'owner' || currentUser.role === 'admin') {
                 if (kasirCurrentUser !== currentUser.userId) {
+                    // Tanya apakah ingin mengambil alih kasir
                     this.showTakeOverKasirModal(kasirCurrentUser, page, element);
                     return;
                 }
             } else {
+                // Kasir biasa hanya bisa akses jika dia yang buka
                 if (kasirCurrentUser !== currentUser.userId) {
                     this.showKasirUsedByOtherModal(kasirCurrentUser);
                     return;
@@ -88,10 +103,11 @@ const router = {
             }
         }
 
-        // Update UI
+        // Update UI - Hapus active dari semua tab
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         if (element) element.classList.add('active');
 
+        // Sembunyikan cart bar (akan ditampilkan lagi jika di POS)
         const cartBar = document.getElementById('cartBar');
         if (cartBar) cartBar.style.display = 'none';
         
@@ -99,6 +115,7 @@ const router = {
 
         // Cek module tersedia sebelum dipanggil
         if (!this.isModuleAvailable(page)) {
+            console.warn(`[Router] Module ${page} not available`);
             this.showModuleErrorModal(page);
             return;
         }
@@ -138,18 +155,27 @@ const router = {
                 case 'backup':
                     backupModule.init();
                     break;
+                default:
+                    console.error(`[Router] Unknown page: ${page}`);
+                    app.showToast('❌ Halaman tidak ditemukan!');
             }
         } catch (error) {
             console.error(`[Router] Error initializing ${page}:`, error);
-            app.showToast(`❌ Error membuka menu ${this.menuLabels[page]}`);
+            app.showToast(`❌ Error membuka menu ${this.menuLabels[page] || page}`);
         }
         
         window.scrollTo(0, 0);
     },
 
-    // Owner/Admin mengambil alih kasir
+    /**
+     * Owner/Admin mengambil alih kasir
+     */
     takeOverKasir(page, element) {
         const currentUser = dataManager.getCurrentUser();
+        
+        if (!app.data.kasir) {
+            app.data.kasir = {};
+        }
         
         app.data.kasir.currentUser = currentUser.userId;
         app.data.kasir.userName = currentUser.name;
@@ -185,7 +211,7 @@ const router = {
                     <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
                         Kasir saat ini digunakan oleh:<br>
                         <b>${userName}</b><br><br>
-                        Sebagai <b>${currentUser.role.toUpperCase()}</b>, Anda dapat mengambil alih kasir.
+                        Sebagai <b>${currentUser.role.toUpperCase()}</b>, Anda dapat mengambil alih kasir untuk melanjutkan operasional.
                     </p>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <button class="btn btn-secondary" onclick="router.closeTakeOverModal()">Batal</button>
@@ -205,13 +231,20 @@ const router = {
         if (modal) modal.remove();
     },
 
+    /**
+     * Cek apakah user memiliki akses ke menu tertentu
+     */
     hasAccess(page) {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return false;
+        
         const allowedMenus = this.menuAccess[currentUser.role] || [];
         return allowedMenus.includes(page);
     },
 
+    /**
+     * Dapatkan daftar menu yang boleh diakses user saat ini
+     */
     getAllowedMenus() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return [];
@@ -326,9 +359,17 @@ const router = {
         if (modal) modal.remove();
     },
 
-    // PERBAIKAN: Modal error jika module tidak tersedia
+    /**
+     * Modal error jika module tidak tersedia
+     */
     showModuleErrorModal(page) {
         const menuName = this.menuLabels[page] || page;
+        const suggestions = {
+            'telegram': 'Pastikan file telegram.js ada di folder js/',
+            'cloud': 'Pastikan file backup.js ada di folder js/',
+            'backup': 'Pastikan file backup.js ada di folder js/'
+        };
+
         const modalHTML = `
             <div class="modal active" id="moduleErrorModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 380px; text-align: center;">
@@ -337,13 +378,13 @@ const router = {
                         <span class="modal-title" style="font-size: 16px;">Module Belum Siap</span>
                     </div>
                     <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Menu <b>${menuName}</b> sedang dalam pengembangan atau terjadi error loading.<br><br>
-                        <span style="font-size: 12px; color: #999;">
-                            ${page === 'telegram' ? 'Pastikan file telegram-github.js sudah di-load.' : 
-                              page === 'cloud' ? 'Pastikan file backup.js sudah di-load.' : 
-                              'Module tidak ditemukan.'}
-                        </span>
+                        Menu <b>${menuName}</b> sedang dalam pengembangan atau terjadi error loading.
                     </p>
+                    ${suggestions[page] ? `
+                    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 12px; color: #856404;">
+                        💡 ${suggestions[page]}
+                    </div>
+                    ` : ''}
                     <button class="btn btn-secondary" onclick="router.closeModuleErrorModal()" style="width: 100%;">Tutup</button>
                 </div>
             </div>
@@ -362,14 +403,23 @@ const router = {
         if (existing) existing.remove();
     },
 
+    /**
+     * Render navigation tabs berdasarkan role user
+     */
     renderNavigation() {
         const currentUser = dataManager.getCurrentUser();
-        if (!currentUser) return;
+        if (!currentUser) {
+            console.log('[Router] No user logged in, skipping navigation render');
+            return;
+        }
 
         const allowedMenus = this.menuAccess[currentUser.role] || [];
-        const navContainer = document.querySelector('.nav-tabs') || document.getElementById('navTabs');
+        const navContainer = document.getElementById('navTabs');
         
-        if (!navContainer) return;
+        if (!navContainer) {
+            console.error('[Router] navTabs container not found!');
+            return;
+        }
 
         const menuIcons = {
             'pos': '🛒',
@@ -398,5 +448,8 @@ const router = {
         });
 
         navContainer.innerHTML = navHTML;
+        console.log(`[Router] Navigation rendered for role: ${currentUser.role}`);
     }
 };
+
+console.log('[Router] Router system loaded');
