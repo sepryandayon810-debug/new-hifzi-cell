@@ -1,7 +1,7 @@
 /**
  * Telegram Bot Integration Module + SALDO INTEGRATION
  * VERSI FILE LOKAL - Menggunakan Proxy untuk bypass CORS
- * UPDATE: Tambahan Filter Waktu (Hari Ini, Minggu Ini, Bulan Ini, Tahun Ini)
+ * UPDATE: Tambahan Filter Waktu (Hari Ini, Hari Kemarin, Minggu Ini, Bulan Ini, Tahun Ini)
  */
 
 const TelegramModule = (function() {
@@ -36,7 +36,7 @@ const TelegramModule = (function() {
     
     let topups = [];
     let currentFilter = 'all';
-    let currentTimeFilter = 'month'; // 'today', 'week', 'month', 'year', 'all'
+    let currentTimeFilter = 'month'; // 'today', 'yesterday', 'week', 'month', 'year', 'all'
     let isInitialized = false;
     
     // ==========================================
@@ -296,6 +296,12 @@ function jsonResponse(data) {
     // TIME FILTER HELPERS
     // ==========================================
     
+    function getYesterdayDate() {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday;
+    }
+    
     function isDateInRange(timestamp, range) {
         const date = new Date(timestamp);
         const now = new Date();
@@ -303,6 +309,10 @@ function jsonResponse(data) {
         switch(range) {
             case 'today':
                 return date.toDateString() === now.toDateString();
+            
+            case 'yesterday':
+                const yesterday = getYesterdayDate();
+                return date.toDateString() === yesterday.toDateString();
                 
             case 'week':
                 const startOfWeek = new Date(now);
@@ -328,6 +338,7 @@ function jsonResponse(data) {
     function getTimeFilterLabel(filter) {
         const labels = {
             'today': 'Hari Ini',
+            'yesterday': 'Hari Kemarin',
             'week': 'Minggu Ini',
             'month': 'Bulan Ini',
             'year': 'Tahun Ini',
@@ -339,6 +350,7 @@ function jsonResponse(data) {
     function getTimeFilterIcon(filter) {
         const icons = {
             'today': '📅',
+            'yesterday': '⏮️',
             'week': '📆',
             'month': '🗓️',
             'year': '📊',
@@ -903,6 +915,7 @@ function jsonResponse(data) {
     function renderTimeFilter() {
         const filters = [
             { key: 'today', label: 'Hari Ini', icon: '📅' },
+            { key: 'yesterday', label: 'Kemarin', icon: '⏮️' },  // TAMBAHAN: Hari Kemarin
             { key: 'week', label: 'Minggu Ini', icon: '📆' },
             { key: 'month', label: 'Bulan Ini', icon: '🗓️' },
             { key: 'year', label: 'Tahun Ini', icon: '📊' },
@@ -1435,314 +1448,3 @@ function jsonResponse(data) {
             resultDiv.innerHTML = `<div style="color: green;">✅ ${successCount} data berhasil disync</div>`;
             showToast(`✅ ${successCount} data tersync ke Sheet!`);
         } else {
-            resultDiv.innerHTML = `<div style="color: orange;">⚠️ ${successCount} sukses, ${failCount} gagal</div>`;
-            showToast(`⚠️ ${successCount} sukses, ${failCount} gagal`);
-        }
-        
-        renderPage();
-    }
-    
-    async function sendToSheet(topup) {
-        const data = {
-            action: 'append',
-            sheetId: config.sheetId,
-            sheetName: config.sheetName,
-            data: {
-                ID: topup.id,
-                Timestamp: new Date(topup.timestamp).toISOString(),
-                Tanggal: new Date(topup.timestamp).toLocaleDateString('id-ID'),
-                Waktu: new Date(topup.timestamp).toLocaleTimeString('id-ID'),
-                Jumlah: topup.amount,
-                Pengirim: topup.sender,
-                Metode: topup.method,
-                ID_Transaksi: topup.transactionId || '',
-                Status: topup.status,
-                Sumber: topup.source,
-                Pesan: topup.message || '',
-                Confirmed_At: topup.confirmedAt ? new Date(topup.confirmedAt).toISOString() : ''
-            }
-        };
-        
-        const response = await fetch(config.scriptUrl, {
-            method: 'POST',
-            mode: 'cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        return await response.json();
-    }
-    
-    async function testSheet() {
-        if (!config.scriptUrl) {
-            showToast('❌ Script URL belum diisi!', 'error');
-            return;
-        }
-        
-        const resultDiv = document.getElementById('tgSyncResult');
-        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
-        
-        try {
-            const response = await fetch(config.scriptUrl + '?action=test', {
-                method: 'GET',
-                mode: 'cors'
-            });
-            const result = await response.json();
-            
-            if (result.success) {
-                resultDiv.innerHTML = `<div style="color: green;">✅ ${result.message}</div>`;
-                showToast('✅ Koneksi ke Sheet berhasil!');
-            } else {
-                resultDiv.innerHTML = `<div style="color: red;">❌ ${result.error}</div>`;
-            }
-        } catch (e) {
-            resultDiv.innerHTML = `<div style="color: red;">❌ Error: ${e.message}</div>`;
-            console.error('[TestSheet] Error:', e);
-        }
-    }
-    
-    // ==========================================
-    // PUBLIC API
-    // ==========================================
-    
-    return {
-        init: init,
-        renderPage: renderPage,
-        SaldoModule: SaldoModule,
-        
-        // TAMBAHAN: Time Filter Setter
-        setTimeFilter: function(filter) {
-            currentTimeFilter = filter;
-            saveData();
-            renderPage();
-            showToast(`🔍 Filter: ${getTimeFilterLabel(filter)}`);
-        },
-        
-        saveConfig: function() {
-            const token = document.getElementById('tgToken').value.trim();
-            const chat = document.getElementById('tgChat').value.trim();
-            const webhook = document.getElementById('tgWebhook').value.trim();
-            const secret = document.getElementById('tgSecret').value.trim();
-            
-            if (token && !token.includes(':')) {
-                alert('Format token salah. Harus ada tanda :');
-                return;
-            }
-            
-            config.botToken = token;
-            config.chatId = chat;
-            config.webhookUrl = webhook;
-            config.secretKey = secret;
-            
-            saveData();
-            showToast('✅ Konfigurasi Bot disimpan!');
-            renderPage();
-        },
-        
-        saveSheetConfig: function() {
-            const sheetId = document.getElementById('tgSheetId').value.trim();
-            const sheetName = document.getElementById('tgSheetName').value.trim();
-            const scriptUrl = document.getElementById('tgScriptUrl').value.trim();
-            
-            config.sheetId = sheetId;
-            config.sheetName = sheetName || 'Topups';
-            config.scriptUrl = scriptUrl;
-            
-            saldoConfig.sheetId = sheetId || '1fvLqdzZJL0Nuf627MNuNPkLDu_HZ0oALR6-mGED5Ihs';
-            saldoConfig.scriptUrl = scriptUrl;
-            
-            saveData();
-            showToast('✅ Konfigurasi Sheet disimpan!');
-            renderPage();
-        },
-        
-        testConnection: async function() {
-            const resultDiv = document.getElementById('tgTestResult');
-            const token = document.getElementById('tgToken').value.trim();
-            
-            if (!token) {
-                resultDiv.innerHTML = '<div style="color: red;">❌ Isi token dulu</div>';
-                return;
-            }
-            
-            resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
-            
-            try {
-                const proxy = 'https://api.allorigins.win/get?url=';
-                const url = encodeURIComponent(`https://api.telegram.org/bot${token}/getMe`);
-                
-                const res = await fetch(proxy + url);
-                const data = await res.json();
-                const result = JSON.parse(data.contents);
-                
-                if (result.ok) {
-                    resultDiv.innerHTML = `<div style="color: green;">✅ Bot: @${result.result.username}</div>`;
-                } else {
-                    resultDiv.innerHTML = `<div style="color: red;">❌ ${result.description}</div>`;
-                }
-            } catch (e) {
-                resultDiv.innerHTML = `<div style="color: red;">❌ Error: ${e.message}</div>`;
-            }
-        },
-        
-        testSheet: testSheet,
-        syncToSheet: syncToSheet,
-        
-        addManual: function() {
-            const amount = parseFloat(document.getElementById('manualAmount').value);
-            const sender = document.getElementById('manualSender').value.trim();
-            const method = document.getElementById('manualMethod').value;
-            
-            if (!amount || amount <= 0) {
-                alert('Jumlah tidak valid');
-                return;
-            }
-            
-            const topup = {
-                id: 'MANUAL_' + Date.now(),
-                amount: amount,
-                sender: sender || 'Manual',
-                method: method,
-                transactionId: 'MANUAL_' + Math.floor(Math.random() * 10000),
-                timestamp: Date.now(),
-                status: 'pending',
-                source: 'manual',
-                syncedToSheet: false
-            };
-            
-            topups.push(topup);
-            saveData();
-            
-            document.getElementById('manualAmount').value = '';
-            document.getElementById('manualSender').value = '';
-            
-            showToast('✅ Topup ditambahkan!');
-            renderPage();
-            
-            if (config.sheetId && config.scriptUrl) {
-                setTimeout(() => this.syncToSheet(), 500);
-            }
-        },
-        
-        confirm: function(id) {
-            const t = topups.find(x => x.id === id);
-            if (!t) return;
-            
-            if (confirm(`Konfirmasi topup ${formatMoney(t.amount)} dari ${t.sender}?`)) {
-                t.status = 'confirmed';
-                t.confirmedAt = Date.now();
-                t.syncedToSheet = false;
-                saveData();
-                showToast('✅ Topup dikonfirmasi!');
-                renderPage();
-            }
-        },
-        
-        reject: function(id) {
-            const t = topups.find(x => x.id === id);
-            if (!t) return;
-            
-            if (confirm(`Tolak topup ${formatMoney(t.amount)}?`)) {
-                t.status = 'rejected';
-                t.rejectedAt = Date.now();
-                t.syncedToSheet = false;
-                saveData();
-                showToast('❌ Topup ditolak!');
-                renderPage();
-            }
-        },
-        
-        // TAMBAHAN: Fungsi hapus item
-        deleteTopup: function(id) {
-            const t = topups.find(x => x.id === id);
-            if (!t) return;
-            
-            const confirmMsg = `🗑️ HAPUS DATA INI?\n\n` +
-                `Jumlah: ${formatMoney(t.amount)}\n` +
-                `Pengirim: ${t.sender}\n` +
-                `Metode: ${t.method}\n` +
-                `Tanggal: ${new Date(t.timestamp).toLocaleDateString('id-ID')}\n\n` +
-                `⚠️ Catatan:\n` +
-                `• Data ini hanya dihapus dari tampilan HTML (localStorage)\n` +
-                `• Data di Google Sheet TIDAK terhapus\n` +
-                `• Data bisa muncul lagi jika di-sync ulang dari Sheet`;
-            
-            if (confirm(confirmMsg)) {
-                // Hapus dari array
-                const index = topups.findIndex(x => x.id === id);
-                if (index > -1) {
-                    topups.splice(index, 1);
-                    saveData();
-                    showToast('🗑️ Data dihapus dari daftar');
-                    renderPage();
-                }
-            }
-        },
-        
-        setFilter: function(f) {
-            currentFilter = f;
-            renderPage();
-        },
-        
-        simulateData: function() {
-            const methods = ['BCA', 'BNI', 'BRI', 'DANA', 'GoPay'];
-            const dummy = {
-                id: 'SIM_' + Date.now(),
-                amount: Math.floor(Math.random() * 500000) + 50000,
-                sender: 'Test User ' + Math.floor(Math.random() * 10),
-                method: methods[Math.floor(Math.random() * methods.length)],
-                transactionId: 'TRX' + Math.floor(Math.random() * 1000000),
-                timestamp: Date.now() - Math.floor(Math.random() * 86400000),
-                status: 'pending',
-                source: 'telegram',
-                syncedToSheet: false
-            };
-            
-            topups.push(dummy);
-            saveData();
-            showToast('✅ Data simulasi ditambahkan!');
-            renderPage();
-        },
-        
-        exportData: function() {
-            const data = {
-                exportDate: new Date().toISOString(),
-                config: {
-                    ...config,
-                    botToken: config.botToken ? '***HIDDEN***' : '',
-                    secretKey: config.secretKey ? '***HIDDEN***' : ''
-                },
-                topups: topups,
-                stats: getStats()
-            };
-            
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `telegram-topups-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            showToast('✅ Data berhasil diexport!');
-        },
-        
-        getData: function() { return { config, topups }; },
-        clearData: function() { 
-            if (confirm('⚠️ Yakin ingin menghapus SEMUA data?')) {
-                topups = []; 
-                saveData(); 
-                renderPage();
-            }
-        }
-    };
-})();
-
-// Inisialisasi saat DOM ready
-document.addEventListener('DOMContentLoaded', function() {
-    TelegramModule.init();
-    TelegramModule.SaldoModule.checkPending();
-    console.log('[Telegram+Saldo] Module ready - File Local Version with Time Filter');
-});
