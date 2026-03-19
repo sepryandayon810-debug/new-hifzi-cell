@@ -10,13 +10,12 @@ const cashModule = {
     
     init() {
         this.ensureCashInitialized();
-        this.checkDayChange(); // ⬅️ Cek perubahan hari
+        this.checkDayChange();
         this.renderHTML();
         this.updateStats();
         this.renderTransactions();
     },
 
-    // ⬅️ TAMBAH: Cek apakah sudah berganti hari
     checkDayChange() {
         const lastActiveDate = localStorage.getItem('hifzi_last_active_date');
         const today = new Date().toDateString();
@@ -24,11 +23,9 @@ const cashModule = {
         if (lastActiveDate && lastActiveDate !== today) {
             console.log('[Cash] Day changed detected. Last:', lastActiveDate, 'Today:', today);
             
-            // Cek apakah kasir sedang tutup (shift tidak aktif)
             const isKasirOpen = dataManager.data.settings?.kasirOpen || false;
             
             if (!isKasirOpen) {
-                // Jika kasir tutup, reset kas ke 0 atau modal awal jika ada
                 const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
                 
                 if (confirm(`🌅 Selamat datang di hari baru!\n\nKas kemarin: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}\n\nKasir dalam keadaan TUTUP.\n\nSetel kas ke Rp ${utils.formatNumber(modalAwal)} (Modal Awal) atau Rp 0?`)) {
@@ -37,22 +34,16 @@ const cashModule = {
                     dataManager.data.settings.currentCash = 0;
                 }
                 
-                // Reset modal awal untuk hari baru
                 dataManager.data.settings.modalAwal = 0;
-                
-                // Simpan transaksi closing hari sebelumnya jika diperlukan
                 this.saveDayClosing(lastActiveDate);
-                
                 dataManager.save();
                 app.showToast('✅ Kas direset untuk hari baru');
             }
         }
         
-        // Update last active date
         localStorage.setItem('hifzi_last_active_date', today);
     },
 
-    // ⬅️ TAMBAH: Simpan closing hari sebelumnya
     saveDayClosing(dateStr) {
         if (!dataManager.data.dailyClosing) {
             dataManager.data.dailyClosing = [];
@@ -67,7 +58,6 @@ const cashModule = {
         
         dataManager.data.dailyClosing.push(closingData);
         
-        // Keep only last 30 days
         if (dataManager.data.dailyClosing.length > 30) {
             dataManager.data.dailyClosing = dataManager.data.dailyClosing.slice(-30);
         }
@@ -125,17 +115,20 @@ const cashModule = {
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
         });
         
+        // ⬅️ PERBARUI: Label dinamis berdasarkan filter
+        const periodLabel = this.getFilterLabel();
+        
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon sales">💵</div>
-                        <div class="stat-label">Pemasukan Hari Ini</div>
+                        <div class="stat-label" id="incomeLabel">Pemasukan ${periodLabel}</div>
                         <div class="stat-value" id="todayIncome">Rp 0</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon expense">💸</div>
-                        <div class="stat-label">Pengeluaran Hari Ini</div>
+                        <div class="stat-label" id="expenseLabel">Pengeluaran ${periodLabel}</div>
                         <div class="stat-value" id="todayExpense">Rp 0</div>
                     </div>
                 </div>
@@ -214,9 +207,12 @@ const cashModule = {
         const endDateInput = document.getElementById('filterEndDate');
         if (startDateInput) startDateInput.value = todayStr;
         if (endDateInput) endDateInput.value = todayStr;
+        
+        // ⬅️ TAMBAH: Set filter dropdown ke nilai yang tersimpan
+        const filterSelect = document.getElementById('filterPreset');
+        if (filterSelect) filterSelect.value = this.filterState.preset;
     },
     
-    // ⬅️ TAMBAH: Apply filter
     applyFilter() {
         const preset = document.getElementById('filterPreset').value;
         const customRange = document.getElementById('customDateRange');
@@ -228,10 +224,23 @@ const cashModule = {
         }
         
         this.filterState.preset = preset;
+        
+        // ⬅️ TAMBAH: Update label stat card saat filter berubah
+        this.updateStatLabels();
+        this.updateStats();
         this.renderTransactions();
     },
     
-    // ⬅️ TAMBAH: Get date range based on preset
+    // ⬅️ TAMBAH: Method baru untuk update label stat card
+    updateStatLabels() {
+        const periodLabel = this.getFilterLabel();
+        const incomeLabel = document.getElementById('incomeLabel');
+        const expenseLabel = document.getElementById('expenseLabel');
+        
+        if (incomeLabel) incomeLabel.textContent = `Pemasukan ${periodLabel}`;
+        if (expenseLabel) expenseLabel.textContent = `Pengeluaran ${periodLabel}`;
+    },
+    
     getDateRange() {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -252,7 +261,6 @@ const cashModule = {
                 break;
                 
             case 'week':
-                // Monday as first day
                 const dayOfWeek = today.getDay();
                 const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
                 startDate = new Date(today.setDate(diff));
@@ -324,13 +332,11 @@ const cashModule = {
         
         const { startDate, endDate } = this.getDateRange();
         
-        // Filter transactions
         let transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
             return tDate >= startDate && tDate <= endDate;
-        }).sort((a, b) => new Date(b.date) - new Date(a.date)); // Sort newest first
+        }).sort((a, b) => new Date(b.date) - new Date(a.date));
         
-        // Calculate summary
         const totalIncome = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -341,7 +347,6 @@ const cashModule = {
         
         const net = totalIncome - totalExpense;
         
-        // Update summary
         const summaryEl = document.getElementById('filterSummary');
         if (summaryEl) {
             const dateRangeText = this.getFilterLabel();
@@ -372,7 +377,6 @@ const cashModule = {
             return;
         }
         
-        // Group by date
         const grouped = this.groupByDate(transactions);
         
         let html = '';
@@ -430,7 +434,6 @@ const cashModule = {
         this.attachDeleteListeners();
     },
     
-    // ⬅️ TAMBAH: Group transactions by date
     groupByDate(transactions) {
         const grouped = {};
         
@@ -452,7 +455,6 @@ const cashModule = {
         return grouped;
     },
     
-    // ⬅️ TAMBAH: Get filter label
     getFilterLabel() {
         const labels = {
             'today': 'Hari Ini',
@@ -912,10 +914,10 @@ const cashModule = {
     },
     
     openHistory() {
-        // Gunakan filter yang sama dengan renderTransactions
         this.filterState.preset = 'today';
+        this.renderHTML(); // ⬅️ PERBARUI: Re-render untuk update label
+        this.updateStats();
         this.renderTransactions();
-        // Scroll ke bagian riwayat
         document.getElementById('cashTransactionList')?.scrollIntoView({ behavior: 'smooth' });
     },
     
