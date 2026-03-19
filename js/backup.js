@@ -1,15 +1,17 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (FIXED RENDER)
+// BACKUP MODULE - HIFZI CELL (OPTIMIZED)
 // Firebase + Google Sheets + Local
 // ============================================
 
 const backupModule = {
     currentProvider: localStorage.getItem('hifzi_provider') || 'local',
     isAutoSyncEnabled: localStorage.getItem('hifzi_auto_sync') === 'true',
+    isAutoSaveLocalEnabled: localStorage.getItem('hifzi_auto_save_local') !== 'false', // Default true
     autoSyncInterval: null,
     lastSyncTime: localStorage.getItem('hifzi_last_sync') || null,
     isOnline: navigator.onLine,
     pendingSync: false,
+    isRendered: false, // Flag untuk mencegah render berulang
     
     // Firebase
     firebaseConfig: JSON.parse(localStorage.getItem('hifzi_firebase_config') || '{}'),
@@ -30,6 +32,7 @@ const backupModule = {
         PROVIDER: 'hifzi_provider',
         GAS_URL: 'hifzi_gas_url',
         AUTO_SYNC: 'hifzi_auto_sync',
+        AUTO_SAVE_LOCAL: 'hifzi_auto_save_local',
         LAST_SYNC: 'hifzi_last_sync',
         FIREBASE_CONFIG: 'hifzi_firebase_config',
         DEVICE_ID: 'hifzi_device_id',
@@ -66,18 +69,31 @@ const backupModule = {
             this.checkNewDeviceGAS();
         }
 
-        // Listen untuk render saat navigasi
+        // Listen untuk render saat navigasi - DEBOUNCED
         this.setupRenderListener();
     },
 
     setupRenderListener() {
+        // Gunakan flag untuk mencegah render berkali-kali
+        let renderTimeout;
+        
+        const debouncedRender = () => {
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => {
+                if (!this.isRendered) {
+                    this.render();
+                }
+            }, 100);
+        };
+
         // Override fungsi navigasi app jika ada
         if (typeof app !== 'undefined' && app.navigateTo) {
             const originalNavigate = app.navigateTo.bind(app);
             app.navigateTo = (page) => {
                 originalNavigate(page);
                 if (page === 'cloud' || page === 'backup') {
-                    setTimeout(() => this.render(), 100);
+                    this.isRendered = false; // Reset flag saat navigasi
+                    debouncedRender();
                 }
             };
         }
@@ -85,7 +101,8 @@ const backupModule = {
         // Also check URL hash
         window.addEventListener('hashchange', () => {
             if (location.hash.includes('cloud') || location.hash.includes('backup')) {
-                setTimeout(() => this.render(), 100);
+                this.isRendered = false;
+                debouncedRender();
             }
         });
     },
@@ -141,6 +158,31 @@ const backupModule = {
                 });
                 if (dataManager.saveData) dataManager.saveData();
             }
+        }
+    },
+
+    // ============================================
+    // LOCAL STORAGE AUTO-SAVE CONTROL
+    // ============================================
+
+    toggleAutoSaveLocal() {
+        this.isAutoSaveLocalEnabled = !this.isAutoSaveLocalEnabled;
+        localStorage.setItem(this.KEYS.AUTO_SAVE_LOCAL, this.isAutoSaveLocalEnabled);
+        
+        // Update dataManager jika ada
+        if (typeof dataManager !== 'undefined') {
+            dataManager.autoSaveEnabled = this.isAutoSaveLocalEnabled;
+        }
+        
+        this.showToast(this.isAutoSaveLocalEnabled ? '💾 Auto-save Local: ON' : '💾 Auto-save Local: OFF');
+        this.render();
+    },
+
+    // Method untuk save manual jika auto-save dimatikan
+    manualSaveLocal() {
+        if (typeof dataManager !== 'undefined' && dataManager.saveData) {
+            dataManager.saveData();
+            this.showToast('💾 Data disimpan ke LocalStorage');
         }
     },
 
@@ -589,6 +631,198 @@ const backupModule = {
     },
 
     // ============================================
+    // GOOGLE APPS SCRIPT GENERATOR
+    // ============================================
+
+    showGASGenerator() {
+        const modal = document.createElement('div');
+        modal.id = 'gas-generator-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
+        
+        const gasCode = `function doGet(e) {
+  const action = e.parameter.action;
+  const callback = e.parameter.callback;
+  
+  if (action === 'restore') {
+    const data = getData();
+    const response = { success: true, data: data };
+    return jsonpResponse(response, callback);
+  }
+  
+  return jsonResponse({ status: 'ok', message: 'Hifzi Cell GAS Ready' });
+}
+
+function doPost(e) {
+  try {
+    const params = JSON.parse(e.postData.contents);
+    const action = params.action;
+    
+    if (action === 'sync') {
+      saveData(params.data);
+      return jsonResponse({ success: true, message: 'Data saved' });
+    }
+    
+    if (action === 'reset') {
+      clearData();
+      return jsonResponse({ success: true, message: 'Data cleared' });
+    }
+    
+    return jsonResponse({ success: false, message: 'Unknown action' });
+  } catch (err) {
+    return jsonResponse({ success: false, message: err.toString() });
+  }
+}
+
+// JSONP untuk CORS
+function jsonpResponse(data, callback) {
+  const output = callback + '(' + JSON.stringify(data) + ')';
+  return ContentService.createTextOutput(output).setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+function jsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Simpan data ke Spreadsheet
+function saveData(data) {
+  const ss = getOrCreateSpreadsheet();
+  const sheet = ss.getSheetByName('Data') || ss.insertSheet('Data');
+  sheet.clear();
+  
+  // Simpan sebagai JSON string di A1
+  sheet.getRange(1, 1).setValue(JSON.stringify(data));
+  sheet.getRange(1, 2).setValue(new Date());
+  
+  // Log
+  logAction('SYNC', data.deviceId, data.deviceName);
+}
+
+// Ambil data dari Spreadsheet
+function getData() {
+  const ss = getOrCreateSpreadsheet();
+  const sheet = ss.getSheetByName('Data');
+  
+  if (!sheet) return null;
+  
+  const jsonStr = sheet.getRange(1, 1).getValue();
+  if (!jsonStr) return null;
+  
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Clear data
+function clearData() {
+  const ss = getOrCreateSpreadsheet();
+  const sheet = ss.getSheetByName('Data');
+  if (sheet) sheet.clear();
+}
+
+// Get or Create Spreadsheet
+function getOrCreateSpreadsheet() {
+  const propKey = 'SPREADSHEET_ID';
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty(propKey);
+  
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      // ID invalid, create new
+    }
+  }
+  
+  // Create new spreadsheet
+  const ss = SpreadsheetApp.create('Hifzi Cell Backup - ' + new Date().toISOString().split('T')[0]);
+  props.setProperty(propKey, ss.getId());
+  
+  // Setup log sheet
+  const logSheet = ss.insertSheet('Log');
+  logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name']);
+  
+  return ss;
+}
+
+// Log actions
+function logSheet() {
+  const ss = getOrCreateSpreadsheet();
+  return ss.getSheetByName('Log') || ss.insertSheet('Log');
+}
+
+function logAction(action, deviceId, deviceName) {
+  const sheet = logSheet();
+  sheet.appendRow([new Date(), action, deviceId, deviceName]);
+}`;
+
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 16px; max-width: 800px; width: 100%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
+                <div style="padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 18px; font-weight: 700; color: #2d3748;">📋 Google Apps Script Generator</div>
+                        <div style="font-size: 13px; color: #718096; margin-top: 4px;">Copy code ini ke Google Apps Script</div>
+                    </div>
+                    <button onclick="document.getElementById('gas-generator-modal').remove()" 
+                        style="background: none; border: none; font-size: 24px; cursor: pointer; color: #718096;">×</button>
+                </div>
+                
+                <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                    <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">🚀 Cara Setup:</div>
+                        <ol style="margin: 0; padding-left: 20px; color: #2f855a; font-size: 13px; line-height: 1.8;">
+                            <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2b6cb0;">script.google.com</a></li>
+                            <li>Klik "New Project" (Proyek Baru)</li>
+                            <li>Hapus code default, paste code di bawah ini</li>
+                            <li>Klik "Deploy" → "New Deployment"</li>
+                            <li>Pilih "Web app", set "Who has access" ke "Anyone"</li>
+                            <li>Copy URL deployment, paste di menu Cloud ini</li>
+                        </ol>
+                    </div>
+                    
+                    <div style="position: relative;">
+                        <textarea id="gas-code-textarea" style="width: 100%; height: 300px; font-family: monospace; font-size: 12px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; resize: none; background: #1a202c; color: #68d391;" readonly>${gasCode}</textarea>
+                        <button onclick="backupModule.copyGASCode()" 
+                            style="position: absolute; top: 12px; right: 12px; padding: 8px 16px; background: #34a853; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                            📋 Copy Code
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="padding: 20px; border-top: 1px solid #e2e8f0; background: #f7fafc;">
+                    <button onclick="document.getElementById('gas-generator-modal').remove()" 
+                        style="width: 100%; padding: 14px; background: #4a5568; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    },
+
+    copyGASCode() {
+        const textarea = document.getElementById('gas-code-textarea');
+        textarea.select();
+        document.execCommand('copy');
+        this.showToast('✅ Code berhasil dicopy!');
+    },
+
+    // ============================================
     // LOCAL FILE BACKUP
     // ============================================
 
@@ -817,10 +1051,16 @@ const backupModule = {
     },
 
     // ============================================
-    // RENDER UI (FIXED - LANGSUNG KE mainContent)
+    // RENDER UI (OPTIMIZED)
     // ============================================
 
     render() {
+        // Cegah render berkali-kali
+        if (this.isRendered) {
+            console.log('[Backup] Already rendered, skipping...');
+            return;
+        }
+        
         // Coba cari container dengan berbagai cara
         let container = document.getElementById('mainContent');
         
@@ -965,9 +1205,39 @@ const backupModule = {
                     </div>
                 </div>
 
+                <!-- Local Storage Settings -->
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ed8936;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <div style="font-size: 16px; font-weight: 600; color: #2d3748;">💾 Pengaturan Local Storage</div>
+                            <div style="font-size: 13px; color: #718096; margin-top: 4px;">Kontrol auto-save ke browser</div>
+                        </div>
+                        <div onclick="backupModule.toggleAutoSaveLocal()" 
+                            style="width: 50px; height: 28px; background: ${this.isAutoSaveLocalEnabled ? '#ed8936' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
+                            <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSaveLocalEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
+                        </div>
+                    </div>
+                    
+                    ${!this.isAutoSaveLocalEnabled ? `
+                        <div style="background: #fffaf0; border: 1px solid #fbd38d; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                            <div style="font-size: 13px; color: #c05621; margin-bottom: 8px;">
+                                ⚠️ <strong>Auto-save dimatikan!</strong> Data hanya tersimpan di memori sementara.
+                            </div>
+                            <button onclick="backupModule.manualSaveLocal()" 
+                                style="width: 100%; padding: 12px; background: #ed8936; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                💾 Simpan ke LocalStorage Sekarang
+                            </button>
+                        </div>
+                    ` : `
+                        <div style="background: #f0fff4; border-radius: 8px; padding: 12px; font-size: 13px; color: #2f855a;">
+                            ✅ Data otomatis tersimpan ke LocalStorage setiap perubahan
+                        </div>
+                    `}
+                </div>
+
                 <!-- Local Backup -->
                 <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">💾 Backup File Lokal (JSON)</div>
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📁 Backup File Lokal (JSON)</div>
                     <button onclick="backupModule.downloadJSON()" 
                         style="width: 100%; padding: 14px; background: #4a5568; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         <span>⬇️</span> Download JSON
@@ -1026,6 +1296,7 @@ const backupModule = {
 
         // Set HTML ke container
         container.innerHTML = html;
+        this.isRendered = true; // Set flag bahwa sudah dirender
         console.log('[Backup] Render completed');
     },
 
@@ -1090,7 +1361,7 @@ const backupModule = {
                     </div>
                     <div onclick="backupModule.toggleAutoSync()" 
                         style="width: 50px; height: 28px; background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
-                        <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
+                        <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSaveLocalEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
                     </div>
                 </div>
             </div>
@@ -1103,6 +1374,13 @@ const backupModule = {
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
                 <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets</div>
+                
+                <!-- GAS Generator Button -->
+                <button onclick="backupModule.showGASGenerator()" 
+                    style="width: 100%; padding: 12px; background: #f0fff4; color: #22543d; border: 2px dashed #34a853; border-radius: 8px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span>📋</span> Generate GAS Code
+                </button>
+                
                 <div style="margin-bottom: 16px;">
                     <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" 
                         style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; margin-bottom: 12px;">
