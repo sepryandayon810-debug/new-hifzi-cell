@@ -1,7 +1,7 @@
 /**
- * Telegram Module - Hifzi Cell POS
+ * Telegram Module - Hifzi Cell POS (FIXED VERSION)
  * Integrasi dengan n8n, MasterLoad, DigiPOS, ML, dan Input Saldo
- * VERSI STANDALONE - Tidak menggunakan IIFE agar bisa diakses global
+ * VERSI STANDALONE - Dengan CORS Proxy & Error Handling
  */
 
 console.log('[Telegram] Script mulai di-load...');
@@ -170,17 +170,79 @@ const SaldoModule = {
         if (display) display.textContent = value ? `Rp ${formatted}` : '';
     },
     
+    // FIXED: API Call dengan better error handling dan CORS workaround
     async apiCall(payload) {
         const targetUrl = saldoConfig.scriptUrl;
         if (!targetUrl) throw new Error('Script URL belum diisi');
         
-        const response = await fetch(targetUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+        // Bersihkan URL
+        const cleanUrl = targetUrl.trim().replace(/\/$/, '');
+        
+        console.log('[Saldo] API Call to:', cleanUrl);
+        console.log('[Saldo] Payload:', payload);
+        
+        try {
+            const response = await fetch(cleanUrl, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+                // Tambahkan mode cors eksplisit
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+            
+            console.log('[Saldo] Response status:', response.status);
+            
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('[Saldo] Response data:', result);
+            return result;
+            
+        } catch (error) {
+            console.error('[Saldo] Fetch error:', error);
+            
+            // Jika CORS error, coba dengan mode no-cors (tapi response jadi opaque)
+            if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+                console.log('[Saldo] CORS error detected, trying alternative...');
+                
+                // Coba dengan GET request sebagai fallback
+                if (payload.action === 'initSaldo') {
+                    return await this.apiCallGetFallback(payload);
+                }
+            }
+            
+            throw error;
+        }
+    },
+    
+    // Fallback menggunakan GET dengan query params
+    async apiCallGetFallback(payload) {
+        const baseUrl = saldoConfig.scriptUrl.trim().replace(/\/$/, '');
+        const params = new URLSearchParams({
+            action: payload.action,
+            sheetId: payload.sheetId,
+            chatId: payload.chatId,
+            namaItem: payload.namaItem
         });
         
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const url = `${baseUrl}?${params.toString()}`;
+        console.log('[Saldo] GET Fallback URL:', url);
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            mode: 'cors'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         return await response.json();
     },
     
@@ -226,7 +288,13 @@ const SaldoModule = {
             }
         } catch (error) {
             console.error('[Saldo] Error:', error);
-            alert('❌ Error:\n\n' + error.message);
+            
+            // Error spesifik untuk CORS
+            if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+                alert('❌ Error CORS!\n\nGoogle Apps Script harus di-deploy dengan setting:\n1. Execute as: Me\n2. Who has access: ANYONE (even anonymous)\n3. Pastikan URL benar dan tidak ada redirect\n\nError: ' + error.message);
+            } else {
+                alert('❌ Error:\n\n' + error.message);
+            }
         }
     },
     
@@ -509,9 +577,19 @@ const TelegramModule = {
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;">
                 <h3 style="margin: 0 0 16px 0; font-size: 16px;">☁️ Konfigurasi Google Sheet (WAJIB untuk Input Saldo)</h3>
-                <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 16px; margin-bottom: 16px; border-radius: 8px; font-size: 13px;">
-                    <strong>✅ Penting:</strong> Input Saldo memerlukan konfigurasi ini untuk menyimpan ke Sheet "TOP UP".
+                
+                <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 8px; padding: 16px; margin-bottom: 16px; font-size: 13px;">
+                    <strong style="color: #c62828;">⚠️ PENTING - Setting Deploy GAS:</strong>
+                    <ol style="margin: 8px 0; padding-left: 20px; color: #555; line-height: 1.8;">
+                        <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2196f3;">script.google.com</a></li>
+                        <li>Project Settings → Google Apps Script API: ON</li>
+                        <li>Deploy → New Deployment → Web App</li>
+                        <li><strong>Execute as:</strong> Me</li>
+                        <li><strong>Who has access:</strong> ANYONE (even anonymous) ← PENTING!</li>
+                        <li>Copy Web App URL ke bawah ini</li>
+                    </ol>
                 </div>
+                
                 <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
                         <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Google Sheet ID <span style="color: red;">*</span></label>
@@ -525,6 +603,7 @@ const TelegramModule = {
                 <div style="margin-bottom: 12px;">
                     <label style="display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600;">Script URL (GAS Web App) <span style="color: red;">*</span></label>
                     <input type="text" id="tgScriptUrl" value="${this.escapeHtml(tgConfig.scriptUrl || '')}" placeholder="https://script.google.com/macros/s/.../exec" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                    <div style="font-size: 12px; color: #666; margin-top: 4px;">🔗 URL harus berakhiran /exec</div>
                 </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button onclick="TelegramModule.saveSheetConfig()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">💾 Simpan Config</button>
@@ -710,7 +789,7 @@ const TelegramModule = {
         if (typeof app !== 'undefined' && app.showToast) {
             app.showToast(msg);
         } else {
-            alert(msg);
+            console.log('[Toast]:', msg);
         }
     },
     
@@ -774,27 +853,66 @@ const TelegramModule = {
         }
     },
     
+    // FIXED: Test Sheet dengan better error handling
     testSheet: async function() {
-        if (!tgConfig.scriptUrl) {
+        const scriptUrl = document.getElementById('tgScriptUrl').value.trim();
+        
+        if (!scriptUrl) {
             this.showToast('❌ Script URL belum diisi!');
             return;
         }
         
         const resultDiv = document.getElementById('tgSyncResult');
-        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing...</div>';
+        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing koneksi ke GAS...</div>';
         
         try {
-            const response = await fetch(tgConfig.scriptUrl + '?action=test');
+            // Bersihkan URL
+            const cleanUrl = scriptUrl.replace(/\/$/, '');
+            const testUrl = cleanUrl + '?action=test';
+            
+            console.log('[Test] URL:', testUrl);
+            
+            const response = await fetch(testUrl, {
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+            
+            console.log('[Test] Status:', response.status);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const result = await response.json();
+            console.log('[Test] Result:', result);
             
             if (result.success) {
-                resultDiv.innerHTML = `<div style="color: green;">✅ ${result.message}</div>`;
+                resultDiv.innerHTML = `
+                    <div style="color: green; background: #e8f5e9; padding: 12px; border-radius: 8px;">
+                        <strong>✅ Koneksi Berhasil!</strong><br>
+                        Sheet: ${result.message}<br>
+                        <small>Available sheets: ${result.sheets?.join(', ')}</small>
+                    </div>
+                `;
                 this.showToast('✅ Koneksi ke Sheet berhasil!');
             } else {
                 resultDiv.innerHTML = `<div style="color: red;">❌ ${result.error}</div>`;
             }
         } catch (e) {
-            resultDiv.innerHTML = `<div style="color: red;">❌ Error: ${e.message}</div>`;
+            console.error('[Test] Error:', e);
+            resultDiv.innerHTML = `
+                <div style="color: red; background: #ffebee; padding: 12px; border-radius: 8px;">
+                    <strong>❌ Error Koneksi</strong><br>
+                    ${e.message}<br><br>
+                    <strong>Kemungkinan penyebab:</strong>
+                    <ol style="margin: 8px 0; padding-left: 20px;">
+                        <li>URL salah atau belum di-deploy</li>
+                        <li>GAS belum di-set "Anyone" access</li>
+                        <li>CORS policy (cek console browser)</li>
+                    </ol>
+                </div>
+            `;
         }
     },
     
@@ -866,7 +984,8 @@ const TelegramModule = {
         const response = await fetch(tgConfig.scriptUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            mode: 'cors'
         });
         
         return await response.json();
