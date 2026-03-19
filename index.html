@@ -133,8 +133,6 @@
             display: block;
         }
         
-        /* PERBAIKAN: Hapus style login-info karena sudah tidak digunakan */
-        
         /* USER INFO IN HEADER */
         .user-info-header {
             display: flex;
@@ -660,9 +658,6 @@
                 
                 <button type="button" id="loginBtn" class="login-btn">🔓 Login</button>
             </div>
-            
-            <!-- PERBAIKAN: Hapus div login-info yang berisi default credential -->
-            <!-- Tidak ada lagi informasi login default untuk keamanan -->
         </div>
     </div>
 
@@ -805,12 +800,17 @@
     </div>
 
     <!-- ==================== SCRIPTS ==================== -->
+    <!-- PERBAIKAN URUTAN: Telegram Module HARUS sebelum router.js -->
+    
     <!-- Utils & Data -->
     <script src="js/utils.js"></script>
     <script src="js/data.js"></script>
     
     <!-- Backup Module (WAJIB sebelum app.js) -->
     <script src="js/backup.js"></script>
+    
+    <!-- ✅ Telegram Module (WAJIB sebelum app.js dan router.js) -->
+    <script src="js/telegram-github.js"></script>
     
     <!-- App Core -->
     <script src="js/app.js"></script>
@@ -825,11 +825,7 @@
     <script src="js/debt.js"></script>
     <script src="js/users.js"></script>
     
-    <!-- Telegram & Cloud Modules -->
-    <script src="js/telegram-github.js"></script>
-    <script src="js/backup.js"></script>
-    
-    <!-- Router System -->
+    <!-- Router System (WAJIB paling akhir) -->
     <script src="js/router.js"></script>
 </body>
 </html>
