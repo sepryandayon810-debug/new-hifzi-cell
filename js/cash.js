@@ -127,14 +127,14 @@ const cashModule = {
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 
-                <!-- Header Card dengan Info Periode -->
+                <!-- Header Card dengan Info Periode - TANPA ANGKA 1 BESAR -->
                 <div class="cash-header-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                      border-radius: 16px; padding: 24px; margin-bottom: 20px; color: white; position: relative; overflow: hidden;">
                     
-                    <!-- Background decoration -->
-                    <div style="position: absolute; top: -50%; right: -10%; width: 300px; height: 300px; 
-                         background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
-                    <div style="position: absolute; bottom: -30%; left: -5%; width: 200px; height: 200px; 
+                    <!-- Background decoration - diperkecil dan diubah posisi -->
+                    <div style="position: absolute; top: -30%; right: -5%; width: 150px; height: 150px; 
+                         background: rgba(255,255,255,0.08); border-radius: 50%;"></div>
+                    <div style="position: absolute; bottom: -20%; left: -3%; width: 100px; height: 100px; 
                          background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
                     
                     <div style="position: relative; z-index: 1;">
@@ -150,10 +150,10 @@ const cashModule = {
                             </div>
                         </div>
                         
-                        <!-- Kas di Tangan (Real-time) - SELALU MENAMPILKAN KAS AKTUAL -->
+                        <!-- Kas di Tangan (Real-time) - UKURAN FONT DIKECILKAN -->
                         <div style="margin-bottom: 20px;">
                             <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Kas di Tangan (Real-time)</div>
-                            <div style="font-size: 42px; font-weight: 700; letter-spacing: -1px;">
+                            <div style="font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
                                 Rp ${utils.formatNumber(realTimeCash)}
                             </div>
                         </div>
@@ -174,43 +174,54 @@ const cashModule = {
                             </div>
                         </div>
                         
-                        <!-- Laba Card (untuk periode yang dipilih) -->
-                        <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); 
-                             background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); 
-                             padding: 16px 24px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.2);">
-                            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">LABA ${periodLabel.toUpperCase()}</div>
-                            <div style="font-size: 24px; font-weight: 700; color: ${periodStats.net >= 0 ? '#4ade80' : '#f87171'};">
+                        <!-- Laba Card - DIPINDAH KE BAWAH AGAR LEBIH JELAS -->
+                    </div>
+                </div>
+
+                <!-- LABA CARD - DIPISAH DAN DIPERBESAR -->
+                <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; 
+                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid ${periodStats.net >= 0 ? '#4caf50' : '#f44336'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
+                                Laba ${periodLabel}
+                            </div>
+                            <div style="font-size: 28px; font-weight: 700; color: ${periodStats.net >= 0 ? '#2e7d32' : '#c62828'};">
                                 Rp ${utils.formatNumber(periodStats.net)}
                             </div>
+                        </div>
+                        <div style="width: 56px; height: 56px; background: ${periodStats.net >= 0 ? '#e8f5e9' : '#ffebee'}; 
+                             border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">
+                            ${periodStats.net >= 0 ? '📈' : '📉'}
                         </div>
                     </div>
                 </div>
 
-                <!-- Stat Cards - Dinamis sesuai periode -->
-                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px;">
-                    <div class="stat-card" style="background: white; border-radius: 12px; padding: 20px; 
-                         box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 16px;">
-                        <div class="stat-icon" style="width: 56px; height: 56px; background: #e8f5e9; 
-                             border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">💵</div>
+                <!-- Stat Cards - DIPERKECIL DAN DISEDERHANAKAN -->
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div style="background: white; border-radius: 10px; padding: 16px; 
+                         box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 40px; height: 40px; background: #e8f5e9; 
+                             border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💵</div>
                         <div>
-                            <div class="stat-label" id="incomeLabel" style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Pemasukan ${periodLabel}
+                            <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                Masuk
                             </div>
-                            <div class="stat-value" id="todayIncome" style="font-size: 24px; font-weight: 700; color: #2e7d32;">
+                            <div style="font-size: 18px; font-weight: 700; color: #2e7d32;">
                                 Rp ${utils.formatNumber(periodStats.income)}
                             </div>
                         </div>
                     </div>
                     
-                    <div class="stat-card" style="background: white; border-radius: 12px; padding: 20px; 
-                         box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 16px;">
-                        <div class="stat-icon" style="width: 56px; height: 56px; background: #ffebee; 
-                             border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">💸</div>
+                    <div style="background: white; border-radius: 10px; padding: 16px; 
+                         box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 40px; height: 40px; background: #ffebee; 
+                             border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💸</div>
                         <div>
-                            <div class="stat-label" id="expenseLabel" style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Pengeluaran ${periodLabel}
+                            <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                Keluar
                             </div>
-                            <div class="stat-value" id="todayExpense" style="font-size: 24px; font-weight: 700; color: #c62828;">
+                            <div style="font-size: 18px; font-weight: 700; color: #c62828;">
                                 Rp ${utils.formatNumber(periodStats.expense)}
                             </div>
                         </div>
