@@ -1,7 +1,7 @@
 /**
  * Telegram Bot Integration Module + SALDO INTEGRATION
  * VERSI GITHUB PAGES - Tanpa proxy, CORS normal
- * UPDATE: Tambahan Filter Waktu (Hari Ini, Minggu Ini, Bulan Ini, Tahun Ini)
+ * UPDATE: Tambahan Filter Waktu (Hari Ini, Hari Kemarin, Minggu Ini, Bulan Ini, Tahun Ini)
  */
 
 const TelegramModule = (function() {
@@ -36,7 +36,7 @@ const TelegramModule = (function() {
     
     let topups = [];
     let currentFilter = 'all';
-    let currentTimeFilter = 'month'; // 'today', 'week', 'month', 'year', 'all'
+    let currentTimeFilter = 'month'; // 'today', 'yesterday', 'week', 'month', 'year', 'all'
     let isInitialized = false;
     
     // ==========================================
@@ -245,6 +245,12 @@ function jsonResponse(data) {
     // TIME FILTER HELPERS
     // ==========================================
     
+    function getYesterdayDate() {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday;
+    }
+    
     function isDateInRange(timestamp, range) {
         const date = new Date(timestamp);
         const now = new Date();
@@ -252,7 +258,7 @@ function jsonResponse(data) {
         switch(range) {
             case 'today':
                 return date.toDateString() === now.toDateString();
-
+            
             case 'yesterday':
                 const yesterday = getYesterdayDate();
                 return date.toDateString() === yesterday.toDateString();
@@ -729,7 +735,7 @@ function jsonResponse(data) {
     function renderTimeFilter() {
         const filters = [
             { key: 'today', label: 'Hari Ini', icon: '📅' },
-            { key: 'yesterday', label: 'Kemarin', icon: '⏮️' },  // TAMBAHAN INI
+            { key: 'yesterday', label: 'Kemarin', icon: '⏮️' },  // TAMBAHAN: Hari Kemarin
             { key: 'week', label: 'Minggu Ini', icon: '📆' },
             { key: 'month', label: 'Bulan Ini', icon: '🗓️' },
             { key: 'year', label: 'Tahun Ini', icon: '📊' },
