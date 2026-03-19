@@ -37,6 +37,7 @@ const reportsModule = {
                     
                     <div class="report-filters">
                         <button class="filter-btn active" onclick="reportsModule.setRange('today')">Hari Ini</button>
+                        <button class="filter-btn" onclick="reportsModule.setRange('yesterday')">Kemarin</button>
                         <button class="filter-btn" onclick="reportsModule.setRange('week')">Minggu Ini</button>
                         <button class="filter-btn" onclick="reportsModule.setRange('month')">Bulan Ini</button>
                         <button class="filter-btn" onclick="reportsModule.setRange('year')">Tahun Ini</button>
@@ -190,6 +191,12 @@ const reportsModule = {
                 startDate = new Date(now.setHours(0,0,0,0));
                 endDate = new Date();
                 break;
+            case 'yesterday':
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                startDate = new Date(yesterday.setHours(0,0,0,0));
+                endDate = new Date(yesterday.setHours(23,59,59,999));
+                break;
             case 'week':
                 startDate = new Date();
                 startDate.setDate(startDate.getDate() - 7);
@@ -222,6 +229,7 @@ const reportsModule = {
         document.getElementById('reportSales').textContent = 'Rp ' + utils.formatNumber(totalSales);
         document.getElementById('reportProfit').textContent = 'Rp ' + utils.formatNumber(totalProfit);
         
+        // Update profit card hanya untuk hari ini
         if (this.currentRange === 'today') {
             document.getElementById('todayProfit').textContent = 'Rp ' + utils.formatNumber(totalProfit);
             document.getElementById('transactionCount').textContent = count;
@@ -265,7 +273,24 @@ const reportsModule = {
         
         const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
         
-        if (this.currentRange === 'today') {
+        // Khusus untuk kemarin, tampilkan per jam
+        if (this.currentRange === 'yesterday') {
+            for (let i = 0; i < 24; i += 2) {
+                labels.push(`${i}:00`);
+                const hourStart = new Date(startDate);
+                hourStart.setHours(i, 0, 0, 0);
+                const hourEnd = new Date(startDate);
+                hourEnd.setHours(i + 2, 0, 0, 0);
+                
+                const hourTrans = transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate >= hourStart && tDate < hourEnd;
+                });
+                
+                salesData.push(hourTrans.reduce((sum, t) => sum + t.total, 0));
+                profitData.push(hourTrans.reduce((sum, t) => sum + t.profit, 0));
+            }
+        } else if (this.currentRange === 'today') {
             for (let i = 0; i < 24; i += 2) {
                 labels.push(`${i}:00`);
                 const hourStart = new Date(startDate);
