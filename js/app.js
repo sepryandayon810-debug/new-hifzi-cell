@@ -17,7 +17,7 @@ const router = {
 
     // Definisi label menu untuk pesan error
     menuLabels: {
-        'pos': 'Kasir (POS)',
+        'pos': 'Kasir',
         'products': 'Produk',
         'cash': 'Kas',
         'reports': 'Laporan',
