@@ -7,15 +7,15 @@ const router = {
     currentPage: null,
     
     // Menu yang bisa diakses saat kasir TUTUP (tanpa membuka kasir baru)
-    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram'],
+    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram', 'n8n'],
     
     // Menu yang butuh kasir BUKA
     requiresKasirOpen: ['pos', 'products', 'cash', 'debt'],
 
     // Definisi akses menu berdasarkan role
     menuAccess: {
-        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud'],
-        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud'],
+        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n'],
+        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n'],
         'kasir': ['pos', 'products', 'transactions']
     },
 
@@ -31,7 +31,8 @@ const router = {
         'users': 'Users',
         'telegram': 'Telegram',
         'cloud': 'Cloud',
-        'backup': 'Backup'
+        'backup': 'Backup',
+        'n8n': 'Pencarian'
     },
 
     // Cek apakah module tersedia
@@ -47,7 +48,8 @@ const router = {
             'users': typeof usersModule !== 'undefined',
             'telegram': typeof TelegramModule !== 'undefined',
             'cloud': typeof backupModule !== 'undefined',
-            'backup': typeof backupModule !== 'undefined'
+            'backup': typeof backupModule !== 'undefined',
+            'n8n': typeof n8nModule !== 'undefined'
         };
         return modules[moduleName] || false;
     },
@@ -153,6 +155,12 @@ const router = {
                     if (typeof TelegramModule !== 'undefined') {
                         TelegramModule.init();
                         TelegramModule.renderPage();
+                    }
+                    break;
+                case 'n8n':
+                    // PERBAIKAN: Inisialisasi dan render n8nModule
+                    if (typeof n8nModule !== 'undefined') {
+                        n8nModule.init();
                     }
                     break;
                 case 'cloud':
@@ -371,7 +379,8 @@ const router = {
         const suggestions = {
             'telegram': 'Pastikan file telegram.js ada di folder js/',
             'cloud': 'Pastikan file backup.js ada di folder js/',
-            'backup': 'Pastikan file backup.js ada di folder js/'
+            'backup': 'Pastikan file backup.js ada di folder js/',
+            'n8n': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html'
         };
 
         const modalHTML = `
@@ -436,7 +445,8 @@ const router = {
             'users': '👥',
             'telegram': '✈️',
             'cloud': '☁️',
-            'backup': '💾'
+            'backup': '💾',
+            'n8n': '🔍'
         };
 
         let navHTML = '';
