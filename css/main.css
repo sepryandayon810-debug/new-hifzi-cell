@@ -1145,3 +1145,127 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================
+   HEADER STATS - HARI INI SAJA
+   ============================================ */
+
+/* Transition untuk animasi smooth */
+#currentCash, #headerProfit, #modalAwal, #headerTransactionCount {
+    transition: all 0.3s ease;
+}
+
+/* Highlight animation saat data berubah */
+@keyframes highlightUpdate {
+    0% { 
+        background-color: rgba(0, 184, 148, 0.3);
+        transform: scale(1.05);
+    }
+    50% {
+        background-color: rgba(0, 184, 148, 0.1);
+        transform: scale(1.02);
+    }
+    100% { 
+        background-color: transparent;
+        transform: scale(1);
+    }
+}
+
+.updated {
+    animation: highlightUpdate 0.5s ease;
+    border-radius: 4px;
+    padding: 0 8px;
+}
+
+/* Styling untuk label "Hari Ini" */
+.cash-card {
+    position: relative;
+}
+
+.cash-card::before {
+    content: "📅 HARI INI";
+    position: absolute;
+    top: -10px;
+    right: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Profit highlight styling */
+.profit-highlight {
+    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
+    margin-left: auto;
+    min-width: 140px;
+    transition: all 0.3s ease;
+}
+
+.profit-highlight:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
+}
+
+.profit-highlight .profit-icon {
+    font-size: 24px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.profit-highlight .profit-label {
+    font-size: 11px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.profit-highlight .profit-value {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+/* Cash amount styling dengan animasi */
+.cash-amount {
+    font-size: 32px;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 10px 0;
+    display: inline-block;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .cash-card::before {
+        font-size: 9px;
+        padding: 3px 8px;
+        right: 10px;
+    }
+    
+    .profit-highlight {
+        margin-left: 0;
+        margin-top: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .cash-detail {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+}
