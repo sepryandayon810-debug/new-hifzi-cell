@@ -347,7 +347,7 @@ const app = {
         }
     },
 
-    // ==================== LOGOUT - PERBAIKAN: JANGAN RESET DATA ====================
+    // ==================== LOGOUT ====================
     logout() {
         // Simpan data terlebih dahulu sebelum logout
         if (typeof dataManager !== 'undefined') {
@@ -361,6 +361,7 @@ const app = {
         location.reload();
     },
 
+    // ==================== UPDATE HEADER - HARI INI SAJA ====================
     updateHeader() {
         if (!this.data) return;
         
@@ -371,23 +372,100 @@ const app = {
         if (headerStoreName) headerStoreName.textContent = this.data.settings.storeName || 'HIFZI CELL';
         if (headerStoreAddress) headerStoreAddress.textContent = this.data.settings.address || 'Alamat Belum Diatur';
         
-        // Update kas info
+        // ⬇️ HITUNG DATA HARI INI SAJA
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Filter transaksi hari ini saja
+        const todayTransactions = (this.data.transactions || []).filter(t => {
+            if (t.status === 'deleted' || t.status === 'voided') return false;
+            const tDate = new Date(t.date);
+            tDate.setHours(0, 0, 0, 0);
+            return tDate.getTime() === today.getTime();
+        });
+        
+        // Filter cash transactions hari ini
+        const todayCashTrans = (this.data.cashTransactions || []).filter(t => {
+            const tDate = new Date(t.date);
+            tDate.setHours(0, 0, 0, 0);
+            return tDate.getTime() === today.getTime();
+        });
+        
+        // ⬇️ HITUNG KAS MASUK HARI INI (dari transaksi penjualan + kas masuk)
+        let todayCashIn = 0;
+        
+        // Dari transaksi penjualan tunai hari ini
+        todayTransactions.forEach(t => {
+            if (t.paymentMethod === 'cash') {
+                todayCashIn += parseInt(t.total) || 0;
+            }
+        });
+        
+        // Dari kas masuk hari ini (modal, topup, dll)
+        todayCashTrans.forEach(t => {
+            if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
+                todayCashIn += parseInt(t.amount) || 0;
+            }
+        });
+        
+        // ⬇️ HITUNG KAS KELUAR HARI INI
+        let todayCashOut = 0;
+        todayCashTrans.forEach(t => {
+            if (t.type === 'out') {
+                todayCashOut += parseInt(t.amount) || 0;
+            }
+        });
+        
+        // ⬇️ MODAL AWAL HARI INI
+        let todayModalAwal = 0;
+        const kasirOpenDate = this.data.kasir?.date ? new Date(this.data.kasir.date) : null;
+        
+        if (kasirOpenDate) {
+            const kasirDate = new Date(kasirOpenDate);
+            kasirDate.setHours(0, 0, 0, 0);
+            
+            // Cek apakah kasir dibuka hari ini
+            if (kasirDate.getTime() === today.getTime()) {
+                todayModalAwal = parseInt(this.data.settings.modalAwal) || 0;
+            }
+        }
+        
+        // Jika tidak ada di settings, cek dari transaksi modal_in hari ini
+        if (todayModalAwal === 0) {
+            const modalTrans = todayCashTrans.find(t => t.type === 'modal_in');
+            if (modalTrans) {
+                todayModalAwal = parseInt(modalTrans.amount) || 0;
+            }
+        }
+        
+        // ⬇️ KAS DI TANGAN HARI INI = Modal Awal + Masuk - Keluar
+        const todayNetCash = todayModalAwal + todayCashIn - todayCashOut;
+        
+        // ⬇️ HITUNG LABA HARI INI
+        const todayProfit = todayTransactions.reduce((sum, t) => sum + (parseInt(t.profit) || 0), 0);
+        
+        // Update DOM dengan animasi highlight
         const currentCashEl = document.getElementById('currentCash');
         const modalAwalEl = document.getElementById('modalAwal');
-        
-        if (currentCashEl) currentCashEl.textContent = 'Rp ' + this.formatNumber(this.data.settings.currentCash || 0);
-        if (modalAwalEl) modalAwalEl.textContent = 'Rp ' + this.formatNumber(this.data.settings.modalAwal || 0);
-        
-        // Update profit hari ini
-        const todayProfit = this.calculateTodayProfit();
         const headerProfitEl = document.getElementById('headerProfit');
-        if (headerProfitEl) headerProfitEl.textContent = 'Rp ' + this.formatNumber(todayProfit);
-        
-        // Update total transaksi hari ini
-        const todayTransCount = this.calculateTodayTransactionCount();
         const transCountEl = document.getElementById('headerTransactionCount');
-        if (transCountEl) transCountEl.textContent = todayTransCount;
-
+        
+        // Helper untuk update dengan animasi
+        const updateWithHighlight = (element, newValue, prefix = '') => {
+            if (!element) return;
+            const newText = prefix + this.formatNumber(newValue);
+            if (element.textContent !== newText) {
+                element.classList.add('updated');
+                element.textContent = newText;
+                setTimeout(() => element.classList.remove('updated'), 500);
+            }
+        };
+        
+        updateWithHighlight(currentCashEl, todayNetCash, 'Rp ');
+        updateWithHighlight(modalAwalEl, todayModalAwal, 'Rp ');
+        updateWithHighlight(headerProfitEl, todayProfit, 'Rp ');
+        updateWithHighlight(transCountEl, todayTransactions.length, '');
+        
         // Update user info
         const userInfoHeader = document.getElementById('userInfoHeader');
         const headerUserName = document.getElementById('headerUserName');
@@ -419,22 +497,6 @@ const app = {
             kasirBtn.style.background = '#2ed573';
             kasirBtn.onclick = () => this.confirmOpenKasir(true);
         }
-    },
-
-    calculateTodayProfit() {
-        if (!this.data || !this.data.transactions) return 0;
-        const today = new Date().toDateString();
-        return this.data.transactions
-            .filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted' && t.status !== 'voided')
-            .reduce((sum, t) => sum + (t.profit || 0), 0);
-    },
-
-    calculateTodayTransactionCount() {
-        if (!this.data || !this.data.transactions) return 0;
-        const today = new Date().toDateString();
-        return this.data.transactions
-            .filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted' && t.status !== 'voided')
-            .length;
     },
 
     updateKasirStatus() {
@@ -658,7 +720,7 @@ const app = {
     },
     // ==================== END SETTINGS ====================
 
-    // ==================== TOAST NOTIFICATION - PERBAIKAN UKURAN ====================
+    // ==================== TOAST NOTIFICATION ====================
     showToast(message) {
         // Hapus toast yang sudah ada
         const existingToast = document.getElementById('toast');
