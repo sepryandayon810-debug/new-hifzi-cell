@@ -22,11 +22,14 @@ const transactionsModule = {
                         <button onclick="transactionsModule.search()">🔍</button>
                     </div>
 
-                    <div class="report-filters" style="margin-bottom: 15px;">
-                        <button class="filter-btn active" onclick="transactionsModule.setFilter('all')">Semua</button>
-                        <button class="filter-btn" onclick="transactionsModule.setFilter('today')">Hari Ini</button>
-                        <button class="filter-btn" onclick="transactionsModule.setFilter('voided')">Dibatalkan</button>
-                        <button class="filter-btn" onclick="transactionsModule.setFilter('deleted')">Terhapus</button>
+                    <div class="report-filters" style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px;">
+                        <button class="filter-btn active" data-filter="all" onclick="transactionsModule.setFilter('all', this)">Semua</button>
+                        <button class="filter-btn" data-filter="today" onclick="transactionsModule.setFilter('today', this)">Hari Ini</button>
+                        <button class="filter-btn" data-filter="yesterday" onclick="transactionsModule.setFilter('yesterday', this)">Kemarin</button>
+                        <button class="filter-btn" data-filter="month" onclick="transactionsModule.setFilter('month', this)">Bulan Ini</button>
+                        <button class="filter-btn" data-filter="year" onclick="transactionsModule.setFilter('year', this)">Tahun Ini</button>
+                        <button class="filter-btn" data-filter="voided" onclick="transactionsModule.setFilter('voided', this)">Dibatalkan</button>
+                        <button class="filter-btn" data-filter="deleted" onclick="transactionsModule.setFilter('deleted', this)">Terhapus</button>
                     </div>
                 </div>
 
@@ -38,14 +41,54 @@ const transactionsModule = {
                     <div class="transaction-list" id="transactionList"></div>
                 </div>
             </div>
+
+            <style>
+                .filter-btn {
+                    padding: 8px 16px;
+                    border: 1px solid #e0e0e0;
+                    background: white;
+                    border-radius: 20px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: #555;
+                    transition: all 0.2s ease;
+                }
+                .filter-btn:hover {
+                    background: #f5f5f5;
+                    border-color: #ccc;
+                }
+                .filter-btn.active {
+                    background: linear-gradient(135deg, var(--primary, #667eea) 0%, var(--primary-dark, #764ba2) 100%);
+                    color: white !important;
+                    border-color: transparent;
+                    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+                }
+                .filter-btn.active:hover {
+                    opacity: 0.9;
+                }
+            </style>
         `;
         document.getElementById('mainContent').innerHTML = html;
     },
     
-    setFilter(filter) {
+    setFilter(filter, btnElement) {
         this.currentFilter = filter;
-        document.querySelectorAll('#transactionsSection .filter-btn').forEach(b => b.classList.remove('active'));
-        event.target.classList.add('active');
+        
+        // Hapus class active dari semua tombol
+        document.querySelectorAll('#transactionsSection .filter-btn').forEach(b => {
+            b.classList.remove('active');
+        });
+        
+        // Tambahkan class active ke tombol yang diklik
+        if (btnElement) {
+            btnElement.classList.add('active');
+        } else {
+            // Fallback jika event tidak tersedia
+            const targetBtn = document.querySelector(`#transactionsSection .filter-btn[data-filter="${filter}"]`);
+            if (targetBtn) targetBtn.classList.add('active');
+        }
+        
         this.renderList();
     },
     
@@ -64,15 +107,38 @@ const transactionsModule = {
         const search = searchInput ? searchInput.value.toLowerCase() : '';
         
         let transactions = [...dataManager.data.transactions];
+        const now = new Date();
         
+        // Filter berdasarkan waktu
         if (this.currentFilter === 'today') {
             const today = new Date().toDateString();
             transactions = transactions.filter(t => new Date(t.date).toDateString() === today && t.status !== 'deleted');
+        } else if (this.currentFilter === 'yesterday') {
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toDateString();
+            transactions = transactions.filter(t => new Date(t.date).toDateString() === yesterdayStr && t.status !== 'deleted');
+        } else if (this.currentFilter === 'month') {
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            transactions = transactions.filter(t => {
+                const tDate = new Date(t.date);
+                return tDate.getMonth() === currentMonth && 
+                       tDate.getFullYear() === currentYear && 
+                       t.status !== 'deleted';
+            });
+        } else if (this.currentFilter === 'year') {
+            const currentYear = now.getFullYear();
+            transactions = transactions.filter(t => {
+                const tDate = new Date(t.date);
+                return tDate.getFullYear() === currentYear && t.status !== 'deleted';
+            });
         } else if (this.currentFilter === 'voided') {
             transactions = transactions.filter(t => t.status === 'voided');
         } else if (this.currentFilter === 'deleted') {
             transactions = transactions.filter(t => t.status === 'deleted');
         } else {
+            // 'all' - semua transaksi aktif (tidak deleted)
             transactions = transactions.filter(t => t.status !== 'deleted');
         }
         
@@ -239,6 +305,17 @@ const transactionsModule = {
                             </button>
                             <button class="btn btn-danger" onclick="transactionsModule.deleteTransaction()" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: #333;">
                                 🗑️ Hapus
+                            </button>
+                        </div>
+                    </div>
+                    ` : isDeleted ? `
+                    <div style="margin-top: 20px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <button class="btn btn-success" onclick="transactionsModule.restoreTransaction()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                ♻️ Restore
+                            </button>
+                            <button class="btn btn-secondary" onclick="transactionsModule.closeDetail()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                Tutup
                             </button>
                         </div>
                     </div>
@@ -624,16 +701,13 @@ const transactionsModule = {
         app.showToast('✅ Transaksi dibatalkan! Stok dikembalikan, kas dikurangi.');
     },
     
-    // FITUR BARU: HAPUS TRANSAKSI
     deleteTransaction() {
         if (!this.currentTransaction) return;
         
-        // Konfirmasi pertama
         if (!confirm('🗑️ HAPUS TRANSAKSI INI?\n\nTindakan ini akan:\n• Menghapus transaksi dari daftar aktif\n• Mengembalikan semua stok produk\n• Mengurangi kas sesuai total transaksi\n• Transaksi bisa dilihat di filter "Terhapus"\n\nLanjutkan?')) {
             return;
         }
         
-        // Konfirmasi kedua dengan password
         const password = prompt('Masukkan password konfirmasi (default: admin):');
         if (password !== 'admin') {
             app.showToast('❌ Password salah!');
@@ -642,7 +716,6 @@ const transactionsModule = {
         
         const reason = prompt('Alasan penghapusan:') || 'Tidak disebutkan';
         
-        // 1. Kembalikan stok produk
         let stockReturned = 0;
         this.currentTransaction.items.forEach(item => {
             const product = dataManager.data.products.find(p => p.id === item.id);
@@ -652,13 +725,10 @@ const transactionsModule = {
             }
         });
         
-        // 2. Kurangi kas (hanya jika transaksi sebelumnya mengurangi kas)
-        // Transaksi yang belum dibatalkan/voided perlu dikurangi kasnya
         if (this.currentTransaction.status !== 'voided') {
             dataManager.data.settings.currentCash -= this.currentTransaction.total;
         }
         
-        // 3. Tandai sebagai deleted (soft delete)
         this.currentTransaction.status = 'deleted';
         this.currentTransaction.deleteInfo = {
             reason: reason,
@@ -667,10 +737,7 @@ const transactionsModule = {
             stockReturned: stockReturned
         };
         
-        // 4. Simpan perubahan
         dataManager.save();
-        
-        // 5. Update UI
         app.updateHeader();
         this.closeDetail();
         this.renderList();
@@ -678,7 +745,6 @@ const transactionsModule = {
         app.showToast('✅ Transaksi dihapus! ' + stockReturned + ' stok dikembalikan, kas dikurangi.');
     },
     
-    // FITUR BARU: RESTORE TRANSAKSI TERHAPUS (opsional)
     restoreTransaction() {
         if (!this.currentTransaction) return;
         
@@ -697,7 +763,6 @@ const transactionsModule = {
             return;
         }
         
-        // 1. Kurangi stok kembali (karena transaksi aktif lagi)
         let stockReduced = 0;
         this.currentTransaction.items.forEach(item => {
             const product = dataManager.data.products.find(p => p.id === item.id);
@@ -707,17 +772,12 @@ const transactionsModule = {
             }
         });
         
-        // 2. Tambah kas kembali
         dataManager.data.settings.currentCash += this.currentTransaction.total;
         
-        // 3. Kembalikan status ke completed
         this.currentTransaction.status = 'completed';
         delete this.currentTransaction.deleteInfo;
         
-        // 4. Simpan
         dataManager.save();
-        
-        // 5. Update UI
         app.updateHeader();
         this.closeDetail();
         this.renderList();
