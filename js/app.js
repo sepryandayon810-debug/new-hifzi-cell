@@ -10,8 +10,8 @@ const router = {
 
     // Definisi akses menu berdasarkan role
     menuAccess: {
-        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'backup', 'debt', 'users', 'telegram', 'cloud'],
-        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'backup', 'debt', 'users', 'telegram', 'cloud'],
+        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud'],
+        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud'],
         'kasir': ['pos', 'products', 'transactions'] // Kasir hanya bisa akses POS, Produk, dan Transaksi
     },
 
@@ -23,7 +23,6 @@ const router = {
         'reports': 'Laporan',
         'transactions': 'Transaksi',
         'receipt': 'Struk',
-        'backup': 'Backup',
         'debt': 'Hutang',
         'users': 'Users',
         'telegram': 'Telegram',
