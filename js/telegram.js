@@ -1,6 +1,6 @@
 /**
  * Telegram Module - Hifzi Cell POS (n8n Compatible)
- * Dengan filter waktu dan generate GAS
+ * Dengan mode offline-first dan sync manual
  */
 
 console.log('[Telegram] Module loaded - n8n compatible');
@@ -8,7 +8,7 @@ console.log('[Telegram] Module loaded - n8n compatible');
 const TelegramModule = {
     // State
     topups: [],
-    currentFilter: 'all', // all, today, yesterday, month, year
+    currentFilter: 'all',
     isInitialized: false,
     transaksiAktif: null,
     
@@ -23,9 +23,6 @@ const TelegramModule = {
     STORAGE_KEY_CONFIG: 'tg_config',
     STORAGE_KEY_PENDING: 'saldo_pending',
 
-    /**
-     * Initialize module
-     */
     init() {
         console.log('[Telegram] init() called');
         
@@ -66,9 +63,6 @@ const TelegramModule = {
         return { valid: errors.length === 0, errors };
     },
 
-    /**
-     * Filter helpers
-     */
     getFilteredTopups() {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -110,9 +104,6 @@ const TelegramModule = {
         return labels[this.currentFilter] || 'Semua Waktu';
     },
 
-    /**
-     * Main render
-     */
     render() {
         const container = document.getElementById('mainContent');
         if (!container) return;
@@ -137,20 +128,17 @@ const TelegramModule = {
         return `
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
                 <h2 style="margin: 0; font-size: 24px;">📱 Input Saldo Hifzi Cell</h2>
-                <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">Compatible dengan n8n workflow & Google Apps Script</p>
+                <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">Mode: Simpan Lokal + Sync ke Sheets</p>
             </div>
         `;
     },
 
-    /**
-     * GAS Generator Section
-     */
     renderGASGenerator() {
         return `
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
                 <h3 style="margin: 0 0 16px 0; font-size: 16px;">⚡ Generate GAS (Google Apps Script)</h3>
                 <p style="margin: 0 0 16px 0; font-size: 13px; opacity: 0.95;">
-                    Generate script GAS otomatis untuk koneksi ke Google Sheets. Copy dan paste ke Google Apps Script editor.
+                    Copy kode ini ke Google Apps Script untuk enable sync ke Sheets.
                 </p>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button onclick="TelegramModule.showGASCode()" 
@@ -164,7 +152,7 @@ const TelegramModule = {
                 </div>
                 <div id="gasCodeContainer" style="display: none; margin-top: 16px;">
                     <div style="background: #1e1e1e; border-radius: 8px; padding: 16px; overflow-x: auto;">
-                        <pre style="margin: 0; color: #d4d4d4; font-size: 12px; line-height: 1.5;">${this.escapeHtml(this.getGASCode())}</pre>
+                        <pre style="margin: 0; color: #d4d4d4; font-size: 12px; line-height: 1.5; white-space: pre-wrap;">${this.escapeHtml(this.getGASCode())}</pre>
                     </div>
                 </div>
             </div>
@@ -172,8 +160,16 @@ const TelegramModule = {
     },
 
     getGASCode() {
-        return `// Google Apps Script untuk Telegram Module
-// Copy semua kode ini ke Google Apps Script Editor
+        return `// ============================================
+// GOOGLE APPS SCRIPT - Telegram Module
+// ============================================
+// 1. Buat Spreadsheet baru
+// 2. Extensions > Apps Script
+// 3. Hapus kode default, paste ini
+// 4. Deploy > New deployment > Web App
+// 5. Execute as: Me
+// 6. Who has access: ANYONE
+// 7. Copy URL ke POS
 
 const SHEET_NAME = 'TOP UP';
 
@@ -181,70 +177,58 @@ function doGet(e) {
   const action = e.parameter.action;
   const sheetId = e.parameter.sheetId;
   
-  if (action === 'test') {
-    return jsonResponse({ success: true, sheets: ['TOP UP'] });
+  try {
+    if (action === 'test') {
+      const ss = SpreadsheetApp.openById(sheetId);
+      const sheets = ss.getSheets().map(s => s.getName());
+      return jsonResponse({ 
+        success: true, 
+        sheets: sheets
+      });
+    }
+    return jsonResponse({ success: false, error: 'Invalid action' });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error.toString() });
   }
-  
-  return jsonResponse({ success: false, error: 'Invalid action' });
 }
 
 function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
-  const action = data.action;
-  const sheetId = data.sheetId;
-  
   try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
+    const sheetId = data.sheetId;
+    
     const ss = SpreadsheetApp.openById(sheetId);
     let sheet = ss.getSheetByName(SHEET_NAME);
     
     if (!sheet) {
       sheet = ss.insertSheet(SHEET_NAME);
-      sheet.appendRow(['BULAN', 'TANGGAL', 'NAMA ITEM', 'SALDO TOP UP', 'MATCH KEY']);
+      sheet.appendRow(['BULAN', 'TANGGAL', 'NAMA ITEM', 'SALDO TOP UP', 'TIMESTAMP', 'ID']);
+      sheet.getRange(1,1,1,6).setFontWeight('bold').setBackground('#4caf50').setFontColor('white');
     }
     
-    if (action === 'initSaldo') {
-      const matchKey = Utilities.getUuid().substring(0, 8);
-      return jsonResponse({
-        success: true,
-        transaksiId: Utilities.getUuid(),
-        matchKey: matchKey,
-        namaItem: data.namaItem
-      });
-    }
-    
-    if (action === 'completeSaldo') {
+    if (action === 'saveDirect') {
       const now = new Date();
       const bulan = Utilities.formatDate(now, 'Asia/Jakarta', 'MMMM').toUpperCase();
       const tanggal = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy');
-      
-      const lastRow = sheet.getLastRow();
-      const row = lastRow + 1;
+      const timestamp = Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
       
       sheet.appendRow([
         bulan,
         tanggal,
-        data.sheetId, // NAMA ITEM dari data
+        data.namaItem,
         data.nominal,
-        data.matchKey
+        timestamp,
+        data.id
       ]);
-      
-      // Update nama item yang benar
-      sheet.getRange(row, 3).setValue(data.sheetId);
       
       return jsonResponse({
         success: true,
-        row: row,
-        data: {
-          bulan: bulan,
-          tanggal: tanggal,
-          namaItem: data.sheetId,
-          nominal: data.nominal
-        }
+        row: sheet.getLastRow()
       });
     }
     
     return jsonResponse({ success: false, error: 'Invalid action' });
-    
   } catch (error) {
     return jsonResponse({ success: false, error: error.toString() });
   }
@@ -287,7 +271,7 @@ function jsonResponse(data) {
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 style="margin: 0; font-size: 16px; color: #333;">⚙️ Konfigurasi Google Sheets</h3>
+                    <h3 style="margin: 0; font-size: 16px; color: #333;">⚙️ Konfigurasi Google Sheets (Opsional)</h3>
                     <span style="padding: 4px 12px; background: ${statusColor}20; color: ${statusColor}; border-radius: 12px; font-size: 12px; font-weight: 600;">
                         ${statusText}
                     </span>
@@ -309,7 +293,7 @@ function jsonResponse(data) {
                     </button>
                     <button onclick="TelegramModule.testConnection()" 
                             style="padding: 10px 20px; background: #f5f5f5; color: #555; border: 2px solid #e0e0e0; border-radius: 8px; font-weight: 600; cursor: pointer;">
-                        🔗 Test Koneksi
+                        🔗 Test
                     </button>
                 </div>
                 <div id="tgTestResult" style="margin-top: 12px;"></div>
@@ -319,36 +303,19 @@ function jsonResponse(data) {
 
     renderSaldoSection() {
         const isWaiting = this.transaksiAktif !== null;
-        const validation = this.validateConfig();
-        
-        let warningHtml = '';
-        if (!validation.valid && !isWaiting) {
-            warningHtml = `
-                <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
-                    <div style="color: #856404; font-weight: 600;">⚠️ Konfigurasi Belum Lengkap</div>
-                    <ul style="margin: 8px 0; padding-left: 20px; color: #856404; font-size: 13px;">
-                        ${validation.errors.map(e => `<li>${e}</li>`).join('')}
-                    </ul>
-                </div>
-            `;
-        }
         
         return `
             <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border: 2px solid #4caf50; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                <h3 style="margin: 0 0 16px 0; color: #2e7d32; font-size: 18px;">💰 Input Saldo ke Google Sheets</h3>
-                ${warningHtml}
-                ${isWaiting ? this.renderSaldoInput() : this.renderSaldoPilihan(validation.valid)}
+                <h3 style="margin: 0 0 16px 0; color: #2e7d32; font-size: 18px;">💰 Input Saldo</h3>
+                ${isWaiting ? this.renderSaldoInput() : this.renderSaldoPilihan()}
             </div>
         `;
     },
 
-    renderSaldoPilihan(isValid) {
-        const disabled = !isValid;
-        
+    renderSaldoPilihan() {
         const buttons = ['DANA', 'DIGIPOS', 'MASTERLOAD'].map(jenis => `
             <button onclick="TelegramModule.pilihSaldo('${jenis}')" 
-                    ${disabled ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'style="cursor: pointer;"'}
-                    style="background: white; border: 2px solid #4caf50; color: #4caf50; padding: 20px; border-radius: 12px; font-weight: 600; width: 100%; transition: all 0.3s;">
+                    style="background: white; border: 2px solid #4caf50; color: #4caf50; padding: 20px; border-radius: 12px; font-weight: 600; width: 100%; transition: all 0.3s; cursor: pointer;">
                 <div style="font-size: 32px; margin-bottom: 8px;">${jenis === 'DANA' ? '💙' : jenis === 'DIGIPOS' ? '🟡' : '🟢'}</div>
                 <div>${jenis}</div>
             </button>
@@ -356,12 +323,12 @@ function jsonResponse(data) {
         
         return `
             <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                <strong style="color: #2e7d32;">📋 Cara Penggunaan:</strong>
-                <ol style="margin: 10px 0; padding-left: 20px; font-size: 14px; color: #555; line-height: 1.8;">
-                    <li>Klik jenis saldo (DANA/DIGIPOS/MASTERLOAD)</li>
-                    <li>Masukkan nominal</li>
-                    <li>Klik SIMPAN - data masuk ke Sheet TOP UP</li>
-                </ol>
+                <strong style="color: #2e7d32;">📋 Mode Operasi:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px; font-size: 14px; color: #555; line-height: 1.8;">
+                    <li><b>Mode Offline:</b> Data tersimpan di browser (lokal)</li>
+                    <li><b>Sync Manual:</b> Export ke Excel/Copy paste ke Sheets</li>
+                    <li><b>Auto Sync:</b> Jika GAS dikonfigurasi, data otomatis masuk ke Sheets</li>
+                </ul>
             </div>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
                 ${buttons}
@@ -371,11 +338,14 @@ function jsonResponse(data) {
 
     renderSaldoInput() {
         const jenis = this.transaksiAktif?.namaItem;
+        const isOnline = this.validateConfig().valid;
+        
         return `
             <div style="background: white; padding: 24px; border-radius: 16px; border: 3px solid #4caf50;">
                 <div style="text-align: center; margin-bottom: 24px;">
                     <div style="font-size: 48px; margin-bottom: 8px;">${jenis === 'DANA' ? '💙' : jenis === 'DIGIPOS' ? '🟡' : '🟢'}</div>
                     <div style="font-size: 24px; font-weight: 700; color: #2e7d32;">${jenis}</div>
+                    ${isOnline ? '<div style="color: #4caf50; font-size: 12px; margin-top: 5px;">🟢 Auto-sync ke Sheets aktif</div>' : '<div style="color: #ff9800; font-size: 12px; margin-top: 5px;">🟡 Mode lokal (tanpa Sheets)</div>'}
                 </div>
                 <div style="margin-bottom: 24px;">
                     <label style="display: block; margin-bottom: 12px; font-weight: 600; color: #333;">Nominal (Rp)</label>
@@ -388,7 +358,7 @@ function jsonResponse(data) {
                 <div style="display: flex; gap: 12px;">
                     <button onclick="TelegramModule.simpanSaldo()" 
                             style="flex: 2; background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white; padding: 18px; border: none; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer;">
-                        ✅ SIMPAN KE SHEET
+                        ✅ SIMPAN
                     </button>
                     <button onclick="TelegramModule.batalSaldo()" 
                             style="flex: 1; background: #f5f5f5; color: #666; padding: 18px; border: 2px solid #ddd; border-radius: 12px; font-weight: 600; cursor: pointer;">
@@ -399,9 +369,6 @@ function jsonResponse(data) {
         `;
     },
 
-    /**
-     * Stats section dengan total
-     */
     renderStats(total, count) {
         return `
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px;">
@@ -417,9 +384,6 @@ function jsonResponse(data) {
         `;
     },
 
-    /**
-     * Filter buttons
-     */
     renderFilterButtons() {
         const filters = [
             { key: 'all', label: 'Semua', icon: '📊' },
@@ -451,14 +415,6 @@ function jsonResponse(data) {
         `;
     },
 
-    setFilter(filter) {
-        this.currentFilter = filter;
-        this.render();
-    },
-
-    /**
-     * List dengan fitur hapus lokal
-     */
     renderList(filtered, total) {
         const sorted = filtered;
         
@@ -467,13 +423,15 @@ function jsonResponse(data) {
                 <h3 style="margin: 0; font-size: 16px; color: #333;">
                     📋 Riwayat ${this.getFilterLabel()} (${sorted.length})
                 </h3>
-                ${sorted.length > 0 ? `
-                    <button onclick="TelegramModule.confirmClearLocal()" 
-                            style="padding: 8px 16px; background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; 
-                                   border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">
-                        🗑️ Hapus Riwayat Lokal
-                    </button>
-                ` : ''}
+                <div style="display: flex; gap: 8px;">
+                    ${sorted.length > 0 ? `
+                        <button onclick="TelegramModule.confirmClearLocal()" 
+                                style="padding: 8px 16px; background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; 
+                                       border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                            🗑️ Hapus Lokal
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         `;
         
@@ -487,10 +445,11 @@ function jsonResponse(data) {
             `;
         } else {
             html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
-            sorted.forEach((t, index) => {
+            sorted.forEach((t) => {
                 const date = new Date(t.timestamp);
                 const timeStr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                 const dateStr = date.toLocaleDateString('id-ID');
+                const synced = t.sheetRow ? true : false;
                 
                 html += `
                     <div style="background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
@@ -500,16 +459,15 @@ function jsonResponse(data) {
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                                 <span style="font-size: 20px;">${t.method === 'DANA' ? '💙' : t.method === 'DIGIPOS' ? '🟡' : '🟢'}</span>
                                 <span style="font-size: 16px; font-weight: 700; color: #333;">Rp ${t.amount.toLocaleString('id-ID')}</span>
+                                ${synced ? '<span style="color: #4caf50; font-size: 11px;">✓ Synced</span>' : '<span style="color: #ff9800; font-size: 11px;">⏳ Local</span>'}
                             </div>
                             <div style="font-size: 12px; color: #666;">
                                 ${t.method} • ${dateStr} ${timeStr}
-                                ${t.sheetRow ? `<span style="color: #4caf50; margin-left: 8px;">✓ Sheet Row ${t.sheetRow}</span>` : ''}
                             </div>
                         </div>
                         <button onclick="TelegramModule.deleteLocal('${t.id}')" 
                                 style="padding: 8px 12px; background: #ffebee; color: #c62828; border: none; 
-                                       border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 10px;"
-                                title="Hapus dari riwayat lokal (tidak menghapus Sheet)">
+                                       border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 10px;">
                             🗑️
                         </button>
                     </div>
@@ -517,7 +475,6 @@ function jsonResponse(data) {
             });
             html += `</div>`;
             
-            // Export buttons
             html += `
                 <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
                     <button onclick="TelegramModule.exportExcel()" 
@@ -528,6 +485,12 @@ function jsonResponse(data) {
                             style="padding: 12px 20px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; flex: 1; min-width: 140px;">
                         📋 Copy ke Clipboard
                     </button>
+                    ${this.validateConfig().valid ? `
+                        <button onclick="TelegramModule.syncToSheets()" 
+                                style="padding: 12px 20px; background: #2196f3; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; flex: 1; min-width: 140px;">
+                                ☁️ Sync ke Sheets
+                        </button>
+                    ` : ''}
                 </div>
             `;
         }
@@ -535,48 +498,12 @@ function jsonResponse(data) {
         return html;
     },
 
-    /**
-     * Delete single item locally
-     */
-    deleteLocal(id) {
-        if (!confirm('Hapus dari riwayat lokal?\n\n⚠️ Data di Google Sheet TIDAK akan dihapus.\nIni hanya menghapus tampilan di aplikasi.')) {
-            return;
-        }
-        
-        this.topups = this.topups.filter(t => t.id !== id);
-        this.saveData();
-        
-        if (typeof app !== 'undefined' && app.showToast) {
-            app.showToast('✅ Dihapus dari riwayat lokal');
-        }
-        
-        this.render();
-    },
-
-    /**
-     * Clear all local history
-     */
-    confirmClearLocal() {
-        const filtered = this.getFilteredTopups();
-        const count = filtered.length;
-        
-        if (!confirm(`Hapus ${count} riwayat ${this.getFilterLabel().toLowerCase()}?\n\n⚠️ PERINGATAN:\n• Data di Google Sheet TIDAK akan dihapus\n• Hanya riwayat lokal di browser yang dihapus\n• Data yang sudah tersimpan di Sheet tetap aman`)) {
-            return;
-        }
-        
-        // Hapus hanya yang sesuai filter
-        const filteredIds = new Set(filtered.map(t => t.id));
-        this.topups = this.topups.filter(t => !filteredIds.has(t.id));
-        this.saveData();
-        
-        if (typeof app !== 'undefined' && app.showToast) {
-            app.showToast(`✅ ${count} riwayat dihapus dari lokal`);
-        }
-        
-        this.render();
-    },
-
     // ==================== ACTIONS ====================
+
+    setFilter(filter) {
+        this.currentFilter = filter;
+        this.render();
+    },
 
     formatRupiah(input) {
         const value = input.value.replace(/\D/g, '');
@@ -612,7 +539,7 @@ function jsonResponse(data) {
             return;
         }
         
-        resultDiv.innerHTML = '<div style="color: #667eea;">⏳ Testing koneksi...</div>';
+        resultDiv.innerHTML = '<div style="color: #667eea;">⏳ Testing...</div>';
         
         try {
             const url = this.config.scriptUrl + '?action=test&sheetId=' + encodeURIComponent(this.config.sheetId || 'test');
@@ -629,52 +556,28 @@ function jsonResponse(data) {
         }
     },
 
-    async pilihSaldo(jenis) {
-        if (!this.validateConfig().valid) {
-            alert('Konfigurasi belum lengkap!');
-            return;
-        }
+    /**
+     * PILIH SALDO - Simplified, no fetch
+     */
+    pilihSaldo(jenis) {
+        this.transaksiAktif = {
+            transaksiId: 'local_' + Date.now(),
+            matchKey: Math.random().toString(36).substring(2, 10).toUpperCase(),
+            namaItem: jenis
+        };
+        localStorage.setItem(this.STORAGE_KEY_PENDING, JSON.stringify(this.transaksiAktif));
         
-        if (typeof app !== 'undefined' && app.showToast) {
-            app.showToast(`⏳ Memulai ${jenis}...`);
-        }
+        this.render();
         
-        try {
-            const response = await fetch(this.config.scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'initSaldo',
-                    sheetId: this.config.sheetId,
-                    namaItem: jenis
-                }),
-                mode: 'cors'
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.transaksiAktif = {
-                    transaksiId: result.transaksiId,
-                    matchKey: result.matchKey,
-                    namaItem: jenis
-                };
-                localStorage.setItem(this.STORAGE_KEY_PENDING, JSON.stringify(this.transaksiAktif));
-                
-                this.render();
-                
-                setTimeout(() => {
-                    const input = document.getElementById('tgNominalInput');
-                    if (input) input.focus();
-                }, 100);
-            } else {
-                throw new Error(result.error);
-            }
-        } catch (error) {
-            alert('Error: ' + error.message + '\n\nPastikan GAS sudah di-deploy dengan access ANYONE');
-        }
+        setTimeout(() => {
+            const input = document.getElementById('tgNominalInput');
+            if (input) input.focus();
+        }, 100);
     },
 
+    /**
+     * SIMPAN SALDO - Save local first, then try sync
+     */
     async simpanSaldo() {
         const nominalInput = document.getElementById('tgNominalInput');
         if (!nominalInput) return;
@@ -685,55 +588,172 @@ function jsonResponse(data) {
             return;
         }
         
-        if (typeof app !== 'undefined' && app.showToast) {
-            app.showToast('⏳ Menyimpan ke Google Sheets...');
+        const namaItem = this.transaksiAktif?.namaItem;
+        const transaksiId = this.transaksiAktif?.transaksiId;
+        
+        // Simpan ke lokal dulu
+        const newTopup = {
+            id: transaksiId,
+            amount: nominal,
+            method: namaItem,
+            timestamp: Date.now(),
+            status: 'local',
+            sheetRow: null
+        };
+        
+        this.topups.push(newTopup);
+        this.saveData();
+        
+        // Reset form
+        this.transaksiAktif = null;
+        localStorage.removeItem(this.STORAGE_KEY_PENDING);
+        
+        // Coba sync ke Sheets jika konfigurasi valid
+        if (this.validateConfig().valid) {
+            try {
+                if (typeof app !== 'undefined' && app.showToast) {
+                    app.showToast('⏳ Menyimpan ke Sheets...');
+                }
+                
+                const response = await fetch(this.config.scriptUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'saveDirect',
+                        sheetId: this.config.sheetId,
+                        namaItem: namaItem,
+                        nominal: nominal,
+                        id: transaksiId
+                    }),
+                    mode: 'cors'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Update status jadi synced
+                    const index = this.topups.findIndex(t => t.id === transaksiId);
+                    if (index !== -1) {
+                        this.topups[index].status = 'synced';
+                        this.topups[index].sheetRow = result.row;
+                        this.saveData();
+                    }
+                    
+                    if (typeof app !== 'undefined' && app.showToast) {
+                        app.showToast(`✅ Tersimpan di Sheets (Row ${result.row})`);
+                    }
+                }
+            } catch (error) {
+                console.log('[Telegram] Sync failed, kept local:', error);
+                if (typeof app !== 'undefined' && app.showToast) {
+                    app.showToast('✅ Tersimpan lokal (Sync ke Sheets gagal)');
+                }
+            }
+        } else {
+            if (typeof app !== 'undefined' && app.showToast) {
+                app.showToast('✅ Tersimpan lokal');
+            }
         }
         
-        try {
-            const response = await fetch(this.config.scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'completeSaldo',
-                    sheetId: this.config.sheetId,
-                    matchKey: this.transaksiAktif.matchKey,
-                    nominal: nominal,
-                    namaItem: this.transaksiAktif.namaItem
-                }),
-                mode: 'cors'
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.topups.push({
-                    id: this.transaksiAktif.transaksiId,
-                    amount: nominal,
-                    method: this.transaksiAktif.namaItem,
-                    timestamp: Date.now(),
-                    status: 'confirmed',
-                    sheetRow: result.row
-                });
-                this.saveData();
-                
-                this.transaksiAktif = null;
-                localStorage.removeItem(this.STORAGE_KEY_PENDING);
-                
-                alert(`✅ BERHASIL!\n\n${this.transaksiAktif?.namaItem || 'Saldo'}: Rp ${nominal.toLocaleString('id-ID')}\nTanggal: ${result.data?.tanggal || new Date().toLocaleDateString('id-ID')}\nSheet: TOP UP (Row ${result.row})`);
-                
-                this.render();
-            } else {
-                throw new Error(result.error);
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
+        this.render();
     },
 
     batalSaldo() {
         this.transaksiAktif = null;
         localStorage.removeItem(this.STORAGE_KEY_PENDING);
         this.render();
+    },
+
+    deleteLocal(id) {
+        if (!confirm('Hapus dari riwayat lokal?\n\nData di Google Sheet (jika ada) TIDAK akan dihapus.')) {
+            return;
+        }
+        
+        this.topups = this.topups.filter(t => t.id !== id);
+        this.saveData();
+        
+        if (typeof app !== 'undefined' && app.showToast) {
+            app.showToast('✅ Dihapus dari riwayat lokal');
+        }
+        
+        this.render();
+    },
+
+    confirmClearLocal() {
+        const filtered = this.getFilteredTopups();
+        const count = filtered.length;
+        
+        if (count === 0) return;
+        
+        if (!confirm(`Hapus ${count} riwayat ${this.getFilterLabel().toLowerCase()}?\n\nData di Google Sheet (jika ada) TIDAK akan dihapus.`)) {
+            return;
+        }
+        
+        const filteredIds = new Set(filtered.map(t => t.id));
+        this.topups = this.topups.filter(t => !filteredIds.has(t.id));
+        this.saveData();
+        
+        if (typeof app !== 'undefined' && app.showToast) {
+            app.showToast(`✅ ${count} riwayat dihapus`);
+        }
+        
+        this.render();
+    },
+
+    async syncToSheets() {
+        const unsynced = this.topups.filter(t => !t.sheetRow);
+        
+        if (unsynced.length === 0) {
+            alert('Semua data sudah tersinkronisasi!');
+            return;
+        }
+        
+        if (!this.validateConfig().valid) {
+            alert('Konfigurasi GAS belum lengkap!');
+            return;
+        }
+        
+        if (typeof app !== 'undefined' && app.showToast) {
+            app.showToast(`⏳ Sync ${unsynced.length} data ke Sheets...`);
+        }
+        
+        let success = 0;
+        let failed = 0;
+        
+        for (const item of unsynced) {
+            try {
+                const response = await fetch(this.config.scriptUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'saveDirect',
+                        sheetId: this.config.sheetId,
+                        namaItem: item.method,
+                        nominal: item.amount,
+                        id: item.id
+                    }),
+                    mode: 'cors'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    item.sheetRow = result.row;
+                    item.status = 'synced';
+                    success++;
+                } else {
+                    failed++;
+                }
+            } catch (error) {
+                console.error('[Telegram] Sync error:', error);
+                failed++;
+            }
+        }
+        
+        this.saveData();
+        this.render();
+        
+        alert(`Sync selesai!\n✅ Berhasil: ${success}\n❌ Gagal: ${failed}`);
     },
 
     exportExcel() {
@@ -743,15 +763,16 @@ function jsonResponse(data) {
             return;
         }
         
-        let html = `<table border="1"><tr style="background:#4caf50;color:white;"><th>BULAN</th><th>TANGGAL</th><th>WAKTU</th><th>NAMA ITEM</th><th>SALDO TOP UP</th></tr>`;
+        let html = `<table border="1"><tr style="background:#4caf50;color:white;"><th>BULAN</th><th>TANGGAL</th><th>WAKTU</th><th>NAMA ITEM</th><th>SALDO TOP UP</th><th>STATUS</th></tr>`;
         
         filtered.forEach(t => {
             const date = new Date(t.timestamp);
             const bulan = date.toLocaleString('id-ID', { month: 'long' }).toUpperCase();
             const tanggal = date.toLocaleDateString('id-ID');
             const waktu = date.toLocaleTimeString('id-ID');
+            const status = t.sheetRow ? 'Synced' : 'Local';
             
-            html += `<tr><td>${bulan}</td><td>${tanggal}</td><td>${waktu}</td><td>${t.method}</td><td>${t.amount}</td></tr>`;
+            html += `<tr><td>${bulan}</td><td>${tanggal}</td><td>${waktu}</td><td>${t.method}</td><td>${t.amount}</td><td>${status}</td></tr>`;
         });
         
         html += '</table>';
@@ -774,12 +795,13 @@ function jsonResponse(data) {
             return;
         }
         
-        let text = 'BULAN\tTANGGAL\tWAKTU\tNAMA ITEM\tSALDO TOP UP\n';
+        let text = 'BULAN\tTANGGAL\tWAKTU\tNAMA ITEM\tSALDO TOP UP\tSTATUS\n';
         
         filtered.forEach(t => {
             const date = new Date(t.timestamp);
             const bulan = date.toLocaleString('id-ID', { month: 'long' }).toUpperCase();
-            text += `${bulan}\t${date.toLocaleDateString('id-ID')}\t${date.toLocaleTimeString('id-ID')}\t${t.method}\t${t.amount}\n`;
+            const status = t.sheetRow ? 'Synced' : 'Local';
+            text += `${bulan}\t${date.toLocaleDateString('id-ID')}\t${date.toLocaleTimeString('id-ID')}\t${t.method}\t${t.amount}\t${status}\n`;
         });
         
         navigator.clipboard.writeText(text).then(() => {
