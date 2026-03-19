@@ -1,6 +1,7 @@
 /**
  * Telegram Bot Integration Module + SALDO INTEGRATION
  * VERSI GITHUB PAGES - Tanpa proxy, CORS normal
+ * UPDATE: Tambahan Filter Waktu (Hari Ini, Minggu Ini, Bulan Ini, Tahun Ini)
  */
 
 const TelegramModule = (function() {
@@ -35,6 +36,7 @@ const TelegramModule = (function() {
     
     let topups = [];
     let currentFilter = 'all';
+    let currentTimeFilter = 'month'; // 'today', 'week', 'month', 'year', 'all'
     let isInitialized = false;
     
     // ==========================================
@@ -218,6 +220,14 @@ function jsonResponse(data) {
             console.error('[Telegram] Error loading topups:', e);
             topups = [];
         }
+        
+        // Load time filter preference
+        try {
+            const savedTimeFilter = localStorage.getItem('tg_time_filter');
+            if (savedTimeFilter) currentTimeFilter = savedTimeFilter;
+        } catch (e) {
+            console.error('[Telegram] Error loading time filter:', e);
+        }
     }
     
     function saveData() {
@@ -225,9 +235,65 @@ function jsonResponse(data) {
             localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
             localStorage.setItem(STORAGE_KEY_SALDO, JSON.stringify(saldoConfig));
             localStorage.setItem(STORAGE_KEY_TOPUPS, JSON.stringify(topups));
+            localStorage.setItem('tg_time_filter', currentTimeFilter);
         } catch (e) {
             console.error('[Telegram+Saldo] Error saving:', e);
         }
+    }
+    
+    // ==========================================
+    // TIME FILTER HELPERS
+    // ==========================================
+    
+    function isDateInRange(timestamp, range) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        
+        switch(range) {
+            case 'today':
+                return date.toDateString() === now.toDateString();
+                
+            case 'week':
+                const startOfWeek = new Date(now);
+                startOfWeek.setDate(now.getDate() - now.getDay());
+                startOfWeek.setHours(0, 0, 0, 0);
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
+                endOfWeek.setHours(23, 59, 59, 999);
+                return date >= startOfWeek && date <= endOfWeek;
+                
+            case 'month':
+                return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                
+            case 'year':
+                return date.getFullYear() === now.getFullYear();
+                
+            case 'all':
+            default:
+                return true;
+        }
+    }
+    
+    function getTimeFilterLabel(filter) {
+        const labels = {
+            'today': 'Hari Ini',
+            'week': 'Minggu Ini',
+            'month': 'Bulan Ini',
+            'year': 'Tahun Ini',
+            'all': 'Semua Waktu'
+        };
+        return labels[filter] || 'Bulan Ini';
+    }
+    
+    function getTimeFilterIcon(filter) {
+        const icons = {
+            'today': '📅',
+            'week': '📆',
+            'month': '🗓️',
+            'year': '📊',
+            'all': '📁'
+        };
+        return icons[filter] || '🗓️';
     }
     
     // ==========================================
@@ -627,6 +693,7 @@ function jsonResponse(data) {
         container.innerHTML = `
             <div class="tg-container">
                 ${renderHeader()}
+                ${renderTimeFilter()}  <!-- TAMBAHAN: Filter Waktu -->
                 ${renderStats(stats)}
                 ${SaldoModule.renderSaldoSection()}
                 ${renderConfig()}
@@ -647,6 +714,91 @@ function jsonResponse(data) {
                 }
             }, 100);
         }
+    }
+    
+    // ==========================================
+    // TAMBAHAN: TIME FILTER RENDERER
+    // ==========================================
+    
+    function renderTimeFilter() {
+        const filters = [
+            { key: 'today', label: 'Hari Ini', icon: '📅' },
+            { key: 'week', label: 'Minggu Ini', icon: '📆' },
+            { key: 'month', label: 'Bulan Ini', icon: '🗓️' },
+            { key: 'year', label: 'Tahun Ini', icon: '📊' },
+            { key: 'all', label: 'Semua', icon: '📁' }
+        ];
+        
+        const buttons = filters.map(f => `
+            <button onclick="TelegramModule.setTimeFilter('${f.key}')" 
+                    class="tg-time-filter-btn ${currentTimeFilter === f.key ? 'active' : ''}"
+                    style="
+                        padding: 10px 16px;
+                        border: 2px solid ${currentTimeFilter === f.key ? '#667eea' : '#e0e0e0'};
+                        background: ${currentTimeFilter === f.key ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'white'};
+                        color: ${currentTimeFilter === f.key ? 'white' : '#555'};
+                        border-radius: 25px;
+                        font-size: 13px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        white-space: nowrap;
+                    "
+                    onmouseover="if('${currentTimeFilter}' !== '${f.key}') this.style.borderColor='#667eea'"
+                    onmouseout="if('${currentTimeFilter}' !== '${f.key}') this.style.borderColor='#e0e0e0'">
+                <span>${f.icon}</span>
+                <span>${f.label}</span>
+            </button>
+        `).join('');
+        
+        return `
+            <div class="tg-time-filter-section" style="
+                background: white;
+                padding: 16px 20px;
+                border-radius: 12px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                margin-bottom: 20px;
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                ">
+                    <div style="
+                        font-weight: 600;
+                        color: #333;
+                        font-size: 14px;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    ">
+                        <span style="font-size: 18px;">🔍</span>
+                        <span>Filter Periode:</span>
+                        <span style="
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 4px 12px;
+                            border-radius: 15px;
+                            font-size: 12px;
+                        ">
+                            ${getTimeFilterIcon(currentTimeFilter)} ${getTimeFilterLabel(currentTimeFilter)}
+                        </span>
+                    </div>
+                    <div style="
+                        display: flex;
+                        gap: 8px;
+                        flex-wrap: wrap;
+                    ">
+                        ${buttons}
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
     function renderHeader() {
@@ -673,7 +825,7 @@ function jsonResponse(data) {
             <div class="tg-stats">
                 <div class="tg-stat-card">
                     <div class="tg-stat-value">${formatMoney(stats.total)}</div>
-                    <div class="tg-stat-label">Total (Bulan Ini)</div>
+                    <div class="tg-stat-label">Total (${getTimeFilterLabel(currentTimeFilter)})</div>
                 </div>
                 <div class="tg-stat-card">
                     <div class="tg-stat-value" style="color: #4caf50;">${stats.confirmed}</div>
@@ -882,10 +1034,11 @@ function jsonResponse(data) {
     
     function renderTopupList() {
         const filtered = getFilteredTopups();
+        const timeFilteredCount = getTimeFilteredTopups().length;
         
         let html = `
             <div class="tg-list-header">
-                <h3>📨 Daftar Topup (${filtered.length})</h3>
+                <h3>📨 Daftar Topup (${filtered.length}) <span style="font-size: 13px; color: #666; font-weight: normal;">| ${getTimeFilterLabel(currentTimeFilter)}: ${timeFilteredCount} item</span></h3>
                 <div class="tg-filters">
                     <button class="tg-filter ${currentFilter === 'all' ? 'active' : ''}" onclick="TelegramModule.setFilter('all')">Semua</button>
                     <button class="tg-filter ${currentFilter === 'pending' ? 'active' : ''}" onclick="TelegramModule.setFilter('pending')">Pending</button>
@@ -900,7 +1053,8 @@ function jsonResponse(data) {
             html += `
                 <div class="tg-empty">
                     <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
-                    <div>Belum ada data topup</div>
+                    <div>Belum ada data topup ${getTimeFilterLabel(currentTimeFilter).toLowerCase()}</div>
+                    <div style="font-size: 13px; color: #999; margin-top: 8px;">Coba ubah filter periode di atas</div>
                 </div>
             `;
         } else {
@@ -971,33 +1125,37 @@ function jsonResponse(data) {
         `;
     }
     
+    // ==========================================
+    // UPDATED STATS WITH TIME FILTER
+    // ==========================================
+    
     function getStats() {
-        const now = new Date();
-        const thisMonth = now.getMonth();
-        const thisYear = now.getFullYear();
+        const timeFiltered = getTimeFilteredTopups();
         
         let total = 0, confirmed = 0, pending = 0, rejected = 0, synced = 0;
         
-        topups.forEach(t => {
-            const d = new Date(t.timestamp);
-            if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-                if (t.status === 'confirmed') {
-                    total += parseFloat(t.amount) || 0;
-                    confirmed++;
-                } else if (t.status === 'pending') {
-                    pending++;
-                } else if (t.status === 'rejected') {
-                    rejected++;
-                }
-                if (t.syncedToSheet) synced++;
+        timeFiltered.forEach(t => {
+            if (t.status === 'confirmed') {
+                total += parseFloat(t.amount) || 0;
+                confirmed++;
+            } else if (t.status === 'pending') {
+                pending++;
+            } else if (t.status === 'rejected') {
+                rejected++;
             }
+            if (t.syncedToSheet) synced++;
         });
         
         return { total, confirmed, pending, rejected, synced };
     }
     
+    function getTimeFilteredTopups() {
+        return topups.filter(t => isDateInRange(t.timestamp, currentTimeFilter));
+    }
+    
     function getSyncStatus() {
-        const unsynced = topups.filter(t => !t.syncedToSheet).length;
+        const timeFiltered = getTimeFilteredTopups();
+        const unsynced = timeFiltered.filter(t => !t.syncedToSheet).length;
         if (unsynced === 0) {
             return '<div style="color: green;">✅ Semua data tersync</div>';
         }
@@ -1005,7 +1163,7 @@ function jsonResponse(data) {
     }
     
     function getFilteredTopups() {
-        let result = [...topups].sort((a, b) => b.timestamp - a.timestamp);
+        let result = getTimeFilteredTopups().sort((a, b) => b.timestamp - a.timestamp);
         if (currentFilter !== 'all') {
             result = result.filter(t => t.status === currentFilter);
         }
@@ -1051,7 +1209,9 @@ function jsonResponse(data) {
             return;
         }
         
-        const unsynced = topups.filter(t => !t.syncedToSheet);
+        const timeFiltered = getTimeFilteredTopups();
+        const unsynced = timeFiltered.filter(t => !t.syncedToSheet);
+        
         if (unsynced.length === 0) {
             showToast('✅ Tidak ada data yang perlu disync');
             return;
@@ -1151,6 +1311,14 @@ function jsonResponse(data) {
         init: init,
         renderPage: renderPage,
         SaldoModule: SaldoModule,
+        
+        // TAMBAHAN: Time Filter Setter
+        setTimeFilter: function(filter) {
+            currentTimeFilter = filter;
+            saveData();
+            renderPage();
+            showToast(`🔍 Filter: ${getTimeFilterLabel(filter)}`);
+        },
         
         saveConfig: function() {
             const token = document.getElementById('tgToken').value.trim();
@@ -1340,5 +1508,5 @@ function jsonResponse(data) {
 document.addEventListener('DOMContentLoaded', function() {
     TelegramModule.init();
     TelegramModule.SaldoModule.checkPending();
-    console.log('[Telegram+Saldo] Module ready - GitHub Pages Version');
+    console.log('[Telegram+Saldo] Module ready - GitHub Pages Version with Time Filter');
 });
