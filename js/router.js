@@ -166,6 +166,7 @@ const router = {
                 case 'cloud':
                 case 'backup':
                     backupModule.init();
+                    backupModule.render();  // ✅ TAMBAHAN: Render UI backup module
                     break;
                 default:
                     console.error(`[Router] Unknown page: ${page}`);
