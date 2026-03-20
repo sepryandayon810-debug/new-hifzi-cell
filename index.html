@@ -16,6 +16,261 @@
     <link rel="stylesheet" href="css/debt.css">
     <link rel="stylesheet" href="css/n8n.css">
     
+    <!-- ==================== BLUETOOTH PRINTER STYLES ==================== -->
+    <style>
+        /* ==========================================
+           BLUETOOTH PRINTER STYLES - HIFZI CELL POS
+           ========================================== */
+        .bluetooth-control-panel {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .bluetooth-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .bluetooth-icon {
+            font-size: 32px;
+            width: 48px;
+            height: 48px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .bluetooth-info {
+            flex: 1;
+        }
+
+        .bluetooth-title {
+            font-weight: 600;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .bluetooth-status {
+            font-size: 12px;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .bluetooth-status.connected {
+            color: #4ade80;
+        }
+
+        .bluetooth-status.disconnected {
+            color: #f87171;
+        }
+
+        .bluetooth-status.error {
+            color: #fbbf24;
+        }
+
+        .bluetooth-toggle-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .bluetooth-toggle-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+
+        .bluetooth-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .bluetooth-print-btn {
+            flex: 2;
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .bluetooth-print-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .bluetooth-print-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .bluetooth-print-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #e5e7eb;
+            color: #9ca3af;
+        }
+
+        .bluetooth-test-btn {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .bluetooth-test-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .bluetooth-settings {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .bluetooth-setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .bluetooth-setting-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .bluetooth-setting-item label {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .bluetooth-setting-item select {
+            background: rgba(255,255,255,0.9);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #333;
+            min-width: 120px;
+        }
+
+        .bluetooth-settings-toggle {
+            width: 100%;
+            margin-top: 12px;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.3);
+            color: rgba(255,255,255,0.8);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .bluetooth-settings-toggle:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        /* Floating Bluetooth Button untuk quick access */
+        .bluetooth-fab {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .bluetooth-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .bluetooth-fab.connected {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .bluetooth-fab.disconnected {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        /* Print Animation */
+        @keyframes printing {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0); }
+        }
+
+        .printing-animation {
+            animation: printing 0.5s ease-in-out infinite;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .bluetooth-control-panel {
+                padding: 12px;
+            }
+            
+            .bluetooth-actions {
+                flex-direction: column;
+            }
+            
+            .bluetooth-print-btn,
+            .bluetooth-test-btn {
+                width: 100%;
+            }
+        }
+    </style>
+    
     <!-- ==================== FIREBASE SDK ==================== -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -783,10 +1038,13 @@
     <!-- 5. N8N Integration Module (Pencarian Data) -->
     <script src="js/n8n.js"></script>
     
-    <!-- 6. Router System (Bergantung pada modules di atas) -->
+    <!-- 6. BLUETOOTH PRINTER MODULE (TAMBAHAN BARU) -->
+    <script src="js/bluetooth.js"></script>
+    
+    <!-- 7. Router System (Bergantung pada modules di atas) -->
     <script src="js/router.js"></script>
     
-    <!-- 7. App Core (Paling Akhir, bergantung pada semua di atas) -->
+    <!-- 8. App Core (Paling Akhir, bergantung pada semua di atas) -->
     <script src="js/app.js"></script>
     
 </body>
