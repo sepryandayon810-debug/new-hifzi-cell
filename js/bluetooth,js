@@ -31,6 +31,8 @@ const bluetoothModule = {
     DASH: '--------------------------------',
 
     init() {
+        console.log('[Bluetooth] Initializing...');
+        
         // Load library dari CDN
         if (!window.WebBluetoothReceiptPrinter) {
             const script = document.createElement('script');
@@ -39,6 +41,9 @@ const bluetoothModule = {
                 this.printer = new WebBluetoothReceiptPrinter();
                 this.setupEventListeners();
                 console.log('[Bluetooth] Printer module initialized');
+            };
+            script.onerror = () => {
+                console.error('[Bluetooth] Failed to load printer library');
             };
             document.head.appendChild(script);
         } else {
@@ -51,6 +56,7 @@ const bluetoothModule = {
         if (saved) {
             try {
                 this.lastDevice = JSON.parse(saved);
+                console.log('[Bluetooth] Loaded saved device:', this.lastDevice.name);
             } catch(e) {
                 console.error('[Bluetooth] Error parsing saved device:', e);
             }
@@ -74,44 +80,62 @@ const bluetoothModule = {
             
             localStorage.setItem('hifzi_bluetooth_printer', JSON.stringify(this.lastDevice));
             this.updateUIStatus('connected', device.name);
-            app.showToast(`✅ Printer ${device.name} terhubung!`);
+            if (typeof app !== 'undefined') {
+                app.showToast(`✅ Printer ${device.name} terhubung!`);
+            }
         });
 
         this.printer.addEventListener('disconnected', (device) => {
             console.log(`[Bluetooth] Disconnected from ${device.name}`);
             this.isConnected = false;
             this.updateUIStatus('disconnected');
-            app.showToast(`⚠️ Printer ${device.name} terputus`);
+            if (typeof app !== 'undefined') {
+                app.showToast(`⚠️ Printer ${device.name} terputus`);
+            }
         });
 
         this.printer.addEventListener('error', (error) => {
             console.error('[Bluetooth] Error:', error);
             this.updateUIStatus('error');
-            app.showToast(`❌ Error printer: ${error.message}`);
+            if (typeof app !== 'undefined') {
+                app.showToast(`❌ Error printer: ${error.message}`);
+            }
         });
     },
 
     async connect() {
         if (!this.printer) {
-            app.showToast('❌ Modul printer belum siap');
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Modul printer belum siap, tunggu sebentar...');
+            }
             return;
         }
 
         try {
+            if (typeof app !== 'undefined') {
+                app.showToast('🔍 Mencari printer Bluetooth...');
+            }
             await this.printer.connect();
         } catch (error) {
             console.error('[Bluetooth] Connect error:', error);
-            app.showToast('❌ Gagal menghubungkan printer');
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Gagal menghubungkan printer. Pastikan printer dalam mode pairing.');
+            }
         }
     },
 
     async reconnect() {
         if (!this.printer || !this.lastDevice) {
-            app.showToast('❌ Tidak ada printer tersimpan');
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Tidak ada printer tersimpan');
+            }
             return;
         }
 
         try {
+            if (typeof app !== 'undefined') {
+                app.showToast('🔄 Menyambungkan ulang...');
+            }
             await this.printer.reconnect(this.lastDevice);
         } catch (error) {
             console.error('[Bluetooth] Reconnect error:', error);
@@ -131,11 +155,30 @@ const bluetoothModule = {
         document.querySelectorAll('.bluetooth-status').forEach(el => {
             el.className = `bluetooth-status ${status}`;
             if (status === 'connected') {
-                el.innerHTML = `🖨️ ${deviceName}`;
+                el.innerHTML = `🟢 ${deviceName}`;
             } else if (status === 'disconnected') {
-                el.innerHTML = `🖨️ Offline`;
+                el.innerHTML = `🔴 Offline`;
             } else {
-                el.innerHTML = `🖨️ Error`;
+                el.innerHTML = `🟡 Error`;
+            }
+        });
+
+        // Update toggle button
+        document.querySelectorAll('.bluetooth-toggle-btn').forEach(btn => {
+            if (btn) {
+                btn.textContent = this.isConnected ? 'Putuskan' : 'Hubungkan';
+            }
+        });
+
+        // Update print buttons
+        document.querySelectorAll('.bluetooth-print-btn').forEach(btn => {
+            if (btn) {
+                btn.disabled = !this.isConnected;
+                if (this.isConnected) {
+                    btn.classList.remove('disabled');
+                } else {
+                    btn.classList.add('disabled');
+                }
             }
         });
     },
@@ -205,7 +248,9 @@ const bluetoothModule = {
     // Fungsi utama untuk print raw data
     async print(data) {
         if (!this.isConnected) {
-            app.showToast('❌ Printer tidak terhubung');
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Printer tidak terhubung');
+            }
             return false;
         }
 
@@ -226,7 +271,9 @@ const bluetoothModule = {
             return true;
         } catch (error) {
             console.error('[Bluetooth] Print error:', error);
-            app.showToast('❌ Gagal mencetak');
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Gagal mencetak');
+            }
             return false;
         }
     },
@@ -243,7 +290,9 @@ const bluetoothModule = {
         }
         
         if (!this.isConnected) {
-            app.showToast('❌ Hubungkan printer terlebih dahulu');
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Hubungkan printer terlebih dahulu');
+            }
             return false;
         }
         
@@ -253,9 +302,12 @@ const bluetoothModule = {
     // Render UI Bluetooth Control
     renderBluetoothControl(containerId, options = {}) {
         const container = document.getElementById(containerId);
-        if (!container) return;
+        if (!container) {
+            console.error(`[Bluetooth] Container #${containerId} not found!`);
+            return;
+        }
 
-        const { showPrintButton = true, printCallback = null, context = 'general' } = options;
+        const { showPrintButton = true, context = 'general' } = options;
 
         let html = `
             <div class="bluetooth-control-panel">
@@ -275,7 +327,7 @@ const bluetoothModule = {
                 ${showPrintButton ? `
                 <div class="bluetooth-actions">
                     <button class="bluetooth-print-btn ${!this.isConnected ? 'disabled' : ''}" 
-                            onclick="${printCallback || `bluetoothModule.printCurrent${context.charAt(0).toUpperCase() + context.slice(1)}()`}"
+                            onclick="bluetoothModule.printCurrent${this.capitalizeFirst(context)}()"
                             id="btPrintBtn_${context}"
                             ${!this.isConnected ? 'disabled' : ''}>
                         🖨️ Cetak ${this.getContextLabel(context)}
@@ -310,6 +362,11 @@ const bluetoothModule = {
         `;
 
         container.innerHTML = html;
+        console.log(`[Bluetooth] Control panel rendered for ${context}`);
+    },
+
+    capitalizeFirst(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
     },
 
     getContextLabel(context) {
@@ -361,7 +418,7 @@ const bluetoothModule = {
         ];
 
         const success = await this.printAuto(this.concatArrays(...testContent));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Test print berhasil!');
         }
     },
@@ -371,12 +428,14 @@ const bluetoothModule = {
     // ==========================================
     
     async printCurrentPos() {
-        if (typeof posModule === 'undefined' || posModule.cart.length === 0) {
-            app.showToast('❌ Keranjang kosong');
+        if (typeof posModule === 'undefined' || !posModule.cart || posModule.cart.length === 0) {
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Keranjang kosong');
+            }
             return;
         }
 
-        const header = dataManager.data.settings.receiptHeader || {};
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
         const cart = posModule.cart;
         const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
         const transactionNumber = 'TRX-' + Date.now().toString().slice(-8);
@@ -410,14 +469,14 @@ const bluetoothModule = {
         content.push(this.createEscPosCommand(`TOTAL: Rp ${this.formatNumber(total)}`, { align: 'right', bold: true, doubleHeight: true }));
         content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
         content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
-        content.push(this.createEscPosCommand('Dicetak via Bluetooth', { align: 'center', align: 'center' }));
+        content.push(this.createEscPosCommand('Dicetak via Bluetooth', { align: 'center' }));
         
         // Cut
         content.push(new Uint8Array([0x0A, 0x0A]));
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Struk POS tercetak!');
         }
     },
@@ -427,22 +486,27 @@ const bluetoothModule = {
     // ==========================================
     
     async printCurrentTransaction() {
-        if (typeof transactionsModule === 'undefined') {
-            app.showToast('❌ Modul transaksi tidak tersedia');
+        // Cari transaksi yang sedang dilihat
+        let transaction = null;
+        
+        if (typeof transactionsModule !== 'undefined') {
+            transaction = transactionsModule.currentTransaction || transactionsModule.lastViewedTransaction;
+        }
+        
+        if (!transaction && typeof dataManager !== 'undefined' && dataManager.data.transactions) {
+            // Ambil transaksi terakhir sebagai fallback
+            transaction = dataManager.data.transactions[dataManager.data.transactions.length - 1];
+        }
+
+        if (!transaction) {
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Tidak ada transaksi untuk dicetak');
+            }
             return;
         }
 
-        // Ambil transaksi yang sedang dilihat/dipilih
-        const selectedTransaction = transactionsModule.selectedTransaction || 
-                                   transactionsModule.lastViewedTransaction;
-
-        if (!selectedTransaction) {
-            app.showToast('❌ Pilih transaksi yang akan dicetak');
-            return;
-        }
-
-        const t = selectedTransaction;
-        const header = dataManager.data.settings.receiptHeader || {};
+        const t = transaction;
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
 
         let content = [];
 
@@ -485,7 +549,7 @@ const bluetoothModule = {
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Bukti transaksi tercetak!');
         }
     },
@@ -495,25 +559,25 @@ const bluetoothModule = {
     // ==========================================
     
     async printCurrentDebt() {
-        if (typeof debtModule === 'undefined') {
-            app.showToast('❌ Modul hutang tidak tersedia');
+        // Cari hutang yang sedang dilihat
+        let debt = null;
+        
+        if (typeof debtModule !== 'undefined') {
+            debt = debtModule.selectedDebt || debtModule.lastViewedDebt;
+        }
+
+        if (!debt) {
+            if (typeof app !== 'undefined') {
+                app.showToast('❌ Pilih hutang yang akan dicetak');
+            }
             return;
         }
 
-        // Ambil hutang yang sedang dilihat detailnya
-        const selectedDebt = debtModule.selectedDebt || debtModule.lastViewedDebt;
-
-        if (!selectedDebt) {
-            // Print summary semua hutang aktif
-            await this.printDebtSummary();
-            return;
-        }
-
-        await this.printSingleDebt(selectedDebt);
+        await this.printSingleDebt(debt);
     },
 
     async printSingleDebt(debt) {
-        const header = dataManager.data.settings.receiptHeader || {};
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
         const remaining = debt.total - debt.paid;
 
         let content = [];
@@ -555,17 +619,14 @@ const bluetoothModule = {
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Bukti hutang tercetak!');
         }
     },
 
-    async printDebtSummary() {
-        const summary = debtModule.getSummary();
-        const groupedDebts = debtModule.getGroupedDebts();
-
-        const header = dataManager.data.settings.receiptHeader || {};
-
+    async printDebtSummary(groupedData) {
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
+        
         let content = [];
 
         // Header
@@ -576,25 +637,13 @@ const bluetoothModule = {
         content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
 
         // Summary
-        content.push(this.createEscPosCommand('RINGKASAN:', { align: 'left', bold: true }));
-        content.push(this.createEscPosCommand(`Total Piutang Aktif: Rp ${this.formatNumber(summary.activeRemaining)}`, { align: 'left' }));
-        content.push(this.createEscPosCommand(`Sudah Dibayar: Rp ${this.formatNumber(summary.totalPaid)}`, { align: 'left' }));
-        content.push(this.createEscPosCommand(`Pelanggan Aktif: ${summary.customerCount}`, { align: 'left' }));
-        content.push(this.createEscPosCommand(`Overdue: ${summary.overdueCount}`, { align: 'left' }));
-        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
-
-        // Detail per pelanggan
-        content.push(this.createEscPosCommand('DETAIL PELANGGAN:', { align: 'left', bold: true }));
-        
-        groupedDebts.slice(0, 10).forEach(group => { // Max 10 untuk kertas
+        if (groupedData) {
+            content.push(this.createEscPosCommand('RINGKASAN:', { align: 'left', bold: true }));
+            content.push(this.createEscPosCommand(`Pelanggan: ${groupedData.customerName}`, { align: 'left' }));
+            content.push(this.createEscPosCommand(`Total Sisa: Rp ${this.formatNumber(groupedData.totalRemaining)}`, { align: 'left' }));
+            content.push(this.createEscPosCommand(`Jumlah Transaksi: ${groupedData.count}`, { align: 'left' }));
             content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
-            content.push(this.createEscPosCommand(group.customerName, { align: 'left', bold: true }));
-            content.push(this.createEscPosCommand(`Sisa: Rp ${this.formatNumber(group.totalRemaining)} (${group.count} transaksi)`, { align: 'left' }));
-            
-            if (group.hasOverdue) {
-                content.push(this.createEscPosCommand('⚠️ OVERDUE', { align: 'left' }));
-            }
-        });
+        }
 
         content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
         content.push(this.createEscPosCommand('Dicetak via Bluetooth', { align: 'center' }));
@@ -603,7 +652,7 @@ const bluetoothModule = {
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Laporan hutang tercetak!');
         }
     },
@@ -613,14 +662,13 @@ const bluetoothModule = {
     // ==========================================
     
     async printCurrentReceipt() {
-        if (typeof receiptModule === 'undefined') {
-            app.showToast('❌ Modul struk tidak tersedia');
-            return;
+        // Deteksi tipe struk dari receiptModule
+        let receiptType = 'transfer';
+        
+        if (typeof receiptModule !== 'undefined') {
+            receiptType = receiptModule.receiptType || 'transfer';
         }
 
-        // Cek apakah ada data struk yang sedang dibuat
-        const receiptType = receiptModule.receiptType || 'transfer';
-        
         switch(receiptType) {
             case 'transfer':
                 await this.printTransferReceipt();
@@ -632,23 +680,37 @@ const bluetoothModule = {
                 await this.printTopUpReceipt();
                 break;
             default:
-                app.showToast('❌ Tipe struk tidak dikenali');
+                if (typeof app !== 'undefined') {
+                    app.showToast('❌ Tipe struk tidak dikenali');
+                }
         }
     },
 
     async printTransferReceipt() {
-        const header = dataManager.data.settings.receiptHeader || {};
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
         
-        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
-        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
-        const sender = document.getElementById('manualSender')?.value || '-';
-        const senderAcc = document.getElementById('manualSenderAccount')?.value || '-';
-        const bankFrom = document.getElementById('manualBankFrom')?.value || '';
-        const receiver = document.getElementById('manualReceiver')?.value || '-';
-        const receiverAcc = document.getElementById('manualReceiverAccount')?.value || '-';
-        const bankTo = document.getElementById('manualBankTo')?.value || '';
-        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
-        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+        // Ambil data dari form
+        const dateInput = document.getElementById('manualDate');
+        const timeInput = document.getElementById('manualTime');
+        const senderInput = document.getElementById('manualSender');
+        const senderAccInput = document.getElementById('manualSenderAccount');
+        const bankFromInput = document.getElementById('manualBankFrom');
+        const receiverInput = document.getElementById('manualReceiver');
+        const receiverAccInput = document.getElementById('manualReceiverAccount');
+        const bankToInput = document.getElementById('manualBankTo');
+        const nominalInput = document.getElementById('manualNominal');
+        const adminInput = document.getElementById('manualAdmin');
+
+        const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
+        const time = timeInput ? timeInput.value : new Date().toTimeString().slice(0, 5);
+        const sender = senderInput ? senderInput.value : '-';
+        const senderAcc = senderAccInput ? senderAccInput.value : '-';
+        const bankFrom = bankFromInput ? bankFromInput.value : '';
+        const receiver = receiverInput ? receiverInput.value : '-';
+        const receiverAcc = receiverAccInput ? receiverAccInput.value : '-';
+        const bankTo = bankToInput ? bankToInput.value : '';
+        const nominal = nominalInput ? (parseInt(nominalInput.value) || 0) : 0;
+        const admin = adminInput ? (parseInt(adminInput.value) || 0) : 0;
 
         let content = [];
 
@@ -684,21 +746,29 @@ const bluetoothModule = {
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Bukti transfer tercetak!');
         }
     },
 
     async printTarikTunaiReceipt() {
-        const header = dataManager.data.settings.receiptHeader || {};
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
         
-        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
-        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
-        const customer = document.getElementById('manualCustomer')?.value || '-';
-        const bank = document.getElementById('manualBank')?.value || '';
-        const account = document.getElementById('manualAccount')?.value || '-';
-        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
-        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+        const dateInput = document.getElementById('manualDate');
+        const timeInput = document.getElementById('manualTime');
+        const customerInput = document.getElementById('manualCustomer');
+        const bankInput = document.getElementById('manualBank');
+        const accountInput = document.getElementById('manualAccount');
+        const nominalInput = document.getElementById('manualNominal');
+        const adminInput = document.getElementById('manualAdmin');
+
+        const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
+        const time = timeInput ? timeInput.value : new Date().toTimeString().slice(0, 5);
+        const customer = customerInput ? customerInput.value : '-';
+        const bank = bankInput ? bankInput.value : '';
+        const account = accountInput ? accountInput.value : '-';
+        const nominal = nominalInput ? (parseInt(nominalInput.value) || 0) : 0;
+        const admin = adminInput ? (parseInt(adminInput.value) || 0) : 0;
 
         let content = [];
 
@@ -726,21 +796,29 @@ const bluetoothModule = {
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Bukti tarik tunai tercetak!');
         }
     },
 
     async printTopUpReceipt() {
-        const header = dataManager.data.settings.receiptHeader || {};
+        const header = (typeof dataManager !== 'undefined' && dataManager.data.settings.receiptHeader) || {};
         
-        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
-        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
-        const type = document.getElementById('manualTopUpType')?.value || 'DANA';
-        const target = document.getElementById('manualTarget')?.value || '-';
-        const customer = document.getElementById('manualCustomer')?.value || '-';
-        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
-        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+        const dateInput = document.getElementById('manualDate');
+        const timeInput = document.getElementById('manualTime');
+        const typeInput = document.getElementById('manualTopUpType');
+        const targetInput = document.getElementById('manualTarget');
+        const customerInput = document.getElementById('manualCustomer');
+        const nominalInput = document.getElementById('manualNominal');
+        const adminInput = document.getElementById('manualAdmin');
+
+        const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
+        const time = timeInput ? timeInput.value : new Date().toTimeString().slice(0, 5);
+        const type = typeInput ? typeInput.value : 'DANA';
+        const target = targetInput ? targetInput.value : '-';
+        const customer = customerInput ? customerInput.value : '-';
+        const nominal = nominalInput ? (parseInt(nominalInput.value) || 0) : 0;
+        const admin = adminInput ? (parseInt(adminInput.value) || 0) : 0;
 
         let content = [];
 
@@ -767,7 +845,7 @@ const bluetoothModule = {
         content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
 
         const success = await this.printAuto(this.concatArrays(...content));
-        if (success) {
+        if (success && typeof app !== 'undefined') {
             app.showToast('✅ Bukti top up tercetak!');
         }
     },
@@ -779,7 +857,5 @@ const bluetoothModule = {
 
 // Initialize saat app ready
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        bluetoothModule.init();
-    }, 1000);
+    console.log('[Bluetooth] DOM Loaded, waiting for app initialization...');
 });
