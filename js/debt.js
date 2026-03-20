@@ -424,9 +424,6 @@ const debtModule = {
                                 ? 'Semua hutang sudah lunas. Aktifkan toggle di atas untuk melihat riwayat.' 
                                 : 'Belum ada catatan hutang yang sesuai dengan filter'}
                         </div>
-                        <button class="hifzi-debt-add-btn-empty" onclick="debtModule.openAddDebtModal()">
-                            <span>➕</span> Tambah Hutang Baru
-                        </button>
                     </div>
                 ` : ''}
             </div>
@@ -1047,6 +1044,15 @@ const debtModule = {
                 </div>
             `;
         }).join('');
+    },
+
+    renderCustomerList() {
+        const container = document.getElementById('customerListContainer');
+        if (container) {
+            const searchInput = document.getElementById('customerListSearch');
+            const query = searchInput ? searchInput.value : '';
+            container.innerHTML = this.renderCustomerListHTML(query);
+        }
     },
 
     filterCustomerList(query) {
