@@ -427,10 +427,23 @@ const transactionsModule = {
         
         const t = this.currentTransaction;
         
-        // Coba print via Bluetooth dulu jika tersedia
-        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
-            bluetoothModule.printCurrentTransaction();
-            return;
+        // Coba print via Bluetooth dulu jika tersedia dan terhubung
+        if (typeof bluetoothModule !== 'undefined') {
+            if (bluetoothModule.isConnected) {
+                bluetoothModule.printCurrentTransaction();
+                return;
+            }
+            
+            // Jika ada device tersimpan tapi belum connect, coba reconnect
+            if (bluetoothModule.lastDevice) {
+                bluetoothModule.reconnect().then(() => {
+                    bluetoothModule.printCurrentTransaction();
+                }).catch(() => {
+                    // Fallback ke window print
+                    this.printReceiptWindow(t);
+                });
+                return;
+            }
         }
         
         // Fallback ke window print
@@ -724,100 +737,74 @@ const transactionsModule = {
         app.updateHeader();
         this.closeDetail();
         this.renderList();
-        app.showToast('✅ Transaksi dibatalkan! Stok dikembalikan, kas dikurangi.');
+        app.showToast('✅ Transaksi dibatalkan! Stok & kas dikembalikan.');
     },
     
     deleteTransaction() {
         if (!this.currentTransaction) return;
         
-        if (!confirm('🗑️ HAPUS TRANSAKSI INI?\n\nTindakan ini akan:\n• Menghapus transaksi dari daftar aktif\n• Mengembalikan semua stok produk\n• Mengurangi kas sesuai total transaksi\n• Transaksi bisa dilihat di filter "Terhapus"\n\nLanjutkan?')) {
+        if (!confirm('🗑️ HAPUS TRANSAKSI INI?\n\nTindakan ini akan:\n• Mengembalikan semua stok produk\n• Mengurangi kas sesuai total transaksi\n• Menandai transaksi sebagai "Terhapus"\n• Transaksi masih terlihat di filter "Terhapus"\n\nLanjutkan?')) {
             return;
         }
         
-        const password = prompt('Masukkan password konfirmasi (default: admin):');
+        const password = prompt('Masukkan password (admin):');
         if (password !== 'admin') {
             app.showToast('❌ Password salah!');
             return;
         }
         
-        const reason = prompt('Alasan penghapusan:') || 'Tidak disebutkan';
-        
-        let stockReturned = 0;
         this.currentTransaction.items.forEach(item => {
             const product = dataManager.data.products.find(p => p.id === item.id);
             if (product) {
                 product.stock += item.qty;
-                stockReturned += item.qty;
             }
         });
         
-        if (this.currentTransaction.status !== 'voided') {
-            dataManager.data.settings.currentCash -= this.currentTransaction.total;
-        }
+        dataManager.data.settings.currentCash -= this.currentTransaction.total;
         
         this.currentTransaction.status = 'deleted';
         this.currentTransaction.deleteInfo = {
-            reason: reason,
             deleteDate: new Date().toISOString(),
-            deletedBy: 'Admin',
-            stockReturned: stockReturned
+            deletedBy: 'Admin'
         };
         
         dataManager.save();
         app.updateHeader();
         this.closeDetail();
         this.renderList();
-        
-        app.showToast('✅ Transaksi dihapus! ' + stockReturned + ' stok dikembalikan, kas dikurangi.');
+        app.showToast('🗑️ Transaksi dihapus!');
     },
     
     restoreTransaction() {
         if (!this.currentTransaction) return;
         
         if (this.currentTransaction.status !== 'deleted') {
-            app.showToast('❌ Transaksi ini tidak dalam status terhapus!');
+            app.showToast('❌ Transaksi tidak dalam status terhapus!');
             return;
         }
         
-        if (!confirm('♻️ KEMBALIKAN TRANSAKSI INI?\n\nTransaksi akan dikembalikan ke daftar aktif.\nStok akan dikurangi kembali dan kas akan ditambah.\n\nLanjutkan?')) {
+        if (!confirm('♻️ RESTORE TRANSAKSI INI?\n\nTransaksi akan dikembalikan ke status aktif.\nStok dan kas TIDAK akan diubah (sudah dikembalikan saat hapus).\n\nLanjutkan?')) {
             return;
         }
-        
-        const password = prompt('Masukkan password konfirmasi (default: admin):');
-        if (password !== 'admin') {
-            app.showToast('❌ Password salah!');
-            return;
-        }
-        
-        let stockReduced = 0;
-        this.currentTransaction.items.forEach(item => {
-            const product = dataManager.data.products.find(p => p.id === item.id);
-            if (product) {
-                product.stock -= item.qty;
-                stockReduced += item.qty;
-            }
-        });
-        
-        dataManager.data.settings.currentCash += this.currentTransaction.total;
         
         this.currentTransaction.status = 'completed';
-        delete this.currentTransaction.deleteInfo;
+        this.currentTransaction.restoredInfo = {
+            restoreDate: new Date().toISOString(),
+            restoredBy: 'Admin'
+        };
         
         dataManager.save();
-        app.updateHeader();
         this.closeDetail();
         this.renderList();
-        
-        app.showToast('✅ Transaksi dikembalikan! ' + stockReduced + ' stok dikurangi, kas ditambah.');
+        app.showToast('♻️ Transaksi direstore!');
     },
-
+    
     // ==========================================
     // BLUETOOTH PRINT METHODS
     // ==========================================
     
     // Method untuk dipanggil dari bluetoothModule
     getCurrentTransactionForPrint() {
-        if (!this.currentTransaction) return null;
         return this.currentTransaction;
     }
 };
