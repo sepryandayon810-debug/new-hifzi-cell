@@ -1224,13 +1224,266 @@ const backupModule = {
         this.showToast('✅ File GAS didownload!');
     },
 
-    // Fallback GAS code kalau fetch gagal
+    // GAS Code Lengkap dengan Cash Module Support
     getDefaultGASCode() {
-        return `function doGet(e) {
-  // ... (kode GAS default yang sudah ada sebelumnya)
-  // Sama dengan versi sebelumnya, disingkat untuk hemat space
-  const response = { status: 'ok', message: 'Default GAS - Please check your GAS Code URL' };
-  return ContentService.createTextOutput(JSON.stringify(response))
+        return `// ============================================
+// GAS CODE LENGKAP v2.3 - Dengan Cash Module
+// Simpan di script.google.com
+// ============================================
+
+const SPREADSHEET_ID = ''; // Kosongkan untuk auto-create atau isi dengan ID spreadsheet Anda
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action || 'sync';
+    const sheetId = data.sheetId || SPREADSHEET_ID;
+
+    // Get or create spreadsheet
+    let ss;
+    if (sheetId) {
+      ss = SpreadsheetApp.openById(sheetId);
+    } else {
+      ss = SpreadsheetApp.create('Hifzi Backup ' + new Date().toISOString());
+    }
+
+    // Handle different actions
+    if (action === 'test') {
+      return jsonResponse({ success: true, message: 'Connected! Sheet: ' + ss.getName() });
+    }
+
+    if (action === 'sync') {
+      return handleSync(data, ss);
+    }
+
+    if (action === 'restore') {
+      return handleRestore(ss);
+    }
+
+    if (action === 'reset') {
+      return handleReset(ss);
+    }
+
+    return jsonResponse({ success: false, message: 'Unknown action: ' + action });
+
+  } catch (error) {
+    return jsonResponse({ success: false, message: error.toString() });
+  }
+}
+
+function doGet(e) {
+  try {
+    const action = e.parameter.action || 'restore';
+    const sheetId = e.parameter.sheetId || SPREADSHEET_ID;
+    const callback = e.parameter.callback;
+
+    let ss;
+    if (sheetId) {
+      try {
+        ss = SpreadsheetApp.openById(sheetId);
+      } catch (e) {
+        return jsonResponse({ success: false, message: 'Invalid sheet ID' }, callback);
+      }
+    } else {
+      return jsonResponse({ success: false, message: 'Sheet ID required' }, callback);
+    }
+
+    if (action === 'restore') {
+      const result = handleRestore(ss);
+      return jsonResponse(result, callback);
+    }
+
+    return jsonResponse({ success: true, status: 'ok' }, callback);
+
+  } catch (error) {
+    return jsonResponse({ success: false, message: error.toString() }, callback);
+  }
+}
+
+function handleSync(data, ss) {
+  const backupData = data.data;
+  const deviceId = data.deviceId;
+  const deviceName = data.deviceName;
+  const timestamp = data.timestamp || new Date().toISOString();
+
+  // Define sheets to create/update - INCLUDE CASH MODULE
+  const sheetsConfig = [
+    { name: 'Produk', data: backupData.products || [] },
+    { name: 'Transaksi', data: backupData.transactions || [] },
+    { name: 'CashTrans', data: backupData.cashTransactions || [] },
+    { name: 'TutupKas', data: backupData.dailyClosing || [] },
+    { name: 'Hutang', data: backupData.debts || [] },
+    { name: 'Users', data: backupData.users || [] },
+    { name: 'Kategori', data: backupData.categories || [] },
+    { name: 'Shift', data: backupData.shifts || [] },
+    { name: 'Settings', data: backupData.settings ? [backupData.settings] : [] },
+    { name: 'CashHistory', data: backupData.cashHistory || [] }
+  ];
+
+  // Update or create each sheet
+  sheetsConfig.forEach(config => {
+    updateSheet(ss, config.name, config.data);
+  });
+
+  // Log sync
+  logSync(ss, timestamp, 'upload', deviceId, deviceName, sheetsConfig.length + ' sheets');
+
+  return { 
+    success: true, 
+    message: 'Sync successful',
+    sheetUrl: ss.getUrl(),
+    sheetsUpdated: sheetsConfig.length
+  };
+}
+
+function handleRestore(ss) {
+  const sheets = ss.getSheets();
+  const data = {
+    products: [],
+    transactions: [],
+    cashTransactions: [],
+    dailyClosing: [],
+    debts: [],
+    users: [],
+    categories: [],
+    shifts: [],
+    settings: {},
+    cashHistory: []
+  };
+
+  const sheetMapping = {
+    'Produk': 'products',
+    'Transaksi': 'transactions',
+    'CashTrans': 'cashTransactions',
+    'TutupKas': 'dailyClosing',
+    'Hutang': 'debts',
+    'Users': 'users',
+    'Kategori': 'categories',
+    'Shift': 'shifts',
+    'Settings': 'settings',
+    'CashHistory': 'cashHistory'
+  };
+
+  sheets.forEach(sheet => {
+    const sheetName = sheet.getName();
+    const key = sheetMapping[sheetName];
+
+    if (key && sheet.getLastRow() > 1) {
+      const values = sheet.getDataRange().getValues();
+      const headers = values[0];
+      const rows = values.slice(1);
+
+      if (key === 'settings') {
+        // Settings is single object
+        const obj = {};
+        rows.forEach(row => {
+          if (row[0]) obj[row[0]] = row[1];
+        });
+        data[key] = obj;
+      } else {
+        // Other sheets are arrays
+        data[key] = rows.map(row => {
+          const obj = {};
+          headers.forEach((header, i) => {
+            if (header) {
+              let val = row[i];
+              // Try parse JSON for objects/arrays
+              if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
+                try {
+                  val = JSON.parse(val);
+                } catch(e) {}
+              }
+              obj[header] = val;
+            }
+          });
+          return obj;
+        });
+      }
+    }
+  });
+
+  // Add backup metadata
+  data._backupMeta = {
+    restoredFrom: ss.getName(),
+    restoredAt: new Date().toISOString()
+  };
+
+  return { success: true, data: data };
+}
+
+function handleReset(ss) {
+  const sheets = ss.getSheets();
+  sheets.forEach(sheet => {
+    if (sheet.getName() !== 'SyncLog') {
+      sheet.clear();
+      // Keep headers
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(['Cleared']);
+      }
+    }
+  });
+
+  logSync(ss, new Date().toISOString(), 'reset', 'system', 'system', 'All sheets cleared');
+
+  return { success: true, message: 'Cloud data reset' };
+}
+
+function updateSheet(ss, sheetName, data) {
+  let sheet = ss.getSheetByName(sheetName);
+
+  // Create sheet if doesn't exist
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
+
+  // Clear existing content
+  sheet.clear();
+
+  if (data.length === 0) {
+    sheet.appendRow(['No data']);
+    return;
+  }
+
+  // Get headers from first object
+  const headers = Object.keys(data[0]).filter(key => !key.startsWith('_'));
+
+  // Write headers
+  sheet.appendRow(headers);
+
+  // Write data rows
+  data.forEach(item => {
+    const row = headers.map(header => {
+      const val = item[header];
+      // Convert objects/arrays to JSON string
+      if (typeof val === 'object' && val !== null) {
+        return JSON.stringify(val);
+      }
+      return val;
+    });
+    sheet.appendRow(row);
+  });
+
+  // Auto-resize columns
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function logSync(ss, timestamp, action, deviceId, deviceName, details) {
+  let logSheet = ss.getSheetByName('SyncLog');
+  if (!logSheet) {
+    logSheet = ss.insertSheet('SyncLog');
+    logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name', 'Details']);
+  }
+
+  logSheet.appendRow([timestamp, action, deviceId, deviceName, details]);
+}
+
+function jsonResponse(data, callback) {
+  const json = JSON.stringify(data);
+  if (callback) {
+    return ContentService.createTextOutput(callback + '(' + json + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json)
     .setMimeType(ContentService.MimeType.JSON);
 }`;
     },
