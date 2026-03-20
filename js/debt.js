@@ -4,6 +4,7 @@
  * + Modal Pilih Pelanggan (Muncul saat klik ikon profil)
  * + Modal Tambah Nama Pelanggan Baru
  * + Fitur Hapus Nama dari List
+ * + BLUETOOTH PRINTER INTEGRATION
  */
 
 const debtModule = {
@@ -15,6 +16,7 @@ const debtModule = {
     itemCount: 1,
     isInitialized: false,
     customCustomerNames: [],
+    selectedDebt: null, // Untuk tracking hutang yang sedang dilihat detailnya
 
     init() {
         console.log('Debt module initialized - Connected to DATABASE HIFZI APPS');
@@ -325,6 +327,9 @@ const debtModule = {
 
         container.innerHTML = `
             <div class="hifzi-debt-container">
+                <!-- BLUETOOTH CONTROL PANEL -->
+                <div id="bluetoothControlDebt"></div>
+                
                 <div class="hifzi-debt-summary-header">
                     <div class="hifzi-debt-summary-main-card">
                         <div class="hifzi-debt-summary-label">Total Piutang Aktif</div>
@@ -426,6 +431,16 @@ const debtModule = {
                 ` : ''}
             </div>
         `;
+        
+        // Render Bluetooth Control
+        setTimeout(() => {
+            if (typeof bluetoothModule !== 'undefined') {
+                bluetoothModule.renderBluetoothControl('bluetoothControlDebt', {
+                    context: 'debt',
+                    showPrintButton: true
+                });
+            }
+        }, 100);
     },
 
     formatRupiah(amount) {
@@ -489,9 +504,13 @@ const debtModule = {
                                         title="Kirim WA" ${!group.customerPhone ? 'disabled style="opacity:0.5"' : ''}>💬</button>
                                 <button class="hifzi-debt-action-btn hifzi-pay" onclick="debtModule.payAll('${group.customerName}')" 
                                         title="Bayar Semua">💰</button>
+                                <button class="hifzi-debt-action-btn hifzi-print" onclick="debtModule.printCustomerDebts('${group.customerName}')" 
+                                        title="Cetak Hutang">🖨️</button>
                             ` : `
                                 <button class="hifzi-debt-action-btn hifzi-view" onclick="debtModule.viewPaidHistory('${group.customerName}')" 
                                         title="Lihat Riwayat">📋</button>
+                                <button class="hifzi-debt-action-btn hifzi-print" onclick="debtModule.printCustomerDebts('${group.customerName}')" 
+                                        title="Cetak Riwayat">🖨️</button>
                             `}
                             <button class="hifzi-debt-toggle">${isExpanded ? '▲' : '▼'}</button>
                         </div>
@@ -560,10 +579,229 @@ const debtModule = {
                     ${!isPaid ? `
                         <button class="hifzi-debt-item-btn hifzi-pay" onclick="debtModule.openPaymentModal('${debt.id}')">Bayar</button>
                     ` : ''}
+                    <button class="hifzi-debt-item-btn hifzi-print" onclick="debtModule.printSingleDebt('${debt.id}')" title="Cetak">🖨️</button>
                     <button class="hifzi-debt-item-btn hifzi-delete" onclick="debtModule.confirmDelete('${debt.id}')" title="Hapus">🗑️</button>
                 </div>
             </div>
         `;
+    },
+
+    // ==========================================
+    // BLUETOOTH PRINT METHODS
+    // ==========================================
+    
+    // Print semua hutang customer
+    printCustomerDebts(customerName) {
+        const customerDebts = this.debts.filter(d => d.customerName === customerName);
+        
+        if (customerDebts.length === 0) {
+            this.showToast('Tidak ada hutang untuk dicetak', 'error');
+            return;
+        }
+
+        // Coba print via Bluetooth
+        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
+            const grouped = this.getGroupedDebts().find(g => g.customerName === customerName);
+            if (grouped) {
+                // Set selectedDebt untuk bluetoothModule
+                this.selectedDebt = customerDebts[0];
+                bluetoothModule.printCurrentDebt();
+                return;
+            }
+        }
+        
+        // Fallback ke window print
+        this.printCustomerDebtsWindow(customerName);
+    },
+
+    // Print single debt
+    printSingleDebt(debtId) {
+        const debt = this.debts.find(d => d.id === debtId);
+        if (!debt) {
+            this.showToast('Hutang tidak ditemukan', 'error');
+            return;
+        }
+
+        this.selectedDebt = debt;
+
+        // Coba print via Bluetooth
+        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
+            bluetoothModule.printCurrentDebt();
+            return;
+        }
+        
+        // Fallback ke window print
+        this.printSingleDebtWindow(debt);
+    },
+
+    // Window print fallback untuk customer debts
+    printCustomerDebtsWindow(customerName) {
+        const customerDebts = this.debts.filter(d => d.customerName === customerName);
+        const header = dataManager.data.settings.receiptHeader || {};
+        
+        const totalRemaining = customerDebts.reduce((sum, d) => sum + (d.total - d.paid), 0);
+        const totalPaid = customerDebts.reduce((sum, d) => sum + d.paid, 0);
+        const totalDebt = customerDebts.reduce((sum, d) => sum + d.total, 0);
+
+        let receiptLines = [
+            '================================',
+            '    ' + (header.storeName || 'HIFZI CELL').toUpperCase(),
+            '    ' + (header.address || ''),
+            header.phone ? '    HP: ' + header.phone : '',
+            '================================',
+            'BUKTI HUTANG/PIUTANG',
+            '================================',
+            `Pelanggan: ${customerName}`,
+            `Tgl Cetak: ${new Date().toLocaleString('id-ID')}`,
+            '--------------------------------',
+            `Total Hutang: Rp ${this.formatRupiah(totalDebt)}`,
+            `Sudah Dibayar: Rp ${this.formatRupiah(totalPaid)}`,
+            `Sisa: Rp ${this.formatRupiah(totalRemaining)}`,
+            '================================',
+            'DETAIL HUTANG:',
+            '--------------------------------'
+        ];
+
+        customerDebts.forEach((debt, idx) => {
+            const remaining = debt.total - debt.paid;
+            const status = debt.status === 'paid' ? 'LUNAS' : (debt.status === 'overdue' ? 'OVERDUE' : 'PENDING');
+            
+            receiptLines.push(`#${debt.id} [${status}]`);
+            receiptLines.push(`Tgl: ${this.formatDate(debt.date)}`);
+            receiptLines.push(`Jatuh Tempo: ${this.formatDate(debt.dueDate)}`);
+            
+            debt.items.forEach(item => {
+                receiptLines.push(`  ${item.name} x${item.qty} = Rp ${this.formatRupiah(item.price * item.qty)}`);
+            });
+            
+            receiptLines.push(`Total: Rp ${this.formatRupiah(debt.total)}`);
+            receiptLines.push(`Dibayar: Rp ${this.formatRupiah(debt.paid)}`);
+            receiptLines.push(`Sisa: Rp ${this.formatRupiah(remaining)}`);
+            receiptLines.push('--------------------------------');
+        });
+
+        receiptLines.push('================================');
+        receiptLines.push(header.note || 'Terima kasih');
+        receiptLines.push('================================');
+
+        const receipt = receiptLines.join('\n');
+
+        const w = window.open('', '_blank');
+        w.document.write(`
+            <html>
+            <head>
+                <title>Bukti Hutang ${customerName}</title>
+                <style>
+                    body { 
+                        font-family: 'Courier New', monospace; 
+                        padding: 20px; 
+                        white-space: pre-wrap;
+                        font-size: 12px;
+                        line-height: 1.4;
+                    }
+                    @media print {
+                        body { padding: 0; margin: 0; }
+                    }
+                </style>
+            </head>
+            <body>${receipt}</body>
+            </html>
+        `);
+        w.document.close();
+        w.print();
+        
+        this.showToast('Bukti hutang dicetak!');
+    },
+
+    // Window print fallback untuk single debt
+    printSingleDebtWindow(debt) {
+        const header = dataManager.data.settings.receiptHeader || {};
+        const remaining = debt.total - debt.paid;
+
+        let receiptLines = [
+            '================================',
+            '    ' + (header.storeName || 'HIFZI CELL').toUpperCase(),
+            '    ' + (header.address || ''),
+            header.phone ? '    HP: ' + header.phone : '',
+            '================================',
+            'BUKTI HUTANG/PIUTANG',
+            '================================',
+            `No: #${debt.id}`,
+            `Pelanggan: ${debt.customerName}`,
+            debt.customerPhone ? `HP: ${debt.customerPhone}` : '',
+            `Tgl Hutang: ${this.formatDate(debt.date)}`,
+            `Jatuh Tempo: ${this.formatDate(debt.dueDate)}`,
+            '--------------------------------',
+            'DETAIL BARANG:'
+        ];
+
+        debt.items.forEach(item => {
+            receiptLines.push(`${item.name}`);
+            receiptLines.push(`  ${item.qty} x Rp ${this.formatRupiah(item.price)} = Rp ${this.formatRupiah(item.price * item.qty)}`);
+        });
+
+        receiptLines.push('--------------------------------');
+        receiptLines.push(`Total Hutang: Rp ${this.formatRupiah(debt.total)}`);
+        receiptLines.push(`Sudah Dibayar: Rp ${this.formatRupiah(debt.paid)}`);
+        receiptLines.push(`Sisa: Rp ${this.formatRupiah(remaining)}`);
+        
+        if (debt.status === 'paid') {
+            receiptLines.push(`Status: ✅ LUNAS`);
+            receiptLines.push(`Tgl Lunas: ${this.formatDate(debt.paidDate)}`);
+        } else if (debt.status === 'overdue') {
+            receiptLines.push(`Status: ⚠️ OVERDUE`);
+        } else {
+            receiptLines.push(`Status: ⏳ PENDING`);
+        }
+
+        receiptLines.push('--------------------------------');
+        receiptLines.push(debt.reduceCash ? '📉 Hutang ini mengurangi kas' : '📋 Hutang ini tidak mengurangi kas');
+        receiptLines.push('================================');
+        receiptLines.push(header.note || 'Terima kasih');
+        receiptLines.push('================================');
+
+        const receipt = receiptLines.join('\n');
+
+        const w = window.open('', '_blank');
+        w.document.write(`
+            <html>
+            <head>
+                <title>Bukti Hutang #${debt.id}</title>
+                <style>
+                    body { 
+                        font-family: 'Courier New', monospace; 
+                        padding: 20px; 
+                        white-space: pre-wrap;
+                        font-size: 12px;
+                        line-height: 1.4;
+                    }
+                    @media print {
+                        body { padding: 0; margin: 0; }
+                    }
+                </style>
+            </head>
+            <body>${receipt}</body>
+            </html>
+        `);
+        w.document.close();
+        w.print();
+        
+        this.showToast('Bukti hutang dicetak!');
+    },
+
+    // Method untuk dipanggil dari bluetoothModule
+    getCurrentDebtForPrint() {
+        if (this.selectedDebt) {
+            return this.selectedDebt;
+        }
+        
+        // Jika tidak ada selected debt, ambil yang pertama dari daftar aktif
+        const activeDebts = this.debts.filter(d => d.status !== 'paid');
+        if (activeDebts.length > 0) {
+            return activeDebts[0];
+        }
+        
+        return null;
     },
 
     // ==========================================
@@ -1431,6 +1669,8 @@ const debtModule = {
     viewDetail(debtId) {
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) return;
+        
+        this.selectedDebt = debt;
         
         const modal = document.createElement('div');
         modal.className = 'hifzi-debt-modal-overlay';
