@@ -1050,25 +1050,27 @@ const receiptModule = {
     },
 
     // ==========================================
-    // BLUETOOTH PRINT METHODS
+    // BLUETOOTH PRINT METHODS (IMPROVED)
     // ==========================================
 
     // Print via Bluetooth (dipanggil dari tombol Print BT atau bluetoothModule)
     async printBluetooth() {
         // Cek apakah bluetoothModule tersedia dan terhubung
-        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
-            await bluetoothModule.printCurrentReceipt();
-            return;
-        }
-
-        // Jika tidak terhubung, coba auto-connect
-        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.lastDevice) {
-            try {
-                await bluetoothModule.reconnect();
+        if (typeof bluetoothModule !== 'undefined') {
+            if (bluetoothModule.isConnected) {
                 await bluetoothModule.printCurrentReceipt();
                 return;
-            } catch(e) {
-                console.log('Auto-reconnect failed');
+            }
+            
+            // Jika ada device tersimpan tapi belum connect, coba reconnect
+            if (bluetoothModule.lastDevice) {
+                try {
+                    await bluetoothModule.reconnect();
+                    await bluetoothModule.printCurrentReceipt();
+                    return;
+                } catch(e) {
+                    console.log('Auto-reconnect failed');
+                }
             }
         }
 
