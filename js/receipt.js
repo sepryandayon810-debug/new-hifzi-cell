@@ -5,10 +5,9 @@ const receiptModule = {
     isProcessing: false,
     workerReady: false,
     currentReceiptData: null,
-    manualFormExpanded: true, // State untuk tracking form manual
+    manualFormExpanded: true,
 
     init() {
-        // Load state dari localStorage
         const savedState = localStorage.getItem('receipt_manual_form_expanded');
         this.manualFormExpanded = savedState !== null ? JSON.parse(savedState) : true;
 
@@ -209,21 +208,17 @@ const receiptModule = {
         this.updatePreview();
     },
 
-    // Method baru untuk toggle form manual
     toggleManualForm() {
         this.manualFormExpanded = !this.manualFormExpanded;
         
-        // Simpan ke localStorage
         localStorage.setItem('receipt_manual_form_expanded', JSON.stringify(this.manualFormExpanded));
         
-        // Update UI
         const wrapper = document.getElementById('manualFormWrapper');
         const btn = document.getElementById('toggleManualBtn');
         const card = document.getElementById('manualInputCard');
         
         if (wrapper && btn) {
             if (this.manualFormExpanded) {
-                // Expand
                 wrapper.style.maxHeight = '5000px';
                 wrapper.style.opacity = '1';
                 wrapper.style.paddingTop = '15px';
@@ -231,7 +226,6 @@ const receiptModule = {
                 btn.style.transform = 'rotate(0deg)';
                 if (card) card.style.borderLeft = '4px solid var(--primary)';
             } else {
-                // Collapse
                 wrapper.style.maxHeight = '0';
                 wrapper.style.opacity = '0';
                 wrapper.style.paddingTop = '0';
@@ -241,7 +235,6 @@ const receiptModule = {
             }
         }
         
-        // Efek ripple/feedback visual
         if (btn) {
             btn.style.background = 'rgba(67, 97, 238, 0.1)';
             setTimeout(() => {
@@ -371,6 +364,25 @@ const receiptModule = {
         } catch (error) {
             console.error('OCR error:', error);
             throw error;
+        }
+    },
+
+    // Helper: Mask nomor rekening, tampilkan 4 digit terakhir
+    maskAccountNumber(account) {
+        if (!account || account.length < 4) return account;
+        
+        // Hapus semua non-digit
+        const clean = account.replace(/\D/g, '');
+        if (clean.length < 4) return account;
+        
+        // Ambil 4 digit terakhir
+        const last4 = clean.slice(-4);
+        
+        // Format dengan ****
+        if (clean.length <= 8) {
+            return `****${last4}`;
+        } else {
+            return `****-****-${last4}`;
         }
     },
 
@@ -557,8 +569,9 @@ const receiptModule = {
                 if (cleanNext.length > 3 && !this.isAccountNumber(cleanNext)) {
                     senderName = cleanNext;
                 }
+                // Coba cari rekening tapi jangan terlalu diharapkan akurat
                 const acc = this.findAccountNearby(lines, i);
-                if (acc) senderAccount = acc;
+                if (acc) senderAccount = this.maskAccountNumber(acc);
             }
 
             if ((lower.includes('penerima') || lower.includes('tujuan') || lower.includes('ke')) && !receiverName) {
@@ -566,7 +579,7 @@ const receiptModule = {
                     receiverName = cleanNext;
                 }
                 const acc = this.findAccountNearby(lines, i);
-                if (acc) receiverAccount = acc;
+                if (acc) receiverAccount = this.maskAccountNumber(acc);
             }
         }
 
@@ -577,12 +590,13 @@ const receiptModule = {
             receiverName = receiverProvider;
         }
 
+        // Phone untuk e-wallet - tetap tampilkan lengkap karena lebih pendek
         if (type === 'top_up' || senderProvider === 'LINKAJA' || senderProvider === 'GOPAY' || senderProvider === 'OVO') {
             const phones = [...text.matchAll(/\b(08\d{8,12})\b/g)];
             const uniquePhones = [...new Set(phones.map(m => m[1]))];
             if (uniquePhones.length > 0) {
                 if (!senderAccount && (senderProvider === 'LINKAJA' || senderProvider === 'GOPAY' || senderProvider === 'OVO' || senderProvider === 'DANA')) {
-                    senderAccount = uniquePhones[0];
+                    senderAccount = uniquePhones[0]; // Phone tetap lengkap
                 }
                 if (!receiverAccount) {
                     receiverAccount = uniquePhones[uniquePhones.length - 1];
@@ -610,10 +624,10 @@ const receiptModule = {
             parsed: {
                 date, time,
                 senderName: senderName.substring(0, 30),
-                senderAccount,
+                senderAccount, // Sudah di-mask
                 senderBank: senderProvider,
                 receiverName: receiverName.substring(0, 30),
-                receiverAccount,
+                receiverAccount, // Sudah di-mask
                 receiverBank: receiverProvider,
                 nominal,
                 admin,
@@ -734,7 +748,6 @@ const receiptModule = {
 
         const data = this.scannedData;
 
-        // Auto-expand form jika sedang collapse
         if (!this.manualFormExpanded) {
             this.toggleManualForm();
         }
@@ -748,7 +761,7 @@ const receiptModule = {
         setTimeout(() => {
             this.fillForm(data);
             document.getElementById('receiptFormContainer').scrollIntoView({ behavior: 'smooth' });
-            app.showToast('✅ Data diisi!');
+            app.showToast('✅ Data diisi! (4 digit terakhir rekening)');
         }, 100);
     },
 
@@ -771,20 +784,20 @@ const receiptModule = {
         switch(data.type) {
             case 'transfer':
                 setVal('manualSender', p.senderName);
-                setVal('manualSenderAccount', p.senderAccount);
+                setVal('manualSenderAccount', p.senderAccount); // Sudah di-mask ****9012
                 setVal('manualBankFrom', p.senderBank);
                 setVal('manualReceiver', p.receiverName);
-                setVal('manualReceiverAccount', p.receiverAccount);
+                setVal('manualReceiverAccount', p.receiverAccount); // Sudah di-mask ****3456
                 setVal('manualBankTo', p.receiverBank);
                 break;
             case 'tarik_tunai':
                 setVal('manualCustomer', p.receiverName || p.senderName);
                 setVal('manualBank', p.receiverBank);
-                setVal('manualAccount', p.receiverAccount);
+                setVal('manualAccount', p.receiverAccount); // Sudah di-mask
                 break;
             case 'top_up':
                 setVal('manualTopUpType', data.provider);
-                setVal('manualTarget', p.receiverAccount);
+                setVal('manualTarget', p.receiverAccount); // Phone tetap lengkap
                 setVal('manualCustomer', p.receiverName);
                 break;
         }
@@ -841,8 +854,8 @@ const receiptModule = {
                     <input type="text" id="manualSender" placeholder="Nama pengirim">
                 </div>
                 <div class="form-group">
-                    <label>No Rekening *</label>
-                    <input type="text" id="manualSenderAccount" placeholder="1234-5678-9012" style="font-family: monospace;">
+                    <label>No Rekening * <small style="color: #999; font-weight: normal;">(4 digit terakhir cukup)</small></label>
+                    <input type="text" id="manualSenderAccount" placeholder="****-9012" style="font-family: monospace;">
                 </div>
                 <div class="form-group">
                     <label>Bank *</label>
@@ -857,8 +870,8 @@ const receiptModule = {
                     <input type="text" id="manualReceiver" placeholder="Nama penerima">
                 </div>
                 <div class="form-group">
-                    <label>No Rekening *</label>
-                    <input type="text" id="manualReceiverAccount" placeholder="9876-5432-1098" style="font-family: monospace;">
+                    <label>No Rekening * <small style="color: #999; font-weight: normal;">(4 digit terakhir cukup)</small></label>
+                    <input type="text" id="manualReceiverAccount" placeholder="****-3456" style="font-family: monospace;">
                 </div>
                 <div class="form-group">
                     <label>Bank *</label>
@@ -931,8 +944,8 @@ const receiptModule = {
             </div>
 
             <div class="form-group">
-                <label>No Rekening *</label>
-                <input type="text" id="manualAccount" placeholder="1234-5678-9012" style="font-family: monospace;">
+                <label>No Rekening * <small style="color: #999; font-weight: normal;">(4 digit terakhir cukup)</small></label>
+                <input type="text" id="manualAccount" placeholder="****-5678" style="font-family: monospace;">
             </div>
 
             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -998,7 +1011,7 @@ const receiptModule = {
             </div>
 
             <div class="form-group">
-                <label>No Tujuan *</label>
+                <label>No Tujuan * <small style="color: #999; font-weight: normal;">(nomor lengkap)</small></label>
                 <input type="text" id="manualTarget" placeholder="08xxxxxxxxxx" style="font-family: monospace;">
             </div>
 
