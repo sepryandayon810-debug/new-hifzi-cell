@@ -4,10 +4,21 @@ const receiptModule = {
     ocrWorker: null,
     isProcessing: false,
     workerReady: false,
+    currentReceiptData: null, // Untuk tracking data struk yang sedang dibuat
 
     init() {
         this.renderHTML();
         setTimeout(() => this.checkAndInitWorker(), 500);
+        
+        // Render Bluetooth Control setelah HTML dirender
+        setTimeout(() => {
+            if (typeof bluetoothModule !== 'undefined') {
+                bluetoothModule.renderBluetoothControl('bluetoothControlReceipt', {
+                    context: 'receipt',
+                    showPrintButton: true
+                });
+            }
+        }, 100);
     },
 
     async checkAndInitWorker() {
@@ -67,6 +78,9 @@ const receiptModule = {
 
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="receiptSection">
+                <!-- BLUETOOTH CONTROL PANEL -->
+                <div id="bluetoothControlReceipt"></div>
+
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">🧾 Pengaturan Header Struk</span>
@@ -825,7 +839,12 @@ const receiptModule = {
                 </div>
             </div>
 
-            <button class="btn btn-primary" onclick="receiptModule.printManual()" style="width: 100%;">🖨️ Cetak Struk</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="receiptModule.printManual()" style="flex: 1;">🖨️ Cetak Struk</button>
+                <button class="btn btn-success" onclick="receiptModule.printBluetooth()" style="flex: 1;" id="btPrintBtnReceipt">
+                    📡 Print BT
+                </button>
+            </div>
         `;
     },
 
@@ -886,7 +905,12 @@ const receiptModule = {
                 </div>
             </div>
 
-            <button class="btn btn-primary" onclick="receiptModule.printTarikTunai()" style="width: 100%;">🖨️ Cetak Struk</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="receiptModule.printTarikTunai()" style="flex: 1;">🖨️ Cetak Struk</button>
+                <button class="btn btn-success" onclick="receiptModule.printBluetooth()" style="flex: 1;" id="btPrintBtnReceipt">
+                    📡 Print BT
+                </button>
+            </div>
         `;
     },
 
@@ -953,7 +977,12 @@ const receiptModule = {
                 </div>
             </div>
 
-            <button class="btn btn-primary" onclick="receiptModule.printTopUp()" style="width: 100%;">🖨️ Cetak Struk</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="receiptModule.printTopUp()" style="flex: 1;">🖨️ Cetak Struk</button>
+                <button class="btn btn-success" onclick="receiptModule.printBluetooth()" style="flex: 1;" id="btPrintBtnReceipt">
+                    📡 Print BT
+                </button>
+            </div>
         `;
     },
 
@@ -1018,6 +1047,97 @@ const receiptModule = {
         if (elNom) elNom.textContent = 'Rp ' + this.formatNumber(nominal);
         if (elAdm) elAdm.textContent = 'Rp ' + this.formatNumber(admin);
         if (elTot) elTot.textContent = 'Rp ' + this.formatNumber(total);
+    },
+
+    // ==========================================
+    // BLUETOOTH PRINT METHODS
+    // ==========================================
+
+    // Print via Bluetooth (dipanggil dari tombol Print BT atau bluetoothModule)
+    async printBluetooth() {
+        // Cek apakah bluetoothModule tersedia dan terhubung
+        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
+            await bluetoothModule.printCurrentReceipt();
+            return;
+        }
+
+        // Jika tidak terhubung, coba auto-connect
+        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.lastDevice) {
+            try {
+                await bluetoothModule.reconnect();
+                await bluetoothModule.printCurrentReceipt();
+                return;
+            } catch(e) {
+                console.log('Auto-reconnect failed');
+            }
+        }
+
+        // Fallback ke window print
+        app.showToast('⚠️ Printer Bluetooth tidak terhubung, menggunakan print window...');
+        switch(this.receiptType) {
+            case 'transfer':
+                this.printManual();
+                break;
+            case 'tarik_tunai':
+                this.printTarikTunai();
+                break;
+            case 'top_up':
+                this.printTopUp();
+                break;
+        }
+    },
+
+    // Method untuk dipanggil dari bluetoothModule
+    getCurrentReceiptForPrint() {
+        const header = dataManager.data.settings.receiptHeader || {};
+        
+        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
+        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
+        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
+        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+        const total = nominal + admin;
+
+        let receiptData = {
+            type: this.receiptType,
+            header: header,
+            date: date,
+            time: time,
+            nominal: nominal,
+            admin: admin,
+            total: total,
+            transactionNumber: ''
+        };
+
+        switch(this.receiptType) {
+            case 'transfer':
+                receiptData.transactionNumber = 'TF-' + Date.now().toString().slice(-8);
+                receiptData.sender = {
+                    name: document.getElementById('manualSender')?.value || '-',
+                    account: document.getElementById('manualSenderAccount')?.value || '-',
+                    bank: document.getElementById('manualBankFrom')?.value || ''
+                };
+                receiptData.receiver = {
+                    name: document.getElementById('manualReceiver')?.value || '-',
+                    account: document.getElementById('manualReceiverAccount')?.value || '-',
+                    bank: document.getElementById('manualBankTo')?.value || ''
+                };
+                break;
+            case 'tarik_tunai':
+                receiptData.transactionNumber = 'TT-' + Date.now().toString().slice(-8);
+                receiptData.customer = document.getElementById('manualCustomer')?.value || '-';
+                receiptData.bank = document.getElementById('manualBank')?.value || '';
+                receiptData.account = document.getElementById('manualAccount')?.value || '-';
+                break;
+            case 'top_up':
+                receiptData.transactionNumber = 'TP-' + Date.now().toString().slice(-8);
+                receiptData.topUpType = document.getElementById('manualTopUpType')?.value || 'DANA';
+                receiptData.target = document.getElementById('manualTarget')?.value || '-';
+                receiptData.customer = document.getElementById('manualCustomer')?.value || '-';
+                break;
+        }
+
+        this.currentReceiptData = receiptData;
+        return receiptData;
     },
 
     printManual() {
