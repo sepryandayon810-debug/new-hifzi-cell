@@ -1,14 +1,13 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v2.4)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v2.5)
 // Firebase + Google Sheets + Local
-// Dengan Generate GAS Otomatis dari External URL
+// FIXED: Empty Sheet ID & CORS
 // ============================================
 
 const backupModule = {
-    // State management
     isInitialized: false,
     isRendered: false,
-    currentProvider: 'local', // Default, akan di-override di init
+    currentProvider: 'local',
     isAutoSyncEnabled: false,
     isAutoSaveLocalEnabled: true,
     autoSyncInterval: null,
@@ -16,7 +15,6 @@ const backupModule = {
     isOnline: navigator.onLine,
     pendingSync: false,
     
-    // Firebase
     firebaseConfig: {},
     firebaseApp: null,
     database: null,
@@ -24,18 +22,14 @@ const backupModule = {
     currentUser: null,
     firebaseBackupData: null,
     
-    // Google Sheets
     gasUrl: '',
     sheetId: '',
     
-    // External GAS Code URL
     gasCodeUrl: 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js',
     
-    // Device
     deviceId: 'device_' + Date.now(),
     deviceName: navigator.userAgent.split(' ')[0],
     
-    // Keys
     KEYS: {
         PROVIDER: 'hifzi_provider',
         GAS_URL: 'hifzi_gas_url',
@@ -51,41 +45,33 @@ const backupModule = {
         GAS_CODE_VERSION: 'hifzi_gas_code_version'
     },
 
-    // ============================================
-    // INIT & SETUP
-    // ============================================
-
     init() {
-        // Prevent double initialization
         if (this.isInitialized) {
             console.log('[Backup] Already initialized, skipping...');
             return this;
         }
 
-        console.log('[Backup] Initializing...');
+        console.log('[Backup] Initializing v2.5...');
         
-        // ✅ RELOAD SEMUA CONFIG DARI LOCALSTORAGE SETIAP INIT
-        // Ini mencegah masalah setelah reset storage
         this.reloadAllConfig();
         
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
         }
         
-        // ✅ Bersihkan sheetId dengan validasi ketat
         const originalSheetId = this.sheetId;
         this.sheetId = this.cleanSheetId(this.sheetId);
         
         if (originalSheetId !== this.sheetId) {
-            console.log('[Backup] Sheet ID cleaned from', originalSheetId, 'to', this.sheetId);
+            console.log('[Backup] Sheet ID cleaned from "' + originalSheetId + '" to "' + this.sheetId + '"');
         }
         
-        console.log('[Backup] Provider:', this.currentProvider, '| Sheet ID:', this.sheetId ? 'Set (' + this.sheetId.substring(0, 10) + '...)' : 'Empty');
+        console.log('[Backup] Provider:', this.currentProvider);
+        console.log('[Backup] Sheet ID:', this.sheetId ? 'Valid (' + this.sheetId.substring(0, 10) + '...)' : 'EMPTY/NULL');
+        console.log('[Backup] GAS URL:', this.gasUrl ? 'Set' : 'Empty');
         
-        // Setup online/offline listeners (hanya sekali)
         this.setupNetworkListeners();
         
-        // Init provider yang aktif
         if (this.currentProvider === 'firebase') {
             this.initFirebase();
         } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
@@ -101,7 +87,6 @@ const backupModule = {
         return this;
     },
     
-    // ✅ METHOD BARU: Reload semua config dari localStorage
     reloadAllConfig() {
         try {
             this.currentProvider = localStorage.getItem(this.KEYS.PROVIDER) || 'local';
@@ -119,12 +104,8 @@ const backupModule = {
             const deviceId = localStorage.getItem(this.KEYS.DEVICE_ID);
             if (deviceId) this.deviceId = deviceId;
             
-            const deviceName = localStorage.getItem(this.KEYS.DEVICE_NAME);
-            if (deviceName) this.deviceName = deviceName;
-            
         } catch (e) {
             console.error('[Backup] Error reloading config:', e);
-            // Reset ke default jika error
             this.currentProvider = 'local';
             this.isAutoSyncEnabled = false;
             this.sheetId = '';
@@ -133,11 +114,9 @@ const backupModule = {
     },
 
     setupNetworkListeners() {
-        // Hapus listener lama jika ada (untuk menghindari duplikat)
         window.removeEventListener('online', this.handleOnline);
         window.removeEventListener('offline', this.handleOffline);
         
-        // Bind this agar konteks benar
         this.handleOnline = () => {
             this.isOnline = true;
             this.showToast('🌐 Online');
@@ -153,43 +132,32 @@ const backupModule = {
         window.addEventListener('offline', this.handleOffline);
     },
 
-    // ============================================
-    // SHEET ID VALIDATION (IMPROVED v2.4)
-    // ============================================
-
     cleanSheetId(sheetId) {
-        // ✅ Handle semua kasus invalid
-        if (!sheetId) return '';
+        if (sheetId === null || sheetId === undefined) {
+            console.log('[Backup] Sheet ID is null/undefined, returning empty');
+            return '';
+        }
+        
         if (typeof sheetId !== 'string') {
             try {
-                sheetId = sheetId.toString();
+                sheetId = String(sheetId);
             } catch (e) {
+                console.error('[Backup] Cannot convert sheetId to string:', e);
                 return '';
             }
         }
         
-        // Hapus semua whitespace, tab, newline, dan karakter non-printable
         let cleaned = sheetId
-            .replace(/\s/g, '')           // Hapus semua whitespace
-            .replace(/[^\x20-\x7E]/g, '') // Hapus karakter non-printable ASCII
+            .replace(/\s/g, '')
+            .replace(/[^\x20-\x7E]/g, '')
             .trim();
         
-        // ✅ Validasi nilai spesifik yang tidak valid
         if (cleaned === 'null' || cleaned === 'undefined' || cleaned === '') {
             return '';
         }
         
-        // ✅ Validasi panjang minimum (Sheet ID Google biasanya 44 karakter)
-        // Tapi terima ID yang cukup panjang (>20) untuk fleksibilitas
-        if (cleaned.length > 0 && cleaned.length < 20) {
-            console.warn('[Backup] Sheet ID terlalu pendek:', cleaned.length, 'chars');
-            return '';
-        }
-        
-        // ✅ Validasi format: hanya alphanumeric, dash, underscore
-        if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) {
-            console.warn('[Backup] Sheet ID mengandung karakter tidak valid');
-            return '';
+        if (cleaned.length > 0 && cleaned.length !== 44) {
+            console.warn('[Backup] Sheet ID length is', cleaned.length, '(expected 44)');
         }
         
         return cleaned;
@@ -198,43 +166,42 @@ const backupModule = {
     validateSheetId(sheetId) {
         const cleaned = this.cleanSheetId(sheetId);
         
-        // ✅ Cek apakah hasil cleaning menghasilkan string kosong
         if (!cleaned) {
             return { 
-                valid: true, // Kosong diperbolehkan (gunakan default)
-                message: 'Menggunakan default sheet dari GAS',
+                valid: false, 
+                message: 'Sheet ID kosong. Masukkan Sheet ID dari URL Google Sheets.',
                 cleaned: ''
             };
         }
         
-        // Cek apakah ada perubahan setelah cleaning
-        if (cleaned !== sheetId) {
-            return { 
-                valid: false, 
-                message: 'Sheet ID mengandung spasi/karakter tersembunyi. Sudah dibersihkan otomatis.',
+        if (cleaned.length !== 44) {
+            return {
+                valid: false,
+                message: 'Sheet ID harus 44 karakter. Diterima: ' + cleaned.length + ' karakter.',
                 cleaned: cleaned
             };
         }
         
-        // Validasi format sudah dilakukan di cleanSheetId
+        if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) {
+            return { 
+                valid: false, 
+                message: 'Sheet ID mengandung karakter tidak valid.',
+                cleaned: cleaned
+            };
+        }
+        
         return { valid: true, cleaned: cleaned, message: 'Sheet ID valid' };
     },
-    
-    // ✅ METHOD BARU: Cek apakah Sheet ID siap digunakan
+
     isSheetIdReady() {
         const cleanId = this.cleanSheetId(this.sheetId);
-        return cleanId.length >= 20;
+        return cleanId.length === 44;
     },
-
-    // ============================================
-    // EXTERNAL GAS CODE LOADER (NEW FEATURE)
-    // ============================================
 
     async fetchGASCodeFromExternal(forceRefresh = false) {
         const cacheKey = this.KEYS.GAS_CODE_CACHE;
         const versionKey = this.KEYS.GAS_CODE_VERSION;
         
-        // Cek cache dulu kalau tidak force refresh
         if (!forceRefresh) {
             const cached = localStorage.getItem(cacheKey);
             const cachedVersion = localStorage.getItem(versionKey);
@@ -247,7 +214,6 @@ const backupModule = {
         this.showToast('⬇️ Mengambil GAS code terbaru...');
         
         try {
-            // Tambahkan timestamp untuk bypass cache
             const url = this.gasCodeUrl + (this.gasCodeUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
             
             const response = await fetch(url, {
@@ -264,15 +230,12 @@ const backupModule = {
             
             const code = await response.text();
             
-            // Validasi minimal (harus mengandung doGet atau doPost)
             if (!code.includes('function doGet') && !code.includes('function doPost')) {
                 throw new Error('Code tidak valid: tidak mengandung doGet/doPost');
             }
             
-            // Generate version dari hash atau timestamp
             const version = 'v' + Date.now();
             
-            // Simpan ke cache
             localStorage.setItem(cacheKey, code);
             localStorage.setItem(versionKey, version);
             
@@ -282,7 +245,6 @@ const backupModule = {
         } catch (error) {
             console.error('[Backup] Failed to fetch GAS code:', error);
             
-            // Fallback ke cache kalau ada
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
                 this.showToast('⚠️ Menggunakan GAS code dari cache');
@@ -308,17 +270,12 @@ const backupModule = {
         this.gasCodeUrl = newUrl;
         localStorage.setItem(this.KEYS.GAS_CODE_URL, newUrl);
         
-        // Clear cache supaya fetch ulang
         localStorage.removeItem(this.KEYS.GAS_CODE_CACHE);
         localStorage.removeItem(this.KEYS.GAS_CODE_VERSION);
         
         this.showToast('✅ URL GAS code diupdate, akan fetch ulang...');
         return true;
     },
-
-    // ============================================
-    // DATA COLLECTION
-    // ============================================
 
     getBackupData() {
         const allData = (typeof dataManager !== 'undefined' && dataManager.getAllData) 
@@ -339,7 +296,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '2.4',
+                version: '2.5',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -371,10 +328,6 @@ const backupModule = {
             }
         }
     },
-
-    // ============================================
-    // AUTO SYNC CONTROL
-    // ============================================
 
     toggleAutoSync() {
         this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
@@ -438,10 +391,6 @@ const backupModule = {
         return Promise.resolve();
     },
 
-    // ============================================
-    // MANUAL SYNC
-    // ============================================
-
     manualUpload() {
         const data = this.getBackupData();
         
@@ -466,11 +415,7 @@ const backupModule = {
         }
     },
 
-    // ============================================
-    // FIREBASE
-    // ============================================
-
-    initFirebase() {
+        initFirebase() {
         if (typeof firebase === 'undefined') {
             console.error('[Firebase] SDK not loaded');
             return;
@@ -511,7 +456,6 @@ const backupModule = {
                     this.currentUser = null;
                 }
                 
-                // Re-render jika sedang di halaman backup
                 if (this.isRendered && this.currentProvider === 'firebase') {
                     this.render();
                 }
@@ -605,7 +549,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '2.4'
+                version: '2.5'
             }
         };
         
@@ -874,11 +818,7 @@ const backupModule = {
         this.showToast('✅ File Excel berhasil didownload!');
     },
 
-    // ============================================
-    // GOOGLE SHEETS (IMPROVED v2.4)
-    // ============================================
-
-    checkNewDeviceGAS() {
+        checkNewDeviceGAS() {
         const hasLocalData = (typeof dataManager !== 'undefined' && dataManager.data) 
             ? dataManager.data.products?.length > 0 
             : false;
@@ -899,27 +839,34 @@ const backupModule = {
             return Promise.reject('No URL');
         }
 
-        this.showToast('🧪 Testing koneksi...');
-        
-        // ✅ Gunakan sheetId yang sudah dibersihkan
         const cleanSheetId = this.cleanSheetId(this.sheetId);
+        if (!cleanSheetId) {
+            this.showToast('⚠️ Sheet ID kosong. Isi Sheet ID atau biarkan untuk default.');
+            console.warn('[Backup] Sheet ID kosong saat test koneksi');
+        }
+
+        this.showToast('🧪 Testing koneksi...');
         
         const testPayload = {
             action: 'test',
             deviceId: this.deviceId,
-            sheetId: cleanSheetId || null, // Kirim null jika kosong
+            sheetId: cleanSheetId || undefined,
             timestamp: new Date().toISOString()
         };
+
+        console.log('[Backup] Test payload:', testPayload);
 
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
+            cache: 'no-cache',
             headers: { 
                 'Content-Type': 'text/plain;charset=utf-8'
             },
             body: JSON.stringify(testPayload)
         })
         .then(async (r) => {
+            console.log('[Backup] Test response status:', r.status);
             if (!r.ok) {
                 const text = await r.text();
                 throw new Error(`HTTP ${r.status}: ${text}`);
@@ -927,6 +874,7 @@ const backupModule = {
             return r.json();
         })
         .then(result => {
+            console.log('[Backup] Test result:', result);
             if (result?.success) {
                 this.showToast('✅ ' + (result.message || 'Koneksi berhasil!'));
                 return result;
@@ -947,13 +895,12 @@ const backupModule = {
             return Promise.reject('No URL');
         }
         
-        // ✅ Bersihkan sheetId sebelum kirim
         const cleanSheetId = this.cleanSheetId(this.sheetId);
         
         if (!silent) {
             const msg = cleanSheetId ? 
-                '⬆️ Mengupload ke Google Sheets... (ID: ' + cleanSheetId.substring(0, 10) + '...)' :
-                '⬆️ Mengupload ke Google Sheets... (Default Sheet)';
+                '⬆️ Upload... (ID: ' + cleanSheetId.substring(0, 8) + '...)' :
+                '⬆️ Upload... (Default Sheet)';
             this.showToast(msg);
         }
         
@@ -962,13 +909,16 @@ const backupModule = {
             data: data,
             deviceId: this.deviceId,
             deviceName: this.deviceName,
-            sheetId: cleanSheetId || null, // Kirim null jika kosong, GAS akan handle
+            sheetId: cleanSheetId || undefined,
             timestamp: new Date().toISOString()
         };
-        
+
+        console.log('[Backup] Upload payload sheetId:', payload.sheetId);
+
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
+            cache: 'no-cache',
             headers: { 
                 'Content-Type': 'text/plain;charset=utf-8'
             },
@@ -986,7 +936,6 @@ const backupModule = {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
                 if (!silent) this.showToast('✅ Upload berhasil!');
-                this.updateSyncStatus('Synced');
                 this.pendingSync = false;
                 return result;
             } else {
@@ -997,55 +946,7 @@ const backupModule = {
             console.error('[GAS Upload Error]', err);
             this.pendingSync = true;
             if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
-            return this.uploadGAS_JSONP(payload, silent);
-        });
-    },
-
-    uploadGAS_JSONP(payload, silent) {
-        return new Promise((resolve, reject) => {
-            const cbName = 'gas_cb_' + Date.now();
-            const jsonStr = JSON.stringify(payload);
-            
-            if (jsonStr.length > 8000) {
-                if (!silent) this.showToast('❌ Data terlalu besar untuk JSONP');
-                reject(new Error('Data too large for JSONP'));
-                return;
-            }
-            
-            const cleanup = () => {
-                if (window[cbName]) delete window[cbName];
-                if (script && script.parentNode) script.parentNode.removeChild(script);
-                clearTimeout(timeout);
-            };
-            
-            window[cbName] = (result) => {
-                cleanup();
-                if (result?.success) {
-                    this.lastSyncTime = new Date().toISOString();
-                    localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                    if (!silent) this.showToast('✅ Upload berhasil (JSONP)!');
-                    this.updateSyncStatus('Synced');
-                    this.pendingSync = false;
-                    resolve(result);
-                } else {
-                    reject(new Error(result?.message || 'JSONP Upload failed'));
-                }
-            };
-            
-            const script = document.createElement('script');
-            script.src = `${this.gasUrl}?callback=${cbName}&data=${encodeURIComponent(jsonStr)}`;
-            
-            script.onerror = () => {
-                cleanup();
-                reject(new Error('JSONP script failed to load'));
-            };
-            
-            document.head.appendChild(script);
-            
-            const timeout = setTimeout(() => {
-                cleanup();
-                reject(new Error('JSONP timeout'));
-            }, 20000);
+            throw err;
         });
     },
 
@@ -1055,12 +956,12 @@ const backupModule = {
             return Promise.reject('No URL');
         }
         
-        // ✅ Bersihkan sheetId sebelum kirim
         const cleanSheetId = this.cleanSheetId(this.sheetId);
         
-        // ✅ Validasi: Jika sheetId kosong, gunakan default atau tampilkan error
-        if (!cleanSheetId && !silent) {
-            console.warn('[GAS] Sheet ID kosong, akan mencoba dengan default...');
+        if (!cleanSheetId) {
+            const msg = '⚠️ Sheet ID kosong. Masukkan Sheet ID dari URL Google Sheets.';
+            if (!silent) this.showToast(msg);
+            return Promise.reject(new Error(msg));
         }
         
         if (!silent && !force) {
@@ -1070,19 +971,20 @@ const backupModule = {
         }
         
         if (!silent) {
-            const msg = cleanSheetId ?
-                '⬇️ Mengunduh dari Google Sheets... (ID: ' + cleanSheetId.substring(0, 10) + '...)' :
-                '⬇️ Mengunduh dari Google Sheets... (Default)';
-            this.showToast(msg);
+            this.showToast('⬇️ Download... (ID: ' + cleanSheetId.substring(0, 8) + '...)');
         }
         
-        // ✅ Encode sheetId dengan benar
-        const encodedSheetId = encodeURIComponent(cleanSheetId || '');
-        const url = `${this.gasUrl}?action=restore&sheetId=${encodedSheetId}&_t=${Date.now()}&_=${Math.random()}`;
-        
+        const url = this.gasUrl + 
+            '?action=restore' +
+            '&sheetId=' + encodeURIComponent(cleanSheetId) +
+            '&_t=' + Date.now();
+
+        console.log('[Backup] Download URL:', url.substring(0, url.indexOf('&sheetId=') + 20) + '...');
+
         return fetch(url, {
             method: 'GET',
             mode: 'cors',
+            cache: 'no-cache',
             headers: {
                 'Accept': 'application/json'
             }
@@ -1094,77 +996,29 @@ const backupModule = {
             }
             return r.json();
         })
-        .then(result => this.handleGASDownload(result, silent))
+        .then(result => {
+            if (result?.success && result.data) {
+                this.saveBackupData(result.data);
+                this.lastSyncTime = new Date().toISOString();
+                localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+                
+                if (!silent) {
+                    this.showToast('✅ Download berhasil! Reload...');
+                    setTimeout(() => location.reload(), 1500);
+                }
+                return result;
+            } else {
+                throw new Error(result?.message || 'Invalid data');
+            }
+        })
         .catch((err) => {
             console.error('[GAS Download Error]', err);
-            return this.downloadGAS_JSONP(silent);
+            if (!silent) this.showToast('❌ Download gagal: ' + err.message);
+            throw err;
         });
     },
-
-    downloadGAS_JSONP(silent) {
-        return new Promise((resolve, reject) => {
-            const cbName = 'gas_dl_' + Date.now();
-            
-            // ✅ Bersihkan sheetId
-            const cleanSheetId = this.cleanSheetId(this.sheetId);
-            const encodedSheetId = encodeURIComponent(cleanSheetId || '');
-            
-            const cleanup = () => {
-                if (window[cbName]) delete window[cbName];
-                if (script && script.parentNode) script.parentNode.removeChild(script);
-                clearTimeout(timeout);
-            };
-            
-            window[cbName] = (result) => {
-                cleanup();
-                this.handleGASDownload(result, silent)
-                    .then(resolve)
-                    .catch(reject);
-            };
-            
-            const script = document.createElement('script');
-            script.src = `${this.gasUrl}?action=restore&sheetId=${encodedSheetId}&callback=${cbName}&_t=${Date.now()}`;
-            
-            script.onerror = () => {
-                cleanup();
-                if (!silent) this.showToast('❌ Download gagal: CORS/Network error');
-                reject(new Error('Download failed'));
-            };
-            
-            document.head.appendChild(script);
-            
-            const timeout = setTimeout(() => {
-                cleanup();
-                if (!silent) this.showToast('❌ Download timeout');
-                reject(new Error('Timeout'));
-            }, 20000);
-        });
-    },
-
-    handleGASDownload(result, silent) {
-        if (result?.success && result.data) {
-            this.saveBackupData(result.data);
-            this.lastSyncTime = new Date().toISOString();
-            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-            
-            if (!silent) {
-                this.showToast('✅ Download berhasil! Reload...');
-                setTimeout(() => location.reload(), 1500);
-            }
-            return Promise.resolve(result);
-        } else {
-            const msg = result?.message || 'Invalid data structure';
-            if (!silent) this.showToast('❌ Download gagal: ' + msg);
-            return Promise.reject(new Error(msg));
-        }
-    },
-
-    // ============================================
-    // GAS GENERATOR (UPDATED WITH AUTO-FETCH)
-    // ============================================
 
     async showGASGenerator() {
-        // Fetch GAS code dari external atau gunakan fallback
         const fetchResult = await this.fetchGASCodeFromExternal();
         
         const modal = document.createElement('div');
@@ -1207,7 +1061,6 @@ const backupModule = {
                 </div>
                 
                 <div style="padding: 20px; overflow-y: auto; flex: 1;">
-                    <!-- URL Configuration -->
                     <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                         <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">🔗 Sumber GAS Code (Auto-Update)</div>
                         <div style="display: flex; gap: 8px; margin-bottom: 8px;">
@@ -1220,7 +1073,7 @@ const backupModule = {
                             </button>
                         </div>
                         <div style="font-size: 12px; color: #2f855a;">
-                            💡 GAS code akan otomatis di-fetch dari URL ini. Klik Refresh untuk mengambil versi terbaru.
+                            💡 GAS code akan otomatis di-fetch dari URL ini.
                         </div>
                     </div>
 
@@ -1323,14 +1176,20 @@ const backupModule = {
         this.showToast('✅ File GAS didownload!');
     },
 
-    // GAS Code Lengkap dengan Cash Module Support (v2.4)
     getDefaultGASCode() {
-        return `// ============================================
-// GAS CODE LENGKAP v2.4 - Dengan Cash Module
-// Simpan di script.google.com
-// ============================================
+        return `// GAS CODE v2.5 - PASTE IN script.google.com
+// DEPLOY AS: Web app, Execute as: Me, Access: Anyone
 
-const SPREADSHEET_ID = ''; // Kosongkan untuk auto-create atau isi dengan ID spreadsheet Anda
+const SPREADSHEET_ID = '';
+
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setHeaders({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    });
+}
 
 function doPost(e) {
   try {
@@ -1338,45 +1197,34 @@ function doPost(e) {
     const action = data.action || 'sync';
     const sheetId = data.sheetId || SPREADSHEET_ID;
     
-    // ✅ VALIDASI STRICT: Cek sheetId valid
-    if (!sheetId || sheetId === 'null' || sheetId === 'undefined' || sheetId.toString().trim() === '') {
+    if (!sheetId || sheetId === 'null' || sheetId === 'undefined' || String(sheetId).trim() === '') {
       return jsonResponse({ 
         success: false, 
-        message: 'Sheet ID tidak valid atau kosong. Sheet ID harus diisi atau gunakan default dari GAS.' 
+        message: 'Sheet ID tidak valid atau kosong.'
       });
     }
     
-    // ✅ VALIDASI FORMAT: Sheet ID Google biasanya 44 karakter alphanumeric dengan dash/underscore
-    const cleanSheetId = sheetId.toString().replace(/\\s/g, '').trim();
+    const cleanSheetId = String(sheetId).replace(/\\\\s/g, '').trim();
+    
     if (!/^[a-zA-Z0-9_-]+$/.test(cleanSheetId) || cleanSheetId.length < 20) {
       return jsonResponse({ 
         success: false, 
-        message: 'Format Sheet ID tidak valid. Sheet ID harus 20+ karakter alphanumeric (huruf, angka, dash, underscore).' 
+        message: 'Format Sheet ID tidak valid (harus 20+ karakter alphanumeric).'
       });
     }
     
-    // Get or create spreadsheet
     let ss;
     try {
-      if (cleanSheetId) {
-        ss = SpreadsheetApp.openById(cleanSheetId);
-      } else {
-        // Fallback: buat spreadsheet baru jika ID kosong (hanya untuk sync)
-        ss = SpreadsheetApp.create('Hifzi Backup ' + new Date().toISOString());
-      }
-    } catch (sheetError) {
+      ss = SpreadsheetApp.openById(cleanSheetId);
+    } catch (err) {
       return jsonResponse({ 
         success: false, 
-        message: 'Gagal membuka spreadsheet: ' + sheetError.toString() + '. Pastikan Sheet ID benar dan spreadsheet ada.' 
+        message: 'Gagal membuka spreadsheet: ' + err.toString()
       });
     }
     
-    // Handle different actions
     if (action === 'test') {
-      return jsonResponse({ 
-        success: true, 
-        message: 'Connected! Sheet: ' + ss.getName() + ' (ID: ' + cleanSheetId.substring(0, 10) + '...)' 
-      });
+      return jsonResponse({ success: true, message: 'Connected!', sheet: ss.getName() });
     }
     
     if (action === 'sync') {
@@ -1387,314 +1235,115 @@ function doPost(e) {
       return handleRestore(ss, cleanSheetId);
     }
     
-    if (action === 'reset') {
-      return handleReset(ss, cleanSheetId);
-    }
+    return jsonResponse({ success: false, message: 'Unknown action' });
     
-    return jsonResponse({ success: false, message: 'Unknown action: ' + action });
-    
-  } catch (error) {
-    console.error('[GAS Error]', error);
-    return jsonResponse({ success: false, message: 'Server Error: ' + error.toString() });
+  } catch (err) {
+    return jsonResponse({ success: false, message: err.toString() });
   }
 }
 
 function doGet(e) {
-  try {
-    const action = e.parameter.action || 'restore';
-    const sheetId = e.parameter.sheetId || SPREADSHEET_ID;
-    const callback = e.parameter.callback;
-    
-    // ✅ VALIDASI STRICT untuk GET request
-    if (!sheetId || sheetId === 'null' || sheetId === 'undefined' || sheetId.toString().trim() === '') {
-      return jsonResponse({ 
-        success: false, 
-        message: 'Sheet ID tidak valid atau kosong. Sheet ID wajib diisi untuk restore/download.' 
-      }, callback);
-    }
-    
-    // ✅ VALIDASI FORMAT
-    const cleanSheetId = sheetId.toString().replace(/\\s/g, '').trim();
-    if (!/^[a-zA-Z0-9_-]+$/.test(cleanSheetId) || cleanSheetId.length < 20) {
-      return jsonResponse({ 
-        success: false, 
-        message: 'Format Sheet ID tidak valid. Sheet ID harus 20+ karakter alphanumeric.' 
-      }, callback);
-    }
-    
-    let ss;
-    try {
-      ss = SpreadsheetApp.openById(cleanSheetId);
-    } catch (e) {
-      return jsonResponse({ 
-        success: false, 
-        message: 'Tidak bisa membuka spreadsheet: ' + e.toString() + '. Periksa Sheet ID dan pastikan spreadsheet tersedia.' 
-      }, callback);
-    }
-    
-    if (action === 'restore') {
-      const result = handleRestore(ss, cleanSheetId);
-      return jsonResponse(result, callback);
-    }
-    
-    if (action === 'test') {
-      return jsonResponse({ 
-        success: true, 
-        message: 'GET Connected! Sheet: ' + ss.getName(),
-        sheetId: cleanSheetId.substring(0, 10) + '...'
-      }, callback);
-    }
-    
-    return jsonResponse({ success: true, status: 'ok' }, callback);
-    
-  } catch (error) {
-    console.error('[GAS GET Error]', error);
-    return jsonResponse({ success: false, message: 'Server Error: ' + error.toString() }, callback);
+  const sheetId = e.parameter.sheetId;
+  const callback = e.parameter.callback;
+  
+  if (!sheetId || sheetId === 'null' || sheetId === 'undefined') {
+    return jsonResponse({ 
+      success: false, 
+      message: 'Sheet ID wajib diisi.'
+    }, callback);
   }
+  
+  const cleanSheetId = String(sheetId).replace(/\\\\s/g, '').trim();
+  
+  let ss;
+  try {
+    ss = SpreadsheetApp.openById(cleanSheetId);
+  } catch (err) {
+    return jsonResponse({ 
+      success: false, 
+      message: 'Gagal membuka spreadsheet: ' + err.toString()
+    }, callback);
+  }
+  
+  if (e.parameter.action === 'restore') {
+    return jsonResponse(handleRestore(ss, cleanSheetId), callback);
+  }
+  
+  return jsonResponse({ success: true }, callback);
 }
 
 function handleSync(data, ss, sheetId) {
-  const backupData = data.data;
-  const deviceId = data.deviceId;
-  const deviceName = data.deviceName;
-  const timestamp = data.timestamp || new Date().toISOString();
-  
-  // Define sheets to create/update - INCLUDE CASH MODULE
-  const sheetsConfig = [
-    { name: 'Produk', data: backupData.products || [] },
-    { name: 'Transaksi', data: backupData.transactions || [] },
-    { name: 'CashTrans', data: backupData.cashTransactions || [] },
-    { name: 'TutupKas', data: backupData.dailyClosing || [] },
-    { name: 'Hutang', data: backupData.debts || [] },
-    { name: 'Users', data: backupData.users || [] },
-    { name: 'Kategori', data: backupData.categories || [] },
-    { name: 'Shift', data: backupData.shifts || [] },
-    { name: 'Settings', data: backupData.settings ? [backupData.settings] : [] },
-    { name: 'CashHistory', data: backupData.cashHistory || [] }
+  const sheets = [
+    { name: 'Produk', data: data.data.products || [] },
+    { name: 'Transaksi', data: data.data.transactions || [] },
+    { name: 'CashTrans', data: data.data.cashTransactions || [] },
+    { name: 'TutupKas', data: data.data.dailyClosing || [] },
+    { name: 'Hutang', data: data.data.debts || [] },
+    { name: 'Users', data: data.data.users || [] },
+    { name: 'Kategori', data: data.data.categories || [] },
+    { name: 'Shift', data: data.data.shifts || [] }
   ];
   
-  // Update or create each sheet
-  sheetsConfig.forEach(config => {
-    try {
-      updateSheet(ss, config.name, config.data);
-    } catch (sheetError) {
-      console.error('[GAS] Error updating sheet ' + config.name + ':', sheetError);
-    }
-  });
-  
-  // Log sync
-  try {
-    logSync(ss, timestamp, 'upload', deviceId, deviceName, sheetsConfig.length + ' sheets');
-  } catch (e) {
-    console.log('[GAS] Could not log sync:', e);
-  }
+  sheets.forEach(s => updateSheet(ss, s.name, s.data));
   
   return { 
     success: true, 
     message: 'Sync successful',
-    sheetUrl: ss.getUrl(),
-    sheetId: sheetId ? sheetId.substring(0, 10) + '...' : 'auto-created',
-    sheetsUpdated: sheetsConfig.length
+    sheetsUpdated: sheets.length
   };
 }
 
 function handleRestore(ss, sheetId) {
-  const sheets = ss.getSheets();
-  const data = {
-    products: [],
-    transactions: [],
-    cashTransactions: [],
-    dailyClosing: [],
-    debts: [],
-    users: [],
-    categories: [],
-    shifts: [],
-    settings: {},
-    cashHistory: []
-  };
+  const data = { products: [], transactions: [], cashTransactions: [], dailyClosing: [], debts: [], users: [], categories: [], shifts: [] };
+  const mapping = { 'Produk': 'products', 'Transaksi': 'transactions', 'CashTrans': 'cashTransactions', 'TutupKas': 'dailyClosing', 'Hutang': 'debts', 'Users': 'users', 'Kategori': 'categories', 'Shift': 'shifts' };
   
-  const sheetMapping = {
-    'Produk': 'products',
-    'Transaksi': 'transactions',
-    'CashTrans': 'cashTransactions',
-    'TutupKas': 'dailyClosing',
-    'Hutang': 'debts',
-    'Users': 'users',
-    'Kategori': 'categories',
-    'Shift': 'shifts',
-    'Settings': 'settings',
-    'CashHistory': 'cashHistory'
-  };
-  
-  sheets.forEach(sheet => {
-    const sheetName = sheet.getName();
-    const key = sheetMapping[sheetName];
-    
+  ss.getSheets().forEach(sheet => {
+    const key = mapping[sheet.getName()];
     if (key && sheet.getLastRow() > 1) {
-      try {
-        const values = sheet.getDataRange().getValues();
-        const headers = values[0];
-        const rows = values.slice(1);
-        
-        if (key === 'settings') {
-          // Settings is single object
-          const obj = {};
-          rows.forEach(row => {
-            if (row[0]) obj[row[0]] = row[1];
-          });
-          data[key] = obj;
-        } else {
-          // Other sheets are arrays
-          data[key] = rows.map(row => {
-            const obj = {};
-            headers.forEach((header, i) => {
-              if (header) {
-                let val = row[i];
-                // Try parse JSON for objects/arrays
-                if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
-                  try {
-                    val = JSON.parse(val);
-                  } catch(e) {}
-                }
-                obj[header] = val;
-              }
-            });
-            return obj;
-          });
-        }
-      } catch (e) {
-        console.error('[GAS] Error reading sheet ' + sheetName + ':', e);
-      }
+      const values = sheet.getDataRange().getValues();
+      const headers = values[0];
+      data[key] = values.slice(1).map(row => {
+        const obj = {};
+        headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
+        return obj;
+      });
     }
   });
-  
-  // Add backup metadata
-  data._backupMeta = {
-    restoredFrom: ss.getName(),
-    restoredFromId: sheetId ? sheetId.substring(0, 10) + '...' : 'unknown',
-    restoredAt: new Date().toISOString()
-  };
   
   return { success: true, data: data };
 }
 
-function handleReset(ss, sheetId) {
-  try {
-    const sheets = ss.getSheets();
-    sheets.forEach(sheet => {
-      if (sheet.getName() !== 'SyncLog') {
-        try {
-          sheet.clear();
-          // Keep headers
-          if (sheet.getLastRow() === 0) {
-            sheet.appendRow(['Cleared']);
-          }
-        } catch (e) {
-          console.log('[GAS] Could not clear sheet:', e);
-        }
-      }
-    });
-    
-    try {
-      logSync(ss, new Date().toISOString(), 'reset', 'system', 'system', 'All sheets cleared');
-    } catch (e) {
-      console.log('[GAS] Could not log reset:', e);
-    }
-    
-    return { 
-      success: true, 
-      message: 'Cloud data reset',
-      sheetId: sheetId ? sheetId.substring(0, 10) + '...' : 'unknown'
-    };
-  } catch (error) {
-    return { success: false, message: 'Reset failed: ' + error.toString() };
-  }
-}
-
-function updateSheet(ss, sheetName, data) {
-  let sheet = ss.getSheetByName(sheetName);
-  
-  // Create sheet if doesn't exist
-  if (!sheet) {
-    sheet = ss.insertSheet(sheetName);
-  }
-  
-  // Clear existing content
+function updateSheet(ss, name, data) {
+  let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
   sheet.clear();
-  
-  if (data.length === 0) {
-    sheet.appendRow(['No data']);
-    return;
-  }
-  
-  // Get headers from first object
-  const firstItem = data[0];
-  if (!firstItem || typeof firstItem !== 'object') {
-    sheet.appendRow(['Invalid data format']);
-    return;
-  }
-  
-  const headers = Object.keys(firstItem).filter(key => !key.startsWith('_'));
-  
-  if (headers.length === 0) {
-    sheet.appendRow(['No valid headers']);
-    return;
-  }
-  
-  // Write headers
+  if (!data || data.length === 0) { sheet.appendRow(['No data']); return; }
+  const headers = Object.keys(data[0]).filter(k => !k.startsWith('_'));
   sheet.appendRow(headers);
-  
-  // Write data rows
   data.forEach(item => {
-    const row = headers.map(header => {
-      const val = item[header];
-      // Convert objects/arrays to JSON string
-      if (typeof val === 'object' && val !== null) {
-        return JSON.stringify(val);
-      }
-      return val;
-    });
-    sheet.appendRow(row);
+    sheet.appendRow(headers.map(h => {
+      const v = item[h];
+      return typeof v === 'object' && v !== null ? JSON.stringify(v) : v;
+    }));
   });
-  
-  // Auto-resize columns
-  try {
-    sheet.autoResizeColumns(1, headers.length);
-  } catch (e) {
-    console.log('[GAS] Could not auto-resize:', e);
-  }
-}
-
-function logSync(ss, timestamp, action, deviceId, deviceName, details) {
-  try {
-    let logSheet = ss.getSheetByName('SyncLog');
-    if (!logSheet) {
-      logSheet = ss.insertSheet('SyncLog');
-      logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name', 'Details']);
-    }
-    
-    logSheet.appendRow([timestamp, action, deviceId || 'unknown', deviceName || 'unknown', details]);
-  } catch (e) {
-    console.log('[GAS] Could not write sync log:', e);
-  }
 }
 
 function jsonResponse(data, callback) {
   const json = JSON.stringify(data);
-  if (callback) {
-    return ContentService.createTextOutput(callback + '(' + json + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
-  }
-  return ContentService.createTextOutput(json)
-    .setMimeType(ContentService.MimeType.JSON);
+  let output = callback 
+    ? ContentService.createTextOutput(callback + '(' + json + ')').setMimeType(ContentService.MimeType.JAVASCRIPT)
+    : ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+  
+  output.setHeaders({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  });
+  
+  return output;
 }`;
     },
 
-    // ============================================
-    // LOCAL FILE BACKUP
-    // ============================================
-
-    downloadJSON() {
+        downloadJSON() {
         const data = this.getBackupData();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -1737,10 +1386,6 @@ function jsonResponse(data, callback) {
         input.value = '';
     },
 
-    // ============================================
-    // LOGIN HISTORY
-    // ============================================
-
     addLoginHistory(provider, email) {
         const history = JSON.parse(localStorage.getItem('hifzi_login_history') || '[]');
         
@@ -1777,10 +1422,6 @@ function jsonResponse(data, callback) {
             this.render();
         }
     },
-
-    // ============================================
-    // CONFIG & SETTINGS
-    // ============================================
 
     setProvider(provider) {
         this.currentProvider = provider;
@@ -1826,13 +1467,10 @@ function jsonResponse(data, callback) {
         const url = document.getElementById('gasUrlInput')?.value?.trim();
         const sheetIdInput = document.getElementById('sheetIdInput')?.value || '';
         
-        // Validasi dan bersihkan Sheet ID
         const validation = this.validateSheetId(sheetIdInput);
-        const sheetId = validation.cleaned || '';
         
-        if (validation.message && !validation.valid) {
+        if (!validation.valid && validation.cleaned) {
             this.showToast('⚠️ ' + validation.message);
-            // Tetap lanjut tapi pakai yang sudah dibersihkan
         }
         
         if (!url || !url.includes('script.google.com')) {
@@ -1840,14 +1478,16 @@ function jsonResponse(data, callback) {
             return;
         }
         
+        const sheetId = validation.cleaned;
+        
         this.gasUrl = url;
         this.sheetId = sheetId;
         localStorage.setItem(this.KEYS.GAS_URL, url);
         localStorage.setItem(this.KEYS.SHEET_ID, sheetId);
         
         const msg = sheetId ? 
-            '✅ Konfigurasi GAS disimpan! (Sheet: ' + sheetId.substring(0, 10) + '...)' : 
-            '✅ Konfigurasi GAS disimpan! (Default Sheet)';
+            '✅ GAS disimpan! (Sheet: ' + sheetId.substring(0, 10) + '...)' : 
+            '✅ GAS disimpan! (Sheet ID kosong - akan error jika tidak diisi!)';
         this.showToast(msg);
         
         if (this.currentProvider === 'googlesheet') {
@@ -1856,10 +1496,6 @@ function jsonResponse(data, callback) {
         
         this.render();
     },
-
-    // ============================================
-    // RESET & DANGER ZONE
-    // ============================================
 
     resetLocal() {
         if (!confirm('⚠️ Hapus SEMUA data lokal?')) return;
@@ -1901,7 +1537,6 @@ function jsonResponse(data, callback) {
             }
             if (!confirm('⚠️ Reset data di Google Sheets?')) return;
             
-            // ✅ Bersihkan sheetId sebelum kirim
             const cleanSheetId = this.cleanSheetId(this.sheetId);
             
             fetch(this.gasUrl, {
@@ -1914,10 +1549,6 @@ function jsonResponse(data, callback) {
             }).then(() => this.showToast('✅ GAS direset!'));
         }
     },
-
-    // ============================================
-    // UI HELPERS
-    // ============================================
 
     updateSyncStatus(status) {
         const syncText = document.getElementById('syncText');
@@ -1944,12 +1575,7 @@ function jsonResponse(data, callback) {
         }
     },
 
-    // ============================================
-    // RENDER UI
-    // ============================================
-
-    render() {
-        // Pastikan sudah di-init
+        render() {
         if (!this.isInitialized) {
             this.init();
         }
@@ -2063,10 +1689,8 @@ function jsonResponse(data, callback) {
                     </div>
                 </div>
 
-                <!-- Firebase Section -->
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
 
-                <!-- Google Sheets Section -->
                 ${isGAS ? this.renderGASSection() : ''}
 
                 <!-- Manual Sync Section -->
@@ -2241,12 +1865,13 @@ function jsonResponse(data, callback) {
 
     renderGASSection() {
         const hasUrl = this.gasUrl.length > 10;
-        const hasSheetId = this.isSheetIdReady(); // ✅ Gunakan method baru
+        const validation = this.validateSheetId(this.sheetId);
+        const hasSheetId = validation.valid;
         const displaySheetId = this.sheetId || '';
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
-                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (Auto-Update)</div>
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v2.5)</div>
                 
                 <button onclick="backupModule.showGASGenerator()" 
                     style="width: 100%; padding: 14px; background: linear-gradient(135deg, #34a853 0%, #0f9d58 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(52,168,83,0.3);">
@@ -2261,40 +1886,43 @@ function jsonResponse(data, callback) {
 
                 <div style="margin-bottom: 16px;">
                     <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">
-                        📄 Google Sheet ID (Opsional)
-                        <span style="font-weight: normal; color: #718096; font-size: 12px;"> - Kosongkan untuk default</span>
+                        📄 Google Sheet ID <span style="color: #e53e3e;">*WAJIB*</span>
                     </label>
                     <div style="display: flex; gap: 8px;">
-                        <input type="text" id="sheetIdInput" value="${displaySheetId}" placeholder="Kosongkan untuk menggunakan default" 
-                            style="flex: 1; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: monospace;">
+                        <input type="text" id="sheetIdInput" value="${displaySheetId}" placeholder="Contoh: 1BzfL0kZUz1TsI5zxJF1WNF01IxvC67FbOJUiiGMZ_mQ" 
+                            style="flex: 1; padding: 12px; border: 2px solid ${hasSheetId ? '#48bb78' : '#fc8181'}; border-radius: 8px; font-size: 14px; font-family: monospace;">
                         <button onclick="document.getElementById('sheetIdInput').value=''" 
                             style="padding: 12px 16px; background: #fed7d7; color: #c53030; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                            ✕ Clear
+                            ✕
                         </button>
                     </div>
                     <div style="font-size: 11px; color: #718096; margin-top: 4px;">
                         Dari URL: https://docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
-                        ${hasSheetId ? `<br><span style="color: #38a169;">✓ Valid: ${this.sheetId.substring(0, 15)}...</span>` : ''}
+                        ${hasSheetId ? 
+                            `<br><span style="color: #48bb78;">✓ Valid (44 karakter)</span>` : 
+                            `<br><span style="color: #e53e3e;">✗ ${validation.message}</span>`
+                        }
                     </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <button onclick="backupModule.saveGasUrl()" 
                         style="padding: 14px; background: #34a853; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
-                        💾 Simpan Konfigurasi
+                        💾 Simpan
                     </button>
                     <button onclick="backupModule.testGASConnection()" 
-                        style="padding: 14px; background: #4299e1; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        style="padding: 14px; background: #4299e1; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;"
+                        ${!hasSheetId ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         🧪 Test Koneksi
                     </button>
                 </div>
                 
-                ${hasUrl ? `
+                ${hasUrl && hasSheetId ? `
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f0fff4; border-radius: 10px;">
                         <div>
                             <div style="font-weight: 600; color: #2d3748;">Auto Sync</div>
                             <div style="font-size: 12px; color: #718096; margin-top: 2px;">
-                                ${hasSheetId ? '📄 Sheet: ' + this.sheetId.substring(0, 15) + '...' : '📄 Sheet: Default (GAS)'}
+                                📄 Sheet: ${this.sheetId.substring(0, 20)}...
                             </div>
                         </div>
                         <div onclick="backupModule.toggleAutoSync()" 
@@ -2308,21 +1936,12 @@ function jsonResponse(data, callback) {
     }
 };
 
-// ============================================
-// AUTO INIT & EXPOSE
-// ============================================
-
-// Auto-init saat DOM ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        backupModule.init();
-    });
+    document.addEventListener('DOMContentLoaded', () => backupModule.init());
 } else {
-    // DOM sudah ready
     backupModule.init();
 }
 
-// Expose ke window
 window.backupModule = backupModule;
 
-console.log('[Backup] Module loaded v2.4 - With Cash Module Support & Sheet ID Fix');
+console.log('[Backup] Module loaded v2.5 - FIXED Sheet ID & CORS');
