@@ -1,5 +1,5 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v2.2)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v2.3)
 // Firebase + Google Sheets + Local
 // Dengan Generate GAS Otomatis dari External URL
 // ============================================
@@ -265,11 +265,13 @@ const backupModule = {
             debts: allData.debts || [],
             settings: allData.settings || {},
             cashHistory: allData.cashHistory || [],
+            cashTransactions: allData.cashTransactions || [],
+            dailyClosing: allData.dailyClosing || [],
             users: allData.users || [],
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '2.2',
+                version: '2.3',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -535,7 +537,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '2.2'
+                version: '2.3'
             }
         };
         
@@ -637,10 +639,12 @@ const backupModule = {
         const tabs = [
             { id: 'products', label: '📦 Produk', data: data.products || [] },
             { id: 'transactions', label: '📝 Transaksi', data: data.transactions || [] },
+            { id: 'cashTransactions', label: '💰 Cash Flow', data: data.cashTransactions || [] },
+            { id: 'dailyClosing', label: '📊 Tutup Kas', data: data.dailyClosing || [] },
             { id: 'debts', label: '💳 Hutang', data: data.debts || [] },
             { id: 'users', label: '👥 Users', data: data.users || [] },
             { id: 'categories', label: '🏷️ Kategori', data: data.categories || [] },
-            { id: 'shifts', label: '💰 Shift', data: data.shifts || [] }
+            { id: 'shifts', label: '⏰ Shift', data: data.shifts || [] }
         ];
 
         const generateTable = (tabData, tabId) => {
@@ -770,6 +774,8 @@ const backupModule = {
         const sheets = [
             { name: 'Produk', data: data.products || [] },
             { name: 'Transaksi', data: data.transactions || [] },
+            { name: 'CashTrans', data: data.cashTransactions || [] },
+            { name: 'TutupKas', data: data.dailyClosing || [] },
             { name: 'Hutang', data: data.debts || [] },
             { name: 'Users', data: data.users || [] },
             { name: 'Kategori', data: data.categories || [] },
@@ -1506,6 +1512,7 @@ const backupModule = {
         const stats = {
             products: data.products?.length || 0,
             transactions: data.transactions?.length || 0,
+            cashTransactions: data.cashTransactions?.length || 0,
             debts: data.debts?.length || 0,
             cash: data.settings?.currentCash || 0
         };
@@ -1542,7 +1549,7 @@ const backupModule = {
                 </div>
 
                 <!-- Stats Grid -->
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px;">
                     <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size: 28px; margin-bottom: 4px;">📦</div>
                         <div style="font-size: 12px; color: #718096;">Produk</div>
@@ -1552,6 +1559,11 @@ const backupModule = {
                         <div style="font-size: 28px; margin-bottom: 4px;">📝</div>
                         <div style="font-size: 12px; color: #718096;">Transaksi</div>
                         <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.transactions}</div>
+                    </div>
+                    <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="font-size: 28px; margin-bottom: 4px;">💸</div>
+                        <div style="font-size: 12px; color: #718096;">Cash Flow</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.cashTransactions}</div>
                     </div>
                     <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size: 28px; margin-bottom: 4px;">💳</div>
@@ -1852,4 +1864,4 @@ if (document.readyState === 'loading') {
 // Expose ke window
 window.backupModule = backupModule;
 
-console.log('[Backup] Module loaded v2.2');
+console.log('[Backup] Module loaded v2.3 - With Cash Module Support');
