@@ -38,6 +38,21 @@ const TelegramModule = (function() {
     let isInitialized = false;
     
     // ==========================================
+    // TAMBAHAN: FILTER WAKTU
+    // ==========================================
+    
+    let currentTimeFilter = 'month'; // Default: bulan ini
+    let customDateRange = { start: null, end: null };
+    
+    const TIME_FILTERS = {
+        today: { label: 'Hari Ini', icon: '📅' },
+        yesterday: { label: 'Kemarin', icon: '📆' },
+        month: { label: 'Bulan Ini', icon: '📊' },
+        year: { label: 'Tahun Ini', icon: '📈' },
+        custom: { label: 'Custom', icon: '📋' }
+    };
+    
+    // ==========================================
     // GAS CODE TEMPLATE
     // ==========================================
     
@@ -269,6 +284,17 @@ function jsonResponse(data) {
             console.error('[Telegram] Error loading topups:', e);
             topups = [];
         }
+        
+        // TAMBAHAN: Load filter time settings
+        try {
+            const savedTimeFilter = localStorage.getItem('tg_time_filter');
+            if (savedTimeFilter) currentTimeFilter = savedTimeFilter;
+            
+            const savedCustomRange = localStorage.getItem('tg_custom_range');
+            if (savedCustomRange) customDateRange = JSON.parse(savedCustomRange);
+        } catch (e) {
+            console.error('[Filter] Error loading time filter:', e);
+        }
     }
     
     function saveData() {
@@ -276,9 +302,62 @@ function jsonResponse(data) {
             localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
             localStorage.setItem(STORAGE_KEY_SALDO, JSON.stringify(saldoConfig));
             localStorage.setItem(STORAGE_KEY_TOPUPS, JSON.stringify(topups));
+            
+            // TAMBAHAN: Save filter settings
+            localStorage.setItem('tg_time_filter', currentTimeFilter);
+            localStorage.setItem('tg_custom_range', JSON.stringify(customDateRange));
         } catch (e) {
             console.error('[Telegram+Saldo] Error saving:', e);
         }
+    }
+    
+    // ==========================================
+    // TAMBAHAN: FILTER WAKTU FUNCTIONS
+    // ==========================================
+    
+    function getFilteredByTime() {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        return topups.filter(t => {
+            const d = new Date(t.timestamp);
+            
+            switch(currentTimeFilter) {
+                case 'today':
+                    return d >= today;
+                    
+                case 'yesterday':
+                    return d >= yesterday && d < today;
+                    
+                case 'month':
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                    
+                case 'year':
+                    return d.getFullYear() === now.getFullYear();
+                    
+                case 'custom':
+                    if (!customDateRange.start || !customDateRange.end) return true;
+                    const start = new Date(customDateRange.start);
+                    const end = new Date(customDateRange.end);
+                    end.setHours(23, 59, 59, 999);
+                    return d >= start && d <= end;
+                    
+                default:
+                    return true;
+            }
+        });
+    }
+    
+    function getFilterLabel() {
+        const filter = TIME_FILTERS[currentTimeFilter];
+        if (currentTimeFilter === 'custom' && customDateRange.start && customDateRange.end) {
+            const start = new Date(customDateRange.start).toLocaleDateString('id-ID');
+            const end = new Date(customDateRange.end).toLocaleDateString('id-ID');
+            return `${start} - ${end}`;
+        }
+        return filter.label;
     }
     
     // ==========================================
@@ -848,26 +927,105 @@ function jsonResponse(data) {
         `;
     }
     
+    // ==========================================
+    // TAMBAHAN: RENDER STATS DENGAN FILTER WAKTU
+    // ==========================================
+    
     function renderStats(stats) {
+        const filterButtons = Object.entries(TIME_FILTERS).map(([key, value]) => `
+            <button class="tg-filter-btn ${currentTimeFilter === key ? 'active' : ''}" 
+                    onclick="TelegramModule.setTimeFilter('${key}')"
+                    style="padding: 8px 16px; border: 2px solid ${currentTimeFilter === key ? '#4caf50' : '#e0e0e0'}; 
+                           background: ${currentTimeFilter === key ? '#4caf50' : 'white'}; 
+                           color: ${currentTimeFilter === key ? 'white' : '#666'}; 
+                           border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 500;
+                           transition: all 0.3s; display: flex; align-items: center; gap: 6px;"
+                    onmouseover="this.style.transform='translateY(-2px)'"
+                    onmouseout="this.style.transform='translateY(0)'">
+                ${value.icon} ${value.label}
+            </button>
+        `).join('');
+        
+        const customDateInput = currentTimeFilter === 'custom' ? `
+            <div style="display: flex; gap: 12px; align-items: center; margin-top: 12px; padding: 12px; 
+                        background: #f5f5f5; border-radius: 8px; animation: slideDown 0.3s ease;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 12px; color: #666; font-weight: 500;">Dari Tanggal</label>
+                    <input type="date" id="customStart" value="${customDateRange.start || ''}"
+                           style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                </div>
+                <div style="color: #999; font-weight: 600;">→</div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 12px; color: #666; font-weight: 500;">Sampai Tanggal</label>
+                    <input type="date" id="customEnd" value="${customDateRange.end || ''}"
+                           style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                </div>
+                <button onclick="TelegramModule.applyCustomDate()" 
+                        style="background: #4caf50; color: white; border: none; padding: 10px 20px; 
+                               border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 16px;">
+                    ✅ Terapkan
+                </button>
+            </div>
+        ` : '';
+        
         return `
-            <div class="tg-stats">
-                <div class="tg-stat-card">
-                    <div class="tg-stat-value">${formatMoney(stats.total)}</div>
-                    <div class="tg-stat-label">Total (Bulan Ini)</div>
+            <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 24px; 
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                
+                <!-- Filter Buttons -->
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center;">
+                    <span style="font-weight: 600; color: #333; margin-right: 8px; font-size: 14px;">📊 Filter:</span>
+                    ${filterButtons}
                 </div>
-                <div class="tg-stat-card">
-                    <div class="tg-stat-value" style="color: #4caf50;">${stats.confirmed}</div>
-                    <div class="tg-stat-label">Dikonfirmasi</div>
-                </div>
-                <div class="tg-stat-card">
-                    <div class="tg-stat-value" style="color: #ff9800;">${stats.pending}</div>
-                    <div class="tg-stat-label">Pending</div>
-                </div>
-                <div class="tg-stat-card">
-                    <div class="tg-stat-value" style="color: #2196f3;">${stats.synced}</div>
-                    <div class="tg-stat-label">Tersync Sheet</div>
+                
+                ${customDateInput}
+                
+                <!-- Stats Cards -->
+                <div class="tg-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;">
+                    <div class="tg-stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; position: relative; overflow: hidden;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin-bottom: 8px;">
+                            Total (${getFilterLabel()})
+                        </div>
+                        <div class="tg-stat-value" style="font-size: 24px; color: white;">${formatMoney(stats.total)}</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">${stats.count} transaksi</div>
+                        <div style="position: absolute; top: -20px; right: -20px; font-size: 80px; opacity: 0.1;">💰</div>
+                    </div>
+                    
+                    <div class="tg-stat-card" style="border: 2px solid #4caf50; background: #e8f5e9;">
+                        <div style="font-size: 11px; color: #2e7d32; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                            Dikonfirmasi
+                        </div>
+                        <div class="tg-stat-value" style="color: #2e7d32;">${stats.confirmed}</div>
+                        <div style="font-size: 12px; color: #4caf50; margin-top: 4px;">transaksi</div>
+                    </div>
+                    
+                    <div class="tg-stat-card" style="border: 2px solid #ff9800; background: #fff3e0;">
+                        <div style="font-size: 11px; color: #e65100; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                            Pending
+                        </div>
+                        <div class="tg-stat-value" style="color: #e65100;">${stats.pending}</div>
+                        <div style="font-size: 12px; color: #ff9800; margin-top: 4px;">menunggu</div>
+                    </div>
+                    
+                    <div class="tg-stat-card" style="border: 2px solid #2196f3; background: #e3f2fd;">
+                        <div style="font-size: 11px; color: #1565c0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                            Tersync Sheet
+                        </div>
+                        <div class="tg-stat-value" style="color: #1565c0;">${stats.synced}</div>
+                        <div style="font-size: 12px; color: #2196f3; margin-top: 4px;">data tersimpan</div>
+                    </div>
                 </div>
             </div>
+            
+            <style>
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .tg-filter-btn:hover {
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+            </style>
         `;
     }
     
@@ -1160,29 +1318,25 @@ function jsonResponse(data) {
     // HELPERS
     // ==========================================
     
+    // TAMBAHAN: Stats dengan filter waktu
     function getStats() {
-        const now = new Date();
-        const thisMonth = now.getMonth();
-        const thisYear = now.getFullYear();
+        const filtered = getFilteredByTime();
         
         let total = 0, confirmed = 0, pending = 0, rejected = 0, synced = 0;
         
-        topups.forEach(t => {
-            const d = new Date(t.timestamp);
-            if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-                if (t.status === 'confirmed') {
-                    total += parseFloat(t.amount) || 0;
-                    confirmed++;
-                } else if (t.status === 'pending') {
-                    pending++;
-                } else if (t.status === 'rejected') {
-                    rejected++;
-                }
-                if (t.syncedToSheet) synced++;
+        filtered.forEach(t => {
+            if (t.status === 'confirmed') {
+                total += parseFloat(t.amount) || 0;
+                confirmed++;
+            } else if (t.status === 'pending') {
+                pending++;
+            } else if (t.status === 'rejected') {
+                rejected++;
             }
+            if (t.syncedToSheet) synced++;
         });
         
-        return { total, confirmed, pending, rejected, synced };
+        return { total, confirmed, pending, rejected, synced, count: filtered.length };
     }
     
     function getSyncStatus() {
@@ -1353,6 +1507,36 @@ function jsonResponse(data) {
         init: init,
         renderPage: renderPage,
         SaldoModule: SaldoModule,
+        
+        // TAMBAHAN: Filter waktu methods
+        setTimeFilter: function(filter) {
+            currentTimeFilter = filter;
+            if (filter !== 'custom') {
+                customDateRange = { start: null, end: null };
+            }
+            saveData();
+            renderPage();
+        },
+        
+        applyCustomDate: function() {
+            const start = document.getElementById('customStart').value;
+            const end = document.getElementById('customEnd').value;
+            
+            if (!start || !end) {
+                alert('⚠️ Pilih tanggal mulai dan tanggal akhir!');
+                return;
+            }
+            
+            if (new Date(start) > new Date(end)) {
+                alert('⚠️ Tanggal mulai tidak boleh lebih besar dari tanggal akhir!');
+                return;
+            }
+            
+            customDateRange = { start, end };
+            saveData();
+            renderPage();
+            showToast(`✅ Filter: ${new Date(start).toLocaleDateString('id-ID')} - ${new Date(end).toLocaleDateString('id-ID')}`);
+        },
         
         saveConfig: function() {
             const token = document.getElementById('tgToken').value.trim();
