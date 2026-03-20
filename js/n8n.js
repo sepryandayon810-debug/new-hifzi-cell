@@ -4,6 +4,9 @@
  * Integrasi dengan n8n workflow untuk Google Sheets
  */
 
+// Pastikan tidak ada konflik dengan module lain
+if (typeof N8NModule === 'undefined') {
+
 const N8NModule = (function() {
     'use strict';
 
@@ -15,22 +18,19 @@ const N8NModule = (function() {
     let config = {
         sheetId: '1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE',
         sheetName: 'Data Base Hifzi Cell',
-        scriptUrl: '',  // GAS Web App URL untuk proxy
-        n8nWebhookUrl: '', // n8n webhook URL (opsional)
+        scriptUrl: '',
+        n8nWebhookUrl: '',
         useGasProxy: true,
         lastSync: 0
     };
 
     let cachedData = [];
     let isInitialized = false;
-    let currentAction = null; // 'tambah', 'edit', 'hapus'
+    let currentAction = null;
     let selectedItem = null;
     let searchResults = [];
 
-    // ==========================================
-    // GAS CODE TEMPLATE (Sama seperti Telegram)
-    // ==========================================
-
+    // GAS CODE TEMPLATE
     const GAS_CODE = `/**
  * Google Apps Script untuk N8N Data Management
  * Deploy sebagai Web App (Execute as: Me, Access: Anyone)
@@ -42,7 +42,6 @@ function doGet(e) {
   console.log('doGet called:', JSON.stringify(e.parameter));
 
   try {
-    // Support untuk proxy (kirim data via query params)
     if (e.parameter._method === 'POST' && e.parameter._body) {
       try {
         const postData = JSON.parse(decodeURIComponent(e.parameter._body));
@@ -62,12 +61,10 @@ function doGet(e) {
       });
     }
 
-    // GET all data
     if (action === 'getAll') {
       return getAllData(e.parameter.sheetId);
     }
 
-    // Search data
     if (action === 'search') {
       return searchData(e.parameter.sheetId, e.parameter.keyword);
     }
@@ -145,7 +142,6 @@ function tambahData(data) {
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     }
 
-    // Cek duplikat
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
       const namaRange = sheet.getRange(2, 1, lastRow - 1, 1);
@@ -164,11 +160,7 @@ function tambahData(data) {
     return jsonResponse({ 
       success: true, 
       message: 'Data berhasil ditambahkan',
-      data: {
-        row: rowNum,
-        nama: nama.toUpperCase(),
-        nomor: nomor.toUpperCase()
-      }
+      data: { row: rowNum, nama: nama.toUpperCase(), nomor: nomor.toUpperCase() }
     });
 
   } catch (error) {
@@ -212,11 +204,7 @@ function editData(data) {
     return jsonResponse({ 
       success: true, 
       message: 'Data berhasil diupdate',
-      data: {
-        row: actualRow,
-        nama: nama.toUpperCase(),
-        nomor: nomorBaru.toUpperCase()
-      }
+      data: { row: actualRow, nama: nama.toUpperCase(), nomor: nomorBaru.toUpperCase() }
     });
 
   } catch (error) {
@@ -259,10 +247,7 @@ function hapusData(data) {
     return jsonResponse({ 
       success: true, 
       message: 'Data berhasil dihapus',
-      data: {
-        nama: nama.toUpperCase(),
-        row: actualRow
-      }
+      data: { nama: nama.toUpperCase(), row: actualRow }
     });
 
   } catch (error) {
@@ -297,11 +282,7 @@ function getAllData(sheetId) {
       NOMOR: row[1] || ''
     }));
 
-    return jsonResponse({ 
-      success: true, 
-      data: data,
-      count: data.length
-    });
+    return jsonResponse({ success: true, data: data, count: data.length });
 
   } catch (error) {
     return jsonResponse({ success: false, error: error.toString() });
@@ -340,12 +321,7 @@ function searchData(sheetId, keyword) {
       return keywords.every(k => nama.includes(k));
     });
 
-    return jsonResponse({ 
-      success: true, 
-      data: data,
-      count: data.length,
-      keyword: keyword
-    });
+    return jsonResponse({ success: true, data: data, count: data.length, keyword: keyword });
 
   } catch (error) {
     return jsonResponse({ success: false, error: error.toString() });
@@ -357,10 +333,7 @@ function jsonResponse(data) {
     .setMimeType(ContentService.MimeType.JSON);
 }`;
 
-    // ==========================================
     // INIT
-    // ==========================================
-
     function init() {
         if (isInitialized) return;
         isInitialized = true;
@@ -395,10 +368,7 @@ function jsonResponse(data) {
         }
     }
 
-    // ==========================================
-    // API CALLS - VERSI FILE LOKAL DENGAN PROXY
-    // ==========================================
-
+    // API CALLS
     async function apiCall(payload) {
         const targetUrl = config.scriptUrl;
 
@@ -406,7 +376,7 @@ function jsonResponse(data) {
             throw new Error('Script URL belum diisi. Silahkan konfigurasi di pengaturan.');
         }
 
-        // Method 1: Coba langsung (kalau dari http:// atau https://)
+        // Method 1: Coba langsung
         if (window.location.protocol !== 'file:') {
             try {
                 const response = await fetch(targetUrl, {
@@ -422,9 +392,8 @@ function jsonResponse(data) {
             }
         }
 
-        // Method 2: Gunakan proxy dengan GET + query params
+        // Method 2: Gunakan proxy
         const getUrl = buildGetUrl(targetUrl, payload);
-
         console.log('[N8N Proxy] URL:', getUrl.substring(0, 100) + '...');
 
         const response = await fetch(getUrl, {
@@ -439,7 +408,6 @@ function jsonResponse(data) {
         const result = await response.json();
 
         if (result.contents) {
-            // allorigins format
             return JSON.parse(result.contents);
         }
 
@@ -453,10 +421,7 @@ function jsonResponse(data) {
         return `${baseUrl}?${params.toString()}`;
     }
 
-    // ==========================================
     // VALIDATION
-    // ==========================================
-
     function validateConfig() {
         const errors = [];
 
@@ -468,16 +433,10 @@ function jsonResponse(data) {
             errors.push('Sheet ID belum diisi');
         }
 
-        return {
-            valid: errors.length === 0,
-            errors: errors
-        };
+        return { valid: errors.length === 0, errors: errors };
     }
 
-    // ==========================================
     // RENDER FUNCTIONS
-    // ==========================================
-
     function renderPage() {
         const container = document.getElementById('mainContent');
         if (!container) {
@@ -488,80 +447,80 @@ function jsonResponse(data) {
         const validation = validateConfig();
         const isFileProtocol = window.location.protocol === 'file:';
 
-        // Warning untuk file lokal
         let fileWarning = '';
         if (isFileProtocol) {
-            fileWarning = `
-                <div class="n8n-warning-box">
-                    <div class="n8n-warning-title">ℹ️ Mode File Lokal Terdeteksi</div>
-                    <div class="n8n-warning-text">
-                        Menggunakan proxy untuk koneksi ke Google Sheets.
-                        <br>Untuk performa lebih baik, gunakan web server (Live Server).
-                    </div>
-                    <div class="n8n-warning-actions">
-                        <button onclick="N8NModule.testProxy()" class="n8n-btn n8n-btn-small n8n-btn-info">
-                            🧪 Test Proxy
-                        </button>
-                    </div>
-                </div>
-            `;
+            fileWarning = renderFileWarning();
         }
 
-        // Warning config belum lengkap
         let warningHtml = '';
         if (!validation.valid) {
-            warningHtml = `
-                <div class="n8n-alert n8n-alert-warning">
-                    <div class="n8n-alert-title">⚠️ Konfigurasi Belum Lengkap</div>
-                    <ul class="n8n-alert-list">
-                        ${validation.errors.map(e => `<li>${e}</li>`).join('')}
-                    </ul>
-                    <div class="n8n-alert-hint">
-                        Scroll ke bawah untuk mengisi konfigurasi
-                    </div>
+            warningHtml = renderConfigWarning(validation.errors);
+        }
+
+        try {
+            container.innerHTML = `
+                <div class="n8n-container">
+                    ${renderHeader()}
+                    ${fileWarning}
+                    ${warningHtml}
+                    ${currentAction === null ? renderModeSelection(validation.valid) : ''}
+                    ${currentAction === 'tambah' ? renderTambahForm() : ''}
+                    ${currentAction === 'cari' ? renderCariForm() : ''}
+                    ${currentAction === 'edit' ? renderEditForm() : ''}
+                    ${currentAction === 'hapus' ? renderHapusForm() : ''}
+                    ${renderSearchResults()}
+                    ${renderConfigSection()}
+                    ${renderGasSection()}
+                    ${renderDebugInfo()}
+                </div>
+            `;
+        } catch (e) {
+            console.error('[N8N] Render error:', e);
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center;">
+                    <h3>❌ Error Render</h3>
+                    <p>${e.message}</p>
+                    <button onclick="N8NModule.renderPage()" style="padding: 10px 20px; margin-top: 20px;">
+                        Coba Lagi
+                    </button>
                 </div>
             `;
         }
+    }
 
-        container.innerHTML = `
-            <div class="n8n-container">
-                ${renderHeader()}
-                ${fileWarning}
-                ${warningHtml}
-
-                <!-- MODE SELECTION -->
-                ${currentAction === null ? renderModeSelection(validation.valid) : ''}
-
-                <!-- TAMBAH MODE -->
-                ${currentAction === 'tambah' ? renderTambahForm() : ''}
-
-                <!-- CARI MODE -->
-                ${currentAction === 'cari' ? renderCariForm() : ''}
-
-                <!-- EDIT MODE -->
-                ${currentAction === 'edit' ? renderEditForm() : ''}
-
-                <!-- HAPUS MODE -->
-                ${currentAction === 'hapus' ? renderHapusForm() : ''}
-
-                <!-- HASIL PENCARIAN -->
-                ${renderSearchResults()}
-
-                <!-- KONFIGURASI -->
-                ${renderConfigSection()}
-
-                <!-- GAS CODE -->
-                ${renderGasSection()}
-
-                <!-- DEBUG INFO -->
-                ${renderDebugInfo()}
+    function renderFileWarning() {
+        return `
+            <div class="n8n-warning-box">
+                <div class="n8n-warning-title">ℹ️ Mode File Lokal Terdeteksi</div>
+                <div class="n8n-warning-text">
+                    Menggunakan proxy untuk koneksi ke Google Sheets.
+                    <br>Untuk performa lebih baik, gunakan web server (Live Server).
+                </div>
+                <div class="n8n-warning-actions">
+                    <button onclick="N8NModule.testProxy()" class="n8n-btn n8n-btn-small n8n-btn-info">
+                        🧪 Test Proxy
+                    </button>
+                </div>
             </div>
         `;
+    }
 
-        bindEvents();
+    function renderConfigWarning(errors) {
+        return `
+            <div class="n8n-alert n8n-alert-warning">
+                <div class="n8n-alert-title">⚠️ Konfigurasi Belum Lengkap</div>
+                <ul class="n8n-alert-list">
+                    ${errors.map(e => `<li>${e}</li>`).join('')}
+                </ul>
+                <div class="n8n-alert-hint">
+                    Scroll ke bawah untuk mengisi konfigurasi
+                </div>
+            </div>
+        `;
     }
 
     function renderHeader() {
+        const validation = validateConfig();
         return `
             <div class="n8n-header">
                 <div class="n8n-header-content">
@@ -571,15 +530,15 @@ function jsonResponse(data) {
                         <p class="n8n-subtitle">Cari, Edit, Tambah, Hapus Data</p>
                     </div>
                 </div>
-                <div class="n8n-badge ${validateConfig().valid ? 'n8n-badge-success' : 'n8n-badge-warning'}">
-                    ${validateConfig().valid ? '✅ Ready' : '⚠️ Setup Required'}
+                <div class="n8n-badge ${validation.valid ? 'n8n-badge-success' : 'n8n-badge-warning'}">
+                    ${validation.valid ? '✅ Ready' : '⚠️ Setup Required'}
                 </div>
             </div>
         `;
     }
 
     function renderModeSelection(enabled) {
-        const disabled = !enabled;
+        const disabled = !enabled ? 'disabled' : '';
 
         return `
             <div class="n8n-mode-selection">
@@ -594,25 +553,25 @@ function jsonResponse(data) {
                 </div>
 
                 <div class="n8n-mode-grid">
-                    <button onclick="N8NModule.setMode('tambah')" class="n8n-mode-btn n8n-mode-tambah" ${disabled ? 'disabled' : ''}>
+                    <button onclick="N8NModule.setMode('tambah')" class="n8n-mode-btn n8n-mode-tambah" ${disabled}>
                         <span class="n8n-mode-icon">➕</span>
                         <span class="n8n-mode-label">Tambah Data</span>
                         <span class="n8n-mode-desc">Nama:Nomor</span>
                     </button>
 
-                    <button onclick="N8NModule.setMode('cari')" class="n8n-mode-btn n8n-mode-cari" ${disabled ? 'disabled' : ''}>
+                    <button onclick="N8NModule.setMode('cari')" class="n8n-mode-btn n8n-mode-cari" ${disabled}>
                         <span class="n8n-mode-icon">🔍</span>
                         <span class="n8n-mode-label">Cari Data</span>
                         <span class="n8n-mode-desc">Cari berdasarkan nama</span>
                     </button>
 
-                    <button onclick="N8NModule.setMode('edit')" class="n8n-mode-btn n8n-mode-edit" ${disabled ? 'disabled' : ''}>
+                    <button onclick="N8NModule.setMode('edit')" class="n8n-mode-btn n8n-mode-edit" ${disabled}>
                         <span class="n8n-mode-icon">✏️</span>
                         <span class="n8n-mode-label">Edit Data</span>
                         <span class="n8n-mode-desc">Ubah nomor</span>
                     </button>
 
-                    <button onclick="N8NModule.setMode('hapus')" class="n8n-mode-btn n8n-mode-hapus" ${disabled ? 'disabled' : ''}>
+                    <button onclick="N8NModule.setMode('hapus')" class="n8n-mode-btn n8n-mode-hapus" ${disabled}>
                         <span class="n8n-mode-icon">🗑️</span>
                         <span class="n8n-mode-label">Hapus Data</span>
                         <span class="n8n-mode-desc">Hapus permanen</span>
@@ -629,7 +588,6 @@ function jsonResponse(data) {
                     <button onclick="N8NModule.backToMenu()" class="n8n-back-btn">← Kembali</button>
                     <h3>➕ Tambah Data Baru</h3>
                 </div>
-
                 <div class="n8n-form-body">
                     <div class="n8n-input-group">
                         <label>Format: NAMA:NOMOR</label>
@@ -637,11 +595,8 @@ function jsonResponse(data) {
                                placeholder="Contoh: BUDI:08123456789"
                                class="n8n-input"
                                onkeypress="if(event.key==='Enter')N8NModule.prosesTambah()">
-                        <div class="n8n-input-hint">
-                            Gunakan tanda titik dua (:) sebagai pemisah
-                        </div>
+                        <div class="n8n-input-hint">Gunakan tanda titik dua (:) sebagai pemisah</div>
                     </div>
-
                     <div class="n8n-form-actions">
                         <button onclick="N8NModule.prosesTambah()" class="n8n-btn n8n-btn-success n8n-btn-block">
                             ✅ SIMPAN KE DATABASE
@@ -662,7 +617,6 @@ function jsonResponse(data) {
                     <button onclick="N8NModule.backToMenu()" class="n8n-back-btn">← Kembali</button>
                     <h3>🔍 Cari Data</h3>
                 </div>
-
                 <div class="n8n-form-body">
                     <div class="n8n-input-group">
                         <label>Kata Kunci Pencarian</label>
@@ -670,11 +624,8 @@ function jsonResponse(data) {
                                placeholder="Masukkan nama yang dicari..."
                                class="n8n-input"
                                onkeypress="if(event.key==='Enter')N8NModule.prosesCari()">
-                        <div class="n8n-input-hint">
-                            Bisa pakai sebagian nama (contoh: "budi" untuk "BUDI SANTOSO")
-                        </div>
+                        <div class="n8n-input-hint">Bisa pakai sebagian nama (contoh: "budi" untuk "BUDI SANTOSO")</div>
                     </div>
-
                     <div class="n8n-form-actions">
                         <button onclick="N8NModule.prosesCari()" class="n8n-btn n8n-btn-primary n8n-btn-block">
                             🔍 CARI SEKARANG
@@ -698,7 +649,6 @@ function jsonResponse(data) {
                     <button onclick="N8NModule.backToMenu()" class="n8n-back-btn">← Kembali</button>
                     <h3>✏️ Edit Data</h3>
                 </div>
-
                 <div class="n8n-form-body">
                     <div class="n8n-input-group">
                         <label>Format: NAMA:NOMOR_BARU</label>
@@ -706,11 +656,8 @@ function jsonResponse(data) {
                                placeholder="Contoh: BUDI:08198765432"
                                class="n8n-input"
                                onkeypress="if(event.key==='Enter')N8NModule.prosesEdit()">
-                        <div class="n8n-input-hint">
-                            Nama harus persis sama dengan yang di database
-                        </div>
+                        <div class="n8n-input-hint">Nama harus persis sama dengan yang di database</div>
                     </div>
-
                     <div class="n8n-form-actions">
                         <button onclick="N8NModule.prosesEdit()" class="n8n-btn n8n-btn-warning n8n-btn-block">
                             ✏️ UPDATE DATA
@@ -731,24 +678,18 @@ function jsonResponse(data) {
                     <button onclick="N8NModule.backToMenu()" class="n8n-back-btn">← Kembali</button>
                     <h3>🗑️ Hapus Data</h3>
                 </div>
-
                 <div class="n8n-form-body">
                     <div class="n8n-alert n8n-alert-danger">
-                        <strong>⚠️ PERINGATAN:</strong>
-                        Data yang dihapus tidak bisa dikembalikan!
+                        <strong>⚠️ PERINGATAN:</strong> Data yang dihapus tidak bisa dikembalikan!
                     </div>
-
                     <div class="n8n-input-group">
                         <label>Nama yang akan dihapus</label>
                         <input type="text" id="n8nHapusInput" 
                                placeholder="Masukkan nama lengkap..."
                                class="n8n-input"
                                onkeypress="if(event.key==='Enter')N8NModule.prosesHapus()">
-                        <div class="n8n-input-hint">
-                            Nama harus persis sama dengan yang di database
-                        </div>
+                        <div class="n8n-input-hint">Nama harus persis sama dengan yang di database</div>
                     </div>
-
                     <div class="n8n-form-actions">
                         <button onclick="N8NModule.prosesHapus()" class="n8n-btn n8n-btn-danger n8n-btn-block">
                             🗑️ HAPUS PERMANEN
@@ -785,13 +726,9 @@ function jsonResponse(data) {
                             </div>
                             <div class="n8n-result-actions">
                                 <button onclick="N8NModule.pilihUntukEdit('${escapeHtml(item.NAMA)}')" 
-                                        class="n8n-btn n8n-btn-small n8n-btn-warning" title="Edit">
-                                    ✏️
-                                </button>
+                                        class="n8n-btn n8n-btn-small n8n-btn-warning" title="Edit">✏️</button>
                                 <button onclick="N8NModule.pilihUntukHapus('${escapeHtml(item.NAMA)}')" 
-                                        class="n8n-btn n8n-btn-small n8n-btn-danger" title="Hapus">
-                                    🗑️
-                                </button>
+                                        class="n8n-btn n8n-btn-small n8n-btn-danger" title="Hapus">🗑️</button>
                             </div>
                         </div>
                     `).join('')}
@@ -804,7 +741,6 @@ function jsonResponse(data) {
         return `
             <div class="n8n-config-section">
                 <h3>☁️ Konfigurasi Google Sheet</h3>
-
                 <div class="n8n-info-box n8n-info-box-success">
                     <strong>✅ Setup Required:</strong>
                     <ol>
@@ -814,30 +750,22 @@ function jsonResponse(data) {
                         <li>Copy URL Web App ke kolom "Script URL" di bawah</li>
                     </ol>
                 </div>
-
                 <div class="n8n-input-group">
                     <label>Google Sheet ID <span class="n8n-required">*</span></label>
                     <input type="text" id="n8nSheetId" value="${escapeHtml(config.sheetId)}" 
                            class="n8n-input" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE">
                     <div class="n8n-input-hint">Dari URL: docs.google.com/spreadsheets/d/<strong>SheetID</strong>/edit</div>
                 </div>
-
                 <div class="n8n-input-group">
                     <label>Script URL (GAS Web App) <span class="n8n-required">*</span></label>
                     <input type="text" id="n8nScriptUrl" value="${escapeHtml(config.scriptUrl)}" 
                            class="n8n-input" placeholder="https://script.google.com/macros/s/.../exec">
                     <div class="n8n-input-hint"><strong>WAJIB:</strong> Deploy dengan "Access: Anyone"</div>
                 </div>
-
                 <div class="n8n-form-actions">
-                    <button onclick="N8NModule.saveConfig()" class="n8n-btn n8n-btn-primary">
-                        💾 Simpan Config
-                    </button>
-                    <button onclick="N8NModule.testConnection()" class="n8n-btn n8n-btn-secondary">
-                        🔗 Test Koneksi
-                    </button>
+                    <button onclick="N8NModule.saveConfig()" class="n8n-btn n8n-btn-primary">💾 Simpan Config</button>
+                    <button onclick="N8NModule.testConnection()" class="n8n-btn n8n-btn-secondary">🔗 Test Koneksi</button>
                 </div>
-
                 <div id="n8nTestResult" class="n8n-test-result"></div>
             </div>
         `;
@@ -847,17 +775,13 @@ function jsonResponse(data) {
         return `
             <div class="n8n-gas-section">
                 <h3>📋 Kode Google Apps Script</h3>
-
                 <button onclick="N8NModule.toggleGasCode()" class="n8n-btn n8n-btn-gas" id="n8nBtnShowGas">
                     📋 Tampilkan Kode GAS
                 </button>
-
                 <div id="n8nGasCodeContainer" class="n8n-gas-code-container" style="display: none;">
                     <div class="n8n-gas-code-header">
                         <span>Code.gs</span>
-                        <button onclick="N8NModule.copyGasCode()" class="n8n-btn n8n-btn-small n8n-btn-secondary">
-                            📋 Copy
-                        </button>
+                        <button onclick="N8NModule.copyGasCode()" class="n8n-btn n8n-btn-small n8n-btn-secondary">📋 Copy</button>
                     </div>
                     <pre class="n8n-gas-code" id="n8nGasCodeDisplay"></pre>
                 </div>
@@ -883,16 +807,12 @@ function jsonResponse(data) {
         `;
     }
 
-    // ==========================================
     // ACTIONS
-    // ==========================================
-
     function setMode(mode) {
         currentAction = mode;
         searchResults = [];
         renderPage();
 
-        // Auto focus
         setTimeout(() => {
             const inputId = {
                 'tambah': 'n8nTambahInput',
@@ -921,12 +841,11 @@ function jsonResponse(data) {
         renderPage();
     }
 
-    // ==========================================
     // CRUD OPERATIONS
-    // ==========================================
-
     async function prosesTambah() {
         const input = document.getElementById('n8nTambahInput');
+        if (!input) return;
+
         const value = input.value.trim();
 
         if (!value.includes(':')) {
@@ -956,7 +875,6 @@ function jsonResponse(data) {
                 showToast(`✅ Data ${result.data.nama} berhasil ditambahkan!`);
                 input.value = '';
 
-                // Update cache
                 cachedData.push({
                     row_number: result.data.row,
                     NAMA: result.data.nama,
@@ -964,7 +882,6 @@ function jsonResponse(data) {
                 });
                 saveData();
 
-                // Tanya apakah mau tambah lagi
                 setTimeout(() => {
                     if (confirm('✅ Data berhasil disimpan!\n\nMau tambah data lagi?')) {
                         input.focus();
@@ -983,6 +900,8 @@ function jsonResponse(data) {
 
     async function prosesCari() {
         const input = document.getElementById('n8nCariInput');
+        if (!input) return;
+
         const keyword = input.value.trim();
 
         if (!keyword) {
@@ -1045,6 +964,8 @@ function jsonResponse(data) {
 
     async function prosesEdit() {
         const input = document.getElementById('n8nEditInput');
+        if (!input) return;
+
         const value = input.value.trim();
 
         if (!value.includes(':')) {
@@ -1077,7 +998,6 @@ function jsonResponse(data) {
                 showToast(`✅ Data ${result.data.nama} berhasil diupdate!`);
                 input.value = '';
 
-                // Update cache
                 const index = cachedData.findIndex(d => d.NAMA === result.data.nama);
                 if (index !== -1) {
                     cachedData[index].NOMOR = result.data.nomor;
@@ -1096,6 +1016,8 @@ function jsonResponse(data) {
 
     async function prosesHapus() {
         const input = document.getElementById('n8nHapusInput');
+        if (!input) return;
+
         const nama = input.value.trim();
 
         if (!nama) {
@@ -1120,7 +1042,6 @@ function jsonResponse(data) {
                 showToast(`🗑️ Data ${result.data.nama} berhasil dihapus!`);
                 input.value = '';
 
-                // Update cache
                 cachedData = cachedData.filter(d => d.NAMA !== result.data.nama);
                 saveData();
 
@@ -1135,32 +1056,36 @@ function jsonResponse(data) {
     }
 
     function pilihUntukEdit(nama) {
-        document.getElementById('n8nEditInput').value = nama + ':';
+        const input = document.getElementById('n8nEditInput');
+        if (input) {
+            input.value = nama + ':';
+        }
         setMode('edit');
 
         setTimeout(() => {
             const input = document.getElementById('n8nEditInput');
-            input.focus();
-            // Cursor di akhir
-            input.setSelectionRange(input.value.length, input.value.length);
+            if (input) {
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
         }, 100);
     }
 
     function pilihUntukHapus(nama) {
-        document.getElementById('n8nHapusInput').value = nama;
+        const input = document.getElementById('n8nHapusInput');
+        if (input) {
+            input.value = nama;
+        }
         setMode('hapus');
     }
 
-    // ==========================================
     // CONFIG & UTILS
-    // ==========================================
-
     function saveConfig() {
-        const sheetId = document.getElementById('n8nSheetId').value.trim();
-        const scriptUrl = document.getElementById('n8nScriptUrl').value.trim();
+        const sheetIdInput = document.getElementById('n8nSheetId');
+        const scriptUrlInput = document.getElementById('n8nScriptUrl');
 
-        config.sheetId = sheetId;
-        config.scriptUrl = scriptUrl;
+        if (sheetIdInput) config.sheetId = sheetIdInput.value.trim();
+        if (scriptUrlInput) config.scriptUrl = scriptUrlInput.value.trim();
 
         saveData();
         showToast('✅ Konfigurasi disimpan!');
@@ -1171,23 +1096,23 @@ function jsonResponse(data) {
         const resultDiv = document.getElementById('n8nTestResult');
 
         if (!config.scriptUrl) {
-            resultDiv.innerHTML = '<div class="n8n-test-error">❌ Isi Script URL dulu</div>';
+            if (resultDiv) resultDiv.innerHTML = '<div class="n8n-test-error">❌ Isi Script URL dulu</div>';
             return;
         }
 
-        resultDiv.innerHTML = '<div class="n8n-test-loading">⏳ Testing...</div>';
+        if (resultDiv) resultDiv.innerHTML = '<div class="n8n-test-loading">⏳ Testing...</div>';
 
         try {
             const result = await apiCall({ action: 'test' });
 
             if (result.success) {
-                resultDiv.innerHTML = `<div class="n8n-test-success">✅ ${result.message}</div>`;
+                if (resultDiv) resultDiv.innerHTML = `<div class="n8n-test-success">✅ ${result.message}</div>`;
                 showToast('✅ Koneksi berhasil!');
             } else {
-                resultDiv.innerHTML = `<div class="n8n-test-error">❌ ${result.error}</div>`;
+                if (resultDiv) resultDiv.innerHTML = `<div class="n8n-test-error">❌ ${result.error}</div>`;
             }
         } catch (e) {
-            resultDiv.innerHTML = `<div class="n8n-test-error">❌ Error: ${e.message}</div>`;
+            if (resultDiv) resultDiv.innerHTML = `<div class="n8n-test-error">❌ Error: ${e.message}</div>`;
         }
     }
 
@@ -1215,6 +1140,8 @@ function jsonResponse(data) {
         const container = document.getElementById('n8nGasCodeContainer');
         const display = document.getElementById('n8nGasCodeDisplay');
         const btn = document.getElementById('n8nBtnShowGas');
+
+        if (!container || !display || !btn) return;
 
         if (container.style.display === 'none') {
             display.textContent = GAS_CODE;
@@ -1256,14 +1183,7 @@ function jsonResponse(data) {
         document.body.removeChild(textarea);
     }
 
-    function bindEvents() {
-        // Events sudah di-bind via onclick di HTML
-    }
-
-    // ==========================================
     // HELPERS
-    // ==========================================
-
     function escapeHtml(text) {
         if (!text) return '';
         return text
@@ -1277,6 +1197,8 @@ function jsonResponse(data) {
     function showToast(msg, type = 'info') {
         if (typeof utils !== 'undefined' && utils.showToast) {
             utils.showToast(msg, type);
+        } else if (typeof window.showToast === 'function') {
+            window.showToast(msg, type);
         } else {
             const toast = document.getElementById('toast');
             if (toast) {
@@ -1289,47 +1211,42 @@ function jsonResponse(data) {
         }
     }
 
-    // ==========================================
     // PUBLIC API
-    // ==========================================
-
     return {
         init: init,
         renderPage: renderPage,
-
-        // Mode switching
         setMode: setMode,
         backToMenu: backToMenu,
         clearResults: clearResults,
-
-        // CRUD operations
         prosesTambah: prosesTambah,
         prosesCari: prosesCari,
         prosesEdit: prosesEdit,
         prosesHapus: prosesHapus,
         loadAllData: loadAllData,
-
-        // Selection from results
         pilihUntukEdit: pilihUntukEdit,
         pilihUntukHapus: pilihUntukHapus,
-
-        // Config
         saveConfig: saveConfig,
         testConnection: testConnection,
         testProxy: testProxy,
-
-        // GAS
         toggleGasCode: toggleGasCode,
         copyGasCode: copyGasCode,
-
-        // Data access
         getConfig: () => config,
         getCachedData: () => cachedData
     };
 })();
 
 // Inisialisasi saat DOM ready
-document.addEventListener('DOMContentLoaded', function() {
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        N8NModule.init();
+        console.log('[N8N] Data Management Module ready');
+    });
+} else {
     N8NModule.init();
-    console.log('[N8N] Data Management Module ready');
-});
+    console.log('[N8N] Data Management Module ready (immediate)');
+}
+
+// Expose to window
+window.N8NModule = N8NModule;
+
+} // End if typeof N8NModule === 'undefined'
