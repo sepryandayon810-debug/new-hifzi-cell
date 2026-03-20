@@ -2,7 +2,6 @@
    N8N MODULE STYLES - HIFZI CELL POS THEME
    ============================================ */
 
-/* CSS Variables - Purple Theme */
 :root {
     --n8n-primary: #6c5ce7;
     --n8n-primary-dark: #5b4cdb;
@@ -16,10 +15,8 @@
     --n8n-text-muted: #636e72;
     --n8n-border: rgba(108, 92, 231, 0.2);
     --n8n-shadow: 0 8px 32px rgba(108, 92, 231, 0.15);
-    --n8n-glass: rgba(255, 255, 255, 0.8);
 }
 
-/* Main Container */
 .n8n-container {
     max-width: 1200px;
     margin: 0 auto;
@@ -29,7 +26,6 @@
     min-height: 100vh;
 }
 
-/* Header */
 .n8n-header {
     text-align: center;
     margin-bottom: 24px;
@@ -52,7 +48,7 @@
     font-size: 14px;
 }
 
-/* CRUD Section - POSISI ATAS */
+/* CRUD Section */
 .n8n-crud-section {
     background: var(--n8n-card-bg);
     border-radius: 16px;
@@ -135,12 +131,13 @@
 }
 
 .n8n-data-row:hover {
-    background: rgba(108, 92, 231, 0.05);
+    background: rgba(108, 92, 231, 0.08);
 }
 
 .n8n-data-row.selected {
-    background: rgba(108, 92, 231, 0.15);
+    background: rgba(108, 92, 231, 0.2) !important;
     font-weight: 600;
+    border-left: 4px solid var(--n8n-primary);
 }
 
 .n8n-empty-row td {
@@ -161,7 +158,30 @@
     opacity: 0.5;
 }
 
-/* Config Toggle - Gear Button */
+/* Select Button in Table */
+.n8n-btn-select {
+    padding: 6px 12px !important;
+    font-size: 14px !important;
+    background: transparent !important;
+    border: 2px solid var(--n8n-border) !important;
+    color: var(--n8n-text-muted) !important;
+    min-width: 40px;
+    justify-content: center;
+}
+
+.n8n-btn-select:hover {
+    border-color: var(--n8n-primary) !important;
+    color: var(--n8n-primary) !important;
+    background: rgba(108, 92, 231, 0.1) !important;
+}
+
+.n8n-btn-select.selected {
+    background: var(--n8n-primary) !important;
+    border-color: var(--n8n-primary) !important;
+    color: white !important;
+}
+
+/* Config Toggle */
 .n8n-config-toggle {
     display: flex;
     justify-content: center;
@@ -188,7 +208,7 @@
     transition: transform 0.3s ease;
 }
 
-/* Config Section - POSISI BAWAH */
+/* Config Section */
 .n8n-config-section {
     animation: slideDown 0.3s ease;
 }
@@ -373,8 +393,16 @@
 }
 
 .n8n-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+    filter: grayscale(0.5);
+}
+
+.n8n-btn:disabled:hover {
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .n8n-btn .icon {
