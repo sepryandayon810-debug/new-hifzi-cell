@@ -1,7 +1,6 @@
 const cashModule = {
     currentDeleteTransaction: null,
     
-    // Filter state
     filterState: {
         startDate: null,
         endDate: null,
@@ -16,11 +15,79 @@ const cashModule = {
         this.renderTransactions();
     },
 
+    // ✅ PERBAIKAN: Proteksi setelah reset
+    ensureCashInitialized() {
+        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
+            let currentCash = dataManager.data.settings.currentCash;
+            let modalAwal = dataManager.data.settings.modalAwal;
+            
+            // ✅ Inisialisasi modalAwal jika undefined/null
+            if (typeof modalAwal !== 'number' || isNaN(modalAwal)) {
+                console.log('[Cash] Initializing modalAwal from invalid value:', modalAwal);
+                dataManager.data.settings.modalAwal = 0;
+            }
+            
+            // ✅ Inisialisasi currentCash
+            if (typeof currentCash !== 'number' || isNaN(currentCash)) {
+                console.log('[Cash] Initializing currentCash from invalid value:', currentCash);
+                currentCash = 0;
+                dataManager.data.settings.currentCash = 0;
+                dataManager.save();
+            }
+            
+            // ✅ PERBAIKAN: Cek konsistensi modal vs kas setelah reset
+            this.validateModalConsistency();
+        }
+    },
+
+    // ✅ FUNGSI BARU: Validasi konsistensi modal dan kas
+    validateModalConsistency() {
+        const transactions = dataManager.data.cashTransactions || [];
+        const modalTransactions = transactions.filter(t => t.type === 'modal_in');
+        
+        // Jika ada transaksi modal tapi kas tidak sesuai
+        if (modalTransactions.length > 0) {
+            const lastModal = modalTransactions[modalTransactions.length - 1];
+            const modalAmount = lastModal.amount;
+            const currentCash = dataManager.data.settings.currentCash;
+            
+            // Jika kas = 2x modal, berarti ada double counting
+            if (currentCash === modalAmount * 2) {
+                console.log('[Cash] Detected double counting! Fixing...');
+                dataManager.data.settings.currentCash = modalAmount;
+                dataManager.save();
+                app.showToast('⚠️ Kas diperbaiki: Terdeteksi duplikat modal');
+            }
+            
+            // Jika kas > modal tapi tidak ada transaksi lain, kemungkinan error
+            const otherTransactions = transactions.filter(t => t.type !== 'modal_in');
+            const calculatedFromOthers = otherTransactions.reduce((sum, t) => {
+                if (t.type === 'in' || t.type === 'topup') return sum + (t.amount || 0);
+                if (t.type === 'out') return sum - (t.amount || 0);
+                return sum;
+            }, 0);
+            
+            const expectedCash = modalAmount + calculatedFromOthers;
+            if (currentCash !== expectedCash && otherTransactions.length === 0) {
+                console.log('[Cash] Fixing cash to match modal:', modalAmount);
+                dataManager.data.settings.currentCash = modalAmount;
+                dataManager.save();
+            }
+        }
+    },
+
     checkDayChange() {
         const lastActiveDate = localStorage.getItem('hifzi_last_active_date');
         const today = new Date().toDateString();
         
-        if (lastActiveDate && lastActiveDate !== today) {
+        // ✅ PERBAIKAN: Jika lastActiveDate null (habis reset), anggap hari baru
+        if (!lastActiveDate) {
+            console.log('[Cash] First time or after reset detected');
+            localStorage.setItem('hifzi_last_active_date', today);
+            return; // Tidak lakukan apa-apa, biarkan user input modal manual
+        }
+        
+        if (lastActiveDate !== today) {
             console.log('[Cash] Day changed detected. Last:', lastActiveDate, 'Today:', today);
             
             const isKasirOpen = dataManager.data.settings?.kasirOpen || false;
@@ -29,14 +96,12 @@ const cashModule = {
                 const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
                 const kasKemarin = parseInt(dataManager.data.settings?.currentCash) || 0;
                 
-                // Simpan closing hari kemarin
                 this.saveDayClosing(lastActiveDate);
                 
                 if (modalAwal > 0) {
-                    // Tanya user
                     if (confirm(`🌅 Selamat datang di hari baru!\n\nKas kemarin: Rp ${utils.formatNumber(kasKemarin)}\nModal awal kemarin: Rp ${utils.formatNumber(modalAwal)}\n\nKasir dalam keadaan TUTUP.\n\nSetel kas ke Rp ${utils.formatNumber(modalAwal)} (Modal Awal) atau Rp 0?`)) {
                         
-                        // ✅ PERBAIKAN: Set currentCash ke modal, jangan tambah transaksi lagi
+                        // ✅ PERBAIKAN: Set currentCash ke modal, bukan tambah
                         dataManager.data.settings.currentCash = modalAwal;
                         app.showToast(`✅ Kas diatur ke Modal Awal: Rp ${utils.formatNumber(modalAwal)}`);
                         
@@ -45,12 +110,10 @@ const cashModule = {
                         app.showToast('✅ Kas direset ke Rp 0');
                     }
                 } else {
-                    // Tidak ada modal, tanya set ke berapa
                     const inputModal = prompt('Masukkan Modal Awal hari ini (kosongkan untuk 0):', '0');
                     const newModal = parseInt(inputModal) || 0;
                     
                     if (newModal > 0) {
-                        // ✅ PERBAIKAN: Set currentCash, bukan tambah
                         dataManager.data.settings.currentCash = newModal;
                         app.showToast(`✅ Modal Rp ${utils.formatNumber(newModal)} tersimpan`);
                     } else {
@@ -58,7 +121,7 @@ const cashModule = {
                     }
                 }
                 
-                dataManager.data.settings.modalAwal = 0; // Reset setelah diproses
+                dataManager.data.settings.modalAwal = 0;
                 dataManager.save();
             }
         }
@@ -82,24 +145,6 @@ const cashModule = {
         
         if (dataManager.data.dailyClosing.length > 30) {
             dataManager.data.dailyClosing = dataManager.data.dailyClosing.slice(-30);
-        }
-    },
-
-    ensureCashInitialized() {
-        if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
-            let currentCash = dataManager.data.settings.currentCash;
-            
-            if (typeof currentCash !== 'number' || isNaN(currentCash)) {
-                console.log('[Cash] Initializing currentCash from invalid value:', currentCash);
-                currentCash = this.calculateCashFromTransactions();
-                dataManager.data.settings.currentCash = currentCash;
-                dataManager.save();
-                console.log('[Cash] currentCash initialized to:', currentCash);
-            }
-            
-            if (typeof dataManager.data.settings.modalAwal !== 'number' || isNaN(dataManager.data.settings.modalAwal)) {
-                dataManager.data.settings.modalAwal = 0;
-            }
         }
     },
 
@@ -139,7 +184,6 @@ const cashModule = {
         const periodStats = this.calculatePeriodStats(startDate, endDate);
         const dateRangeText = this.getDateRangeText(startDate, endDate);
         
-        // Cek konsistensi data
         const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
         const calculatedCash = this.calculateCashFromTransactions();
         const selisih = currentCash - calculatedCash;
@@ -218,7 +262,6 @@ const cashModule = {
                         </div>
                     </div>
                     
-                    <!-- Breakdown laba -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0;">
                         <div style="text-align: center;">
                             <div style="font-size: 11px; color: #9c27b0; font-weight: 600; margin-bottom: 4px;">💜 Top Up</div>
@@ -349,18 +392,15 @@ const cashModule = {
             </div>
         `;
         
-        // Set default dates for custom filter
         const todayStr = new Date().toISOString().split('T')[0];
         const startDateInput = document.getElementById('filterStartDate');
         const endDateInput = document.getElementById('filterEndDate');
         if (startDateInput) startDateInput.value = todayStr;
         if (endDateInput) endDateInput.value = todayStr;
         
-        // Set filter dropdown ke nilai yang tersimpan
         const filterSelect = document.getElementById('filterPreset');
         if (filterSelect) filterSelect.value = this.filterState.preset;
         
-        // Show/hide custom date range
         const customRange = document.getElementById('customDateRange');
         if (customRange) {
             customRange.style.display = this.filterState.preset === 'custom' ? 'flex' : 'none';
@@ -373,17 +413,14 @@ const cashModule = {
             return tDate >= startDate && tDate <= endDate;
         });
         
-        // Kas Masuk: semua yang masuk ke kas (in, modal_in, topup)
         const kasMasuk = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        // Kas Keluar: semua yang keluar dari kas
         const kasKeluar = transactions
             .filter(t => t.type === 'out')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        // LABA: HANYA dari Top Up dan Tarik Tunai (admin fee)
         const labaTopUp = transactions
             .filter(t => t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
@@ -394,7 +431,6 @@ const cashModule = {
         
         const laba = labaTopUp + labaTarikTunai;
         
-        // Modal masuk (untuk ditampilkan terpisah, tidak masuk laba)
         const modalMasuk = transactions
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -857,6 +893,23 @@ const cashModule = {
     },
     
     openModalAwal() {
+        // ✅ Cek apakah sudah ada modal hari ini
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        const existingModal = dataManager.data.cashTransactions.find(t => {
+            if (t.type !== 'modal_in') return false;
+            const tDate = new Date(t.date);
+            tDate.setHours(0,0,0,0);
+            return tDate.getTime() === today.getTime();
+        });
+        
+        if (existingModal) {
+            if (!confirm(`⚠️ Sudah ada modal hari ini: Rp ${utils.formatNumber(existingModal.amount)}\n\nInput modal lagi akan menambah kas. Lanjutkan?`)) {
+                return;
+            }
+        }
+        
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="modalAwalModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
                 <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
@@ -868,7 +921,12 @@ const cashModule = {
                     <div style="padding: 24px;">
                         <div style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
                             <div style="font-weight: 600; color: #f57f17; margin-bottom: 4px; font-size: 14px;">📌 Modal Awal Shift</div>
-                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Modal akan menggantikan/menjadi dasar kas saat ini.<br><strong>Tidak masuk ke perhitungan laba.</strong></div>
+                            <div style="color: #666; font-size: 13px; line-height: 1.5;">
+                                ${existingModal ? 
+                                    '⚠️ <strong>PERHATIAN:</strong> Sudah ada modal hari ini. Input baru akan menambah kas.' : 
+                                    'Modal akan menjadi dasar kas saat ini.<br><strong>Tidak masuk ke perhitungan laba.</strong>'
+                                }
+                            </div>
                         </div>
 
                         <div class="form-group" style="margin-bottom: 20px;">
@@ -883,7 +941,9 @@ const cashModule = {
                         
                         <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
                             <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
-                            <button class="btn btn-warning" onclick="cashModule.saveModalAwal()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #ffc107; color: #333; font-weight: 600; cursor: pointer; font-size: 15px;">Simpan Modal</button>
+                            <button class="btn btn-warning" onclick="cashModule.saveModalAwal()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #ffc107; color: #333; font-weight: 600; cursor: pointer; font-size: 15px;">
+                                ${existingModal ? 'Tambah Modal' : 'Simpan Modal'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -891,7 +951,7 @@ const cashModule = {
         `);
     },
     
-    // ✅ PERBAIKAN UTAMA: saveModalAwal - Set kas ke modal, bukan tambah
+    // ✅ PERBAIKAN UTAMA: saveModalAwal dengan proteksi duplikat
     saveModalAwal() {
         const amount = parseInt(document.getElementById('modalAwalAmount').value) || 0;
         const note = document.getElementById('modalAwalNote').value || 'Modal Awal Shift';
@@ -901,21 +961,37 @@ const cashModule = {
             return;
         }
         
-        // ✅ PERBAIKAN: Set currentCash ke modal (bukan ditambah!)
-        // Ini adalah SETTING modal awal, bukan penambahan kas
-        dataManager.data.settings.currentCash = amount;
+        // ✅ Cek apakah ini modal pertama hari ini atau tambahan
+        const today = new Date();
+        today.setHours(0,0,0,0);
         
-        // Simpan modalAwal untuk day change detection
-        dataManager.data.settings.modalAwal = amount;
+        const existingModal = dataManager.data.cashTransactions.find(t => {
+            if (t.type !== 'modal_in') return false;
+            const tDate = new Date(t.date);
+            tDate.setHours(0,0,0,0);
+            return tDate.getTime() === today.getTime();
+        });
         
-        // Catat transaksi modal (untuk history saja, tidak mempengaruhi perhitungan kas lagi)
+        if (existingModal) {
+            // ✅ Jika sudah ada modal, ini adalah TAMBAHAN modal (bukan set ulang)
+            let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+            dataManager.data.settings.currentCash = currentCash + amount;
+            app.showToast(`✅ Tambahan modal Rp ${utils.formatNumber(amount)}. Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
+        } else {
+            // ✅ Jika belum ada modal, ini adalah SETTING modal awal
+            dataManager.data.settings.currentCash = amount;
+            dataManager.data.settings.modalAwal = amount;
+            app.showToast(`✅ Modal awal Rp ${utils.formatNumber(amount)} tersimpan! Kas diatur ke Rp ${utils.formatNumber(amount)}`);
+        }
+        
+        // Catat transaksi modal (untuk history)
         dataManager.data.cashTransactions.push({
             id: Date.now(),
             date: new Date().toISOString(),
             type: 'modal_in',
             amount: amount,
             category: 'modal_awal',
-            note: note
+            note: existingModal ? `${note} (Tambahan)` : note
         });
         
         dataManager.save();
@@ -923,7 +999,6 @@ const cashModule = {
         this.closeModal('modalAwalModal');
         this.renderHTML();
         this.renderTransactions();
-        app.showToast(`Modal Awal Rp ${utils.formatNumber(amount)} tersimpan! Kas diatur ke Rp ${utils.formatNumber(amount)}`);
     },
     
     openTopUp() {
