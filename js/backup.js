@@ -634,7 +634,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE SHEETS
+    // GOOGLE SHEETS - FIXED METHODS
     // ============================================
 
     checkNewDeviceGAS() {
@@ -668,25 +668,40 @@ const backupModule = {
             timestamp: new Date().toISOString()
         };
         
+        // FIX: Use text/plain to avoid CORS preflight
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            headers: { 
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
             body: JSON.stringify(payload)
         })
-        .then(r => r.json())
+        .then(async (r) => {
+            // FIX: Check response status before parsing
+            if (!r.ok) {
+                const text = await r.text();
+                throw new Error(`HTTP ${r.status}: ${text}`);
+            }
+            return r.json();
+        })
         .then(result => {
             if (result?.success) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
                 if (!silent) this.showToast('✅ Upload berhasil!');
                 this.updateSyncStatus('Synced');
+                this.pendingSync = false;
                 return result;
             } else {
                 throw new Error(result?.message || 'Upload failed');
             }
         })
         .catch((err) => {
+            console.error('[GAS Upload Error]', err);
+            this.pendingSync = true;
+            if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
+            // Try JSONP fallback for CORS issues
             return this.uploadGAS_JSONP(payload, silent);
         });
     },
@@ -696,36 +711,50 @@ const backupModule = {
             const cbName = 'gas_cb_' + Date.now();
             const jsonStr = JSON.stringify(payload);
             
+            // FIX: Check data size limit
             if (jsonStr.length > 8000) {
-                reject(new Error('Data terlalu besar'));
+                if (!silent) this.showToast('❌ Data terlalu besar untuk JSONP');
+                reject(new Error('Data too large for JSONP'));
                 return;
             }
             
+            // FIX: Better cleanup and error handling
+            const cleanup = () => {
+                if (window[cbName]) delete window[cbName];
+                if (script && script.parentNode) script.parentNode.removeChild(script);
+                clearTimeout(timeout);
+            };
+            
             window[cbName] = (result) => {
+                cleanup();
                 if (result?.success) {
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                    if (!silent) this.showToast('✅ Upload berhasil!');
+                    if (!silent) this.showToast('✅ Upload berhasil (JSONP)!');
+                    this.updateSyncStatus('Synced');
+                    this.pendingSync = false;
                     resolve(result);
                 } else {
-                    reject(new Error(result?.message || 'Upload failed'));
+                    reject(new Error(result?.message || 'JSONP Upload failed'));
                 }
-                delete window[cbName];
             };
             
             const script = document.createElement('script');
             script.src = `${this.gasUrl}?callback=${cbName}&data=${encodeURIComponent(jsonStr)}`;
+            
+            // FIX: Add error handler for script load failure
             script.onerror = () => {
-                delete window[cbName];
-                reject(new Error('JSONP failed'));
+                cleanup();
+                reject(new Error('JSONP script failed to load'));
             };
             
             document.head.appendChild(script);
             
-            setTimeout(() => {
-                delete window[cbName];
-                reject(new Error('Timeout'));
-            }, 15000);
+            // FIX: Longer timeout for slow connections
+            const timeout = setTimeout(() => {
+                cleanup();
+                reject(new Error('JSONP timeout'));
+            }, 20000);
         });
     },
 
@@ -743,33 +772,63 @@ const backupModule = {
         
         if (!silent) this.showToast('⬇️ Mengunduh dari Google Sheets...');
         
-        return fetch(`${this.gasUrl}?action=restore&_t=${Date.now()}`)
-            .then(r => r.json())
-            .then(result => this.handleGASDownload(result, silent))
-            .catch(() => this.downloadGAS_JSONP(silent));
+        // FIX: Add cache-buster and proper headers
+        const url = `${this.gasUrl}?action=restore&_t=${Date.now()}&_=${Math.random()}`;
+        
+        return fetch(url, {
+            method: 'GET',
+            mode: 'cors',
+            headers: {
+                'Accept': 'application/json'
+            }
+        })
+        .then(async (r) => {
+            // FIX: Check response status
+            if (!r.ok) {
+                const text = await r.text();
+                throw new Error(`HTTP ${r.status}: ${text}`);
+            }
+            return r.json();
+        })
+        .then(result => this.handleGASDownload(result, silent))
+        .catch((err) => {
+            console.error('[GAS Download Error]', err);
+            // Try JSONP fallback
+            return this.downloadGAS_JSONP(silent);
+        });
     },
 
     downloadGAS_JSONP(silent) {
         return new Promise((resolve, reject) => {
             const cbName = 'gas_dl_' + Date.now();
             
+            const cleanup = () => {
+                if (window[cbName]) delete window[cbName];
+                if (script && script.parentNode) script.parentNode.removeChild(script);
+                clearTimeout(timeout);
+            };
+            
             window[cbName] = (result) => {
-                this.handleGASDownload(result, silent);
-                delete window[cbName];
-                resolve(result);
+                cleanup();
+                this.handleGASDownload(result, silent)
+                    .then(resolve)
+                    .catch(reject);
             };
             
             const script = document.createElement('script');
             script.src = `${this.gasUrl}?action=restore&callback=${cbName}&_t=${Date.now()}`;
+            
             script.onerror = () => {
-                delete window[cbName];
+                cleanup();
+                if (!silent) this.showToast('❌ Download gagal: CORS/Network error');
                 reject(new Error('Download failed'));
             };
             
             document.head.appendChild(script);
             
-            setTimeout(() => {
-                delete window[cbName];
+            const timeout = setTimeout(() => {
+                cleanup();
+                if (!silent) this.showToast('❌ Download timeout');
                 reject(new Error('Timeout'));
             }, 20000);
         });
@@ -785,15 +844,16 @@ const backupModule = {
                 this.showToast('✅ Download berhasil! Reload...');
                 setTimeout(() => location.reload(), 1500);
             }
-            return result;
+            return Promise.resolve(result);
         } else {
-            if (!silent) this.showToast('❌ Download gagal: ' + (result?.message || 'Invalid data'));
-            throw new Error('Invalid data');
+            const msg = result?.message || 'Invalid data structure';
+            if (!silent) this.showToast('❌ Download gagal: ' + msg);
+            return Promise.reject(new Error(msg));
         }
     },
 
     // ============================================
-    // GOOGLE APPS SCRIPT GENERATOR
+    // GOOGLE APPS SCRIPT GENERATOR - FIXED VERSION
     // ============================================
 
     showGASGenerator() {
@@ -820,42 +880,61 @@ const backupModule = {
   if (action === 'restore') {
     const data = getData();
     const response = { success: true, data: data };
-    return jsonpResponse(response, callback);
+    
+    if (callback) {
+      // JSONP response
+      const output = ContentService.createTextOutput(callback + '(' + JSON.stringify(response) + ')');
+      output.setMimeType(ContentService.MimeType.JAVASCRIPT);
+      return output;
+    }
+    
+    // Regular JSON response
+    const output = ContentService.createTextOutput(JSON.stringify(response));
+    output.setMimeType(ContentService.MimeType.JSON);
+    return output;
   }
   
-  return jsonResponse({ status: 'ok', message: 'Hifzi Cell GAS Ready' });
+  return ContentService.createTextOutput(JSON.stringify({ status: 'ok', message: 'Hifzi Cell GAS Ready' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// FIX: Handle CORS preflight requests
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   try {
-    const params = JSON.parse(e.postData.contents);
+    // FIX: Handle text/plain content type properly
+    let params;
+    if (e.postData && e.postData.contents) {
+      params = JSON.parse(e.postData.contents);
+    } else {
+      throw new Error('No post data');
+    }
+    
     const action = params.action;
     
     if (action === 'sync') {
       saveData(params.data);
-      return jsonResponse({ success: true, message: 'Data saved' });
+      return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data saved' }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
     
     if (action === 'reset') {
       clearData();
-      return jsonResponse({ success: true, message: 'Data cleared' });
+      return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data cleared' }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
     
-    return jsonResponse({ success: false, message: 'Unknown action' });
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unknown action' }))
+      .setMimeType(ContentService.MimeType.JSON);
+      
   } catch (err) {
-    return jsonResponse({ success: false, message: err.toString() });
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
-}
-
-// JSONP untuk CORS
-function jsonpResponse(data, callback) {
-  const output = callback + '(' + JSON.stringify(data) + ')';
-  return ContentService.createTextOutput(output).setMimeType(ContentService.MimeType.JAVASCRIPT);
-}
-
-function jsonResponse(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 // Simpan data ke Spreadsheet
@@ -869,7 +948,7 @@ function saveData(data) {
   sheet.getRange(1, 2).setValue(new Date());
   
   // Log
-  logAction('SYNC', data.deviceId, data.deviceName);
+  logAction('SYNC', data._backupMeta?.deviceId || 'unknown', data._backupMeta?.deviceName || 'unknown');
 }
 
 // Ambil data dari Spreadsheet
