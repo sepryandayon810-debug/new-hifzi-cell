@@ -587,10 +587,10 @@ const debtModule = {
     },
 
     // ==========================================
-    // BLUETOOTH PRINT METHODS
+    // BLUETOOTH PRINT METHODS (MERGED & IMPROVED)
     // ==========================================
     
-    // Print semua hutang customer
+    // Print semua hutang customer - dengan auto-detect Bluetooth
     printCustomerDebts(customerName) {
         const customerDebts = this.debts.filter(d => d.customerName === customerName);
         
@@ -599,13 +599,24 @@ const debtModule = {
             return;
         }
 
-        // Coba print via Bluetooth
-        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
-            const grouped = this.getGroupedDebts().find(g => g.customerName === customerName);
-            if (grouped) {
-                // Set selectedDebt untuk bluetoothModule
-                this.selectedDebt = customerDebts[0];
+        // Set selectedDebt untuk bluetoothModule (gunakan hutang pertama sebagai representasi)
+        this.selectedDebt = customerDebts[0];
+
+        // Coba print via Bluetooth jika tersedia dan terhubung
+        if (typeof bluetoothModule !== 'undefined') {
+            if (bluetoothModule.isConnected) {
                 bluetoothModule.printCurrentDebt();
+                return;
+            }
+            
+            // Jika ada device tersimpan tapi belum connect, coba reconnect
+            if (bluetoothModule.lastDevice) {
+                bluetoothModule.reconnect().then(() => {
+                    bluetoothModule.printCurrentDebt();
+                }).catch(() => {
+                    // Fallback ke window print
+                    this.printCustomerDebtsWindow(customerName);
+                });
                 return;
             }
         }
@@ -614,7 +625,7 @@ const debtModule = {
         this.printCustomerDebtsWindow(customerName);
     },
 
-    // Print single debt
+    // Print single debt - dengan auto-detect Bluetooth
     printSingleDebt(debtId) {
         const debt = this.debts.find(d => d.id === debtId);
         if (!debt) {
@@ -624,10 +635,23 @@ const debtModule = {
 
         this.selectedDebt = debt;
 
-        // Coba print via Bluetooth
-        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
-            bluetoothModule.printCurrentDebt();
-            return;
+        // Coba print via Bluetooth jika tersedia dan terhubung
+        if (typeof bluetoothModule !== 'undefined') {
+            if (bluetoothModule.isConnected) {
+                bluetoothModule.printCurrentDebt();
+                return;
+            }
+            
+            // Jika ada device tersimpan tapi belum connect, coba reconnect
+            if (bluetoothModule.lastDevice) {
+                bluetoothModule.reconnect().then(() => {
+                    bluetoothModule.printCurrentDebt();
+                }).catch(() => {
+                    // Fallback ke window print
+                    this.printSingleDebtWindow(debt);
+                });
+                return;
+            }
         }
         
         // Fallback ke window print
