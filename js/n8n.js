@@ -1,10 +1,10 @@
 /**
- * N8N Module - Data Management (Cari, Edit, Tambah, Hapus)
+ * n8n Module - Data Management (Cari, Edit, Tambah, Hapus)
  * Integrasi dengan Google Sheets via Google Apps Script
  * Model sama seperti TelegramModule.SaldoModule
  */
 
-const N8NModule = {
+const n8nModule = {
     // Konfigurasi default (sama dengan bot Telegram n8n Anda)
     config: {
         sheetId: '1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE',
@@ -105,7 +105,6 @@ function searchData(sheet, query) {
 }
 
 function addData(sheet, nama, nomor) {
-  // Check if exists
   const data = sheet.getDataRange().getValues();
   const namaUpper = nama.toUpperCase();
 
@@ -176,7 +175,7 @@ function deleteData(sheet, nama) {
      */
     init() {
         this.loadConfig();
-        console.log('[N8N] Module initialized');
+        console.log('[n8n] Module initialized');
     },
 
     /**
@@ -189,7 +188,7 @@ function deleteData(sheet, nama) {
                 this.config = { ...this.config, ...JSON.parse(saved) };
             }
         } catch (e) {
-            console.error('[N8N] Error loading config:', e);
+            console.error('[n8n] Error loading config:', e);
         }
     },
 
@@ -200,7 +199,7 @@ function deleteData(sheet, nama) {
         try {
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
         } catch (e) {
-            console.error('[N8N] Error saving config:', e);
+            console.error('[n8n] Error saving config:', e);
         }
     },
 
@@ -241,7 +240,7 @@ function deleteData(sheet, nama) {
 
             return await response.json();
         } catch (error) {
-            console.error('[N8N] API Error:', error);
+            console.error('[n8n] API Error:', error);
             throw error;
         }
     },
@@ -252,7 +251,7 @@ function deleteData(sheet, nama) {
     renderPage() {
         const container = document.getElementById('mainContent');
         if (!container) {
-            console.error('[N8N] mainContent not found');
+            console.error('[n8n] mainContent not found');
             return;
         }
 
@@ -327,7 +326,7 @@ function deleteData(sheet, nama) {
                         placeholder="${this.getInputPlaceholder()}"
                         value="${this.transaksiAktif ? this.transaksiAktif.inputValue || '' : ''}">
                     <button class="n8n-btn n8n-btn-action ${!validation.valid ? 'disabled' : ''}" 
-                            onclick="N8NModule.executeAction()"
+                            onclick="n8nModule.executeAction()"
                             ${!validation.valid ? 'disabled' : ''}>
                         ${this.getActionButtonText()}
                     </button>
@@ -374,8 +373,8 @@ function deleteData(sheet, nama) {
                     </div>
                 </div>
                 <div class="n8n-actions">
-                    <button class="n8n-btn n8n-btn-primary" onclick="N8NModule.saveConfigFromUI()">💾 Simpan Config</button>
-                    <button class="n8n-btn n8n-btn-secondary" onclick="N8NModule.testConnection()">🔗 Test Koneksi</button>
+                    <button class="n8n-btn n8n-btn-primary" onclick="n8nModule.saveConfigFromUI()">💾 Simpan Config</button>
+                    <button class="n8n-btn n8n-btn-secondary" onclick="n8nModule.testConnection()">🔗 Test Koneksi</button>
                 </div>
                 <div id="n8nTestResult" style="margin-top: 12px;"></div>
             </div>
@@ -387,7 +386,7 @@ function deleteData(sheet, nama) {
                 <div id="n8nGasContainer" style="display: none; margin-top: 16px;">
                     <div class="n8n-gas-header">
                         <span>Code.gs</span>
-                        <button class="n8n-btn-small" onclick="N8NModule.copyGasCode()">📋 Copy</button>
+                        <button class="n8n-btn-small" onclick="n8nModule.copyGasCode()">📋 Copy</button>
                     </div>
                     <pre class="n8n-gas-code" id="n8nGasCode"></pre>
                 </div>
@@ -599,7 +598,7 @@ function deleteData(sheet, nama) {
                     break;
             }
         } catch (error) {
-            console.error('[N8N] Error:', error);
+            console.error('[n8n] Error:', error);
             this.showResult('error', '❌ Error: ' + error.message);
         } finally {
             this.showLoading(false);
@@ -662,7 +661,7 @@ function deleteData(sheet, nama) {
                         <div class="n8n-result-name">${this.escapeHtml(nama)}</div>
                         <div class="n8n-result-phone">${this.escapeHtml(nomor)}</div>
                     </div>
-                    <button class="n8n-result-copy" onclick="N8NModule.copyToClipboard('${this.escapeHtml(nomor)}')">
+                    <button class="n8n-result-copy" onclick="n8nModule.copyToClipboard('${this.escapeHtml(nomor)}')">
                         📋 Copy
                     </button>
                 </div>
@@ -861,9 +860,9 @@ function deleteData(sheet, nama) {
 
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => N8NModule.init());
+    document.addEventListener('DOMContentLoaded', () => n8nModule.init());
 } else {
-    N8NModule.init();
+    n8nModule.init();
 }
 
-console.log('[N8N] Data Management Module loaded - v1.0');
+console.log('[n8n] Data Management Module loaded - v1.0');
