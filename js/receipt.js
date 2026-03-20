@@ -4,13 +4,17 @@ const receiptModule = {
     ocrWorker: null,
     isProcessing: false,
     workerReady: false,
-    currentReceiptData: null, // Untuk tracking data struk yang sedang dibuat
+    currentReceiptData: null,
+    manualFormExpanded: true, // State untuk tracking form manual
 
     init() {
+        // Load state dari localStorage
+        const savedState = localStorage.getItem('receipt_manual_form_expanded');
+        this.manualFormExpanded = savedState !== null ? JSON.parse(savedState) : true;
+
         this.renderHTML();
         setTimeout(() => this.checkAndInitWorker(), 500);
         
-        // Render Bluetooth Control setelah HTML dirender
         setTimeout(() => {
             if (typeof bluetoothModule !== 'undefined') {
                 bluetoothModule.renderBluetoothControl('bluetoothControlReceipt', {
@@ -163,24 +167,87 @@ const receiptModule = {
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
+                <!-- INPUT MANUAL DENGAN TOGGLE -->
+                <div class="card" id="manualInputCard">
+                    <div class="card-header" style="cursor: pointer; user-select: none;" onclick="receiptModule.toggleManualForm()">
                         <span class="card-title">📝 Input Manual</span>
+                        <button class="btn-toggle-form" id="toggleManualBtn" style="
+                            background: none;
+                            border: none;
+                            font-size: 20px;
+                            cursor: pointer;
+                            padding: 5px 10px;
+                            border-radius: 8px;
+                            transition: all 0.3s ease;
+                            color: var(--primary);
+                        ">
+                            ${this.manualFormExpanded ? '▼' : '▶'}
+                        </button>
                     </div>
 
-                    <div class="receipt-type-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; background: #f5f5f5; padding: 5px; border-radius: 12px;">
-                        <button class="receipt-type-tab active" onclick="receiptModule.setType('transfer')" data-type="transfer" style="flex: 1; padding: 12px; border: none; background: white; border-radius: 8px; font-weight: 600; cursor: pointer;">🏦 Transfer</button>
-                        <button class="receipt-type-tab" onclick="receiptModule.setType('tarik_tunai')" data-type="tarik_tunai" style="flex: 1; padding: 12px; border: none; background: transparent; border-radius: 8px; font-weight: 600; cursor: pointer; color: #666;">🏧 Tarik Tunai</button>
-                        <button class="receipt-type-tab" onclick="receiptModule.setType('top_up')" data-type="top_up" style="flex: 1; padding: 12px; border: none; background: transparent; border-radius: 8px; font-weight: 600; cursor: pointer; color: #666;">💜 Top Up</button>
-                    </div>
+                    <div id="manualFormWrapper" style="
+                        overflow: hidden;
+                        transition: max-height 0.4s ease-in-out, opacity 0.3s ease;
+                        max-height: ${this.manualFormExpanded ? '5000px' : '0'};
+                        opacity: ${this.manualFormExpanded ? '1' : '0'};
+                    ">
+                        <div style="padding-top: 15px;">
+                            <div class="receipt-type-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; background: #f5f5f5; padding: 5px; border-radius: 12px;">
+                                <button class="receipt-type-tab active" onclick="receiptModule.setType('transfer')" data-type="transfer" style="flex: 1; padding: 12px; border: none; background: white; border-radius: 8px; font-weight: 600; cursor: pointer;">🏦 Transfer</button>
+                                <button class="receipt-type-tab" onclick="receiptModule.setType('tarik_tunai')" data-type="tarik_tunai" style="flex: 1; padding: 12px; border: none; background: transparent; border-radius: 8px; font-weight: 600; cursor: pointer; color: #666;">🏧 Tarik Tunai</button>
+                                <button class="receipt-type-tab" onclick="receiptModule.setType('top_up')" data-type="top_up" style="flex: 1; padding: 12px; border: none; background: transparent; border-radius: 8px; font-weight: 600; cursor: pointer; color: #666;">💜 Top Up</button>
+                            </div>
 
-                    <div id="receiptFormContainer">${this.renderTransferForm()}</div>
+                            <div id="receiptFormContainer">${this.renderTransferForm()}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
 
         this.setupEventListeners();
         this.updatePreview();
+    },
+
+    // Method baru untuk toggle form manual
+    toggleManualForm() {
+        this.manualFormExpanded = !this.manualFormExpanded;
+        
+        // Simpan ke localStorage
+        localStorage.setItem('receipt_manual_form_expanded', JSON.stringify(this.manualFormExpanded));
+        
+        // Update UI
+        const wrapper = document.getElementById('manualFormWrapper');
+        const btn = document.getElementById('toggleManualBtn');
+        const card = document.getElementById('manualInputCard');
+        
+        if (wrapper && btn) {
+            if (this.manualFormExpanded) {
+                // Expand
+                wrapper.style.maxHeight = '5000px';
+                wrapper.style.opacity = '1';
+                wrapper.style.paddingTop = '15px';
+                btn.textContent = '▼';
+                btn.style.transform = 'rotate(0deg)';
+                if (card) card.style.borderLeft = '4px solid var(--primary)';
+            } else {
+                // Collapse
+                wrapper.style.maxHeight = '0';
+                wrapper.style.opacity = '0';
+                wrapper.style.paddingTop = '0';
+                btn.textContent = '▶';
+                btn.style.transform = 'rotate(-90deg)';
+                if (card) card.style.borderLeft = '4px solid #ccc';
+            }
+        }
+        
+        // Efek ripple/feedback visual
+        if (btn) {
+            btn.style.background = 'rgba(67, 97, 238, 0.1)';
+            setTimeout(() => {
+                btn.style.background = 'none';
+            }, 200);
+        }
     },
 
     setupEventListeners() {
@@ -313,12 +380,10 @@ const receiptModule = {
         const normalized = text.toLowerCase();
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // DETEKSI PROVIDER DENGAN KONTEKS
         let senderProvider = '';
         let receiverProvider = '';
         let type = 'transfer';
 
-        // Definisi semua provider dengan flag 'g' untuk matchAll
         const allProviders = [
             { pattern: /\b(bri|bank\s*bri|bri\s*virtual|bri\s*mobile)\b/gi, name: 'BRI', category: 'bank' },
             { pattern: /\b(bca|bank\s*central\s*asia|bca\s*mobile|mybca)\b/gi, name: 'BCA', category: 'bank' },
@@ -335,7 +400,6 @@ const receiptModule = {
             { pattern: /\b(dana)\b/gi, name: 'DANA', category: 'wallet' }
         ];
 
-        // Cari semua provider yang muncul dalam teks beserta posisinya
         const foundProviders = [];
         for (const prov of allProviders) {
             const matches = [...text.matchAll(prov.pattern)];
@@ -349,19 +413,16 @@ const receiptModule = {
             }
         }
 
-        // Urutkan berdasarkan posisi dalam teks
         foundProviders.sort((a, b) => a.index - b.index);
 
         console.log('Found providers:', foundProviders);
 
-        // Analisis konteks untuk menentukan pengirim vs penerima
         const senderKeywords = ['pengirim', 'dari', 'from', 'sumber', 'debet dari', 'transfer dari'];
         const receiverKeywords = ['penerima', 'ke', 'to', 'tujuan', 'beneficiary', 'kredit ke'];
 
         let senderSectionEnd = -1;
         let receiverSectionStart = -1;
 
-        // Cari posisi section
         for (let i = 0; i < lines.length; i++) {
             const lowerLine = lines[i].toLowerCase();
 
@@ -374,12 +435,10 @@ const receiptModule = {
             }
         }
 
-        // Tentukan provider berdasarkan posisi
         if (foundProviders.length >= 2) {
             const firstProv = foundProviders[0];
             const secondProv = foundProviders[1];
 
-            // Jika ada section info, gunakan itu
             if (senderSectionEnd > 0 && receiverSectionStart > 0) {
                 for (const prov of foundProviders) {
                     const lineIndex = this.findLineIndex(lines, prov.text);
@@ -391,7 +450,6 @@ const receiptModule = {
                 }
             }
 
-            // Jika masih belum ketemu, pakai urutan dan logika
             if (!senderProvider && !receiverProvider) {
                 if (firstProv.category === 'wallet' && secondProv.category === 'bank') {
                     senderProvider = firstProv.name;
@@ -422,7 +480,6 @@ const receiptModule = {
             }
         }
 
-        // Fallback
         if (!senderProvider && !receiverProvider) {
             if (/\b(dana)\b/i.test(text)) {
                 receiverProvider = 'DANA';
@@ -432,7 +489,6 @@ const receiptModule = {
 
         console.log('Detected:', { senderProvider, receiverProvider, type });
 
-        // Date & Time
         let date = new Date().toISOString().split('T')[0];
         let time = new Date().toTimeString().slice(0, 5);
 
@@ -446,7 +502,6 @@ const receiptModule = {
             time = `${timeMatch[1].padStart(2,'0')}:${timeMatch[2]}`;
         }
 
-        // AMOUNTS
         let nominal = 0;
         let admin = 0;
         let total = 0;
@@ -488,7 +543,6 @@ const receiptModule = {
             }
         }
 
-        // Names dengan konteks
         let senderName = '';
         let receiverName = '';
         let senderAccount = '';
@@ -523,7 +577,6 @@ const receiptModule = {
             receiverName = receiverProvider;
         }
 
-        // Phone untuk e-wallet
         if (type === 'top_up' || senderProvider === 'LINKAJA' || senderProvider === 'GOPAY' || senderProvider === 'OVO') {
             const phones = [...text.matchAll(/\b(08\d{8,12})\b/g)];
             const uniquePhones = [...new Set(phones.map(m => m[1]))];
@@ -537,12 +590,10 @@ const receiptModule = {
             }
         }
 
-        // Reference
         let reference = '';
         const refMatch = text.match(/(?:ref|no|reference)[\.:\s]+([A-Z0-9]{5,})/i);
         if (refMatch) reference = refMatch[1];
 
-        // Confidence
         let confidence = 0;
         if (nominal > 0) confidence += 30;
         if (senderName || receiverName) confidence += 20;
@@ -682,6 +733,11 @@ const receiptModule = {
         }
 
         const data = this.scannedData;
+
+        // Auto-expand form jika sedang collapse
+        if (!this.manualFormExpanded) {
+            this.toggleManualForm();
+        }
 
         if (data.type !== this.receiptType) {
             document.querySelectorAll('.receipt-type-tab').forEach(tab => {
@@ -1049,20 +1105,13 @@ const receiptModule = {
         if (elTot) elTot.textContent = 'Rp ' + this.formatNumber(total);
     },
 
-    // ==========================================
-    // BLUETOOTH PRINT METHODS (IMPROVED)
-    // ==========================================
-
-    // Print via Bluetooth (dipanggil dari tombol Print BT atau bluetoothModule)
     async printBluetooth() {
-        // Cek apakah bluetoothModule tersedia dan terhubung
         if (typeof bluetoothModule !== 'undefined') {
             if (bluetoothModule.isConnected) {
                 await bluetoothModule.printCurrentReceipt();
                 return;
             }
             
-            // Jika ada device tersimpan tapi belum connect, coba reconnect
             if (bluetoothModule.lastDevice) {
                 try {
                     await bluetoothModule.reconnect();
@@ -1074,7 +1123,6 @@ const receiptModule = {
             }
         }
 
-        // Fallback ke window print
         app.showToast('⚠️ Printer Bluetooth tidak terhubung, menggunakan print window...');
         switch(this.receiptType) {
             case 'transfer':
@@ -1089,7 +1137,6 @@ const receiptModule = {
         }
     },
 
-    // Method untuk dipanggil dari bluetoothModule
     getCurrentReceiptForPrint() {
         const header = dataManager.data.settings.receiptHeader || {};
         
