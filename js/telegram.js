@@ -43,6 +43,7 @@ const TelegramModule = (function() {
     
     let currentTimeFilter = 'month'; // Default: bulan ini
     let customDateRange = { start: null, end: null };
+    let isTopupListVisible = true; // Default: tampilan terbuka
     
     const TIME_FILTERS = {
         today: { label: 'Hari Ini', icon: '📅' },
@@ -292,8 +293,12 @@ function jsonResponse(data) {
             
             const savedCustomRange = localStorage.getItem('tg_custom_range');
             if (savedCustomRange) customDateRange = JSON.parse(savedCustomRange);
+            
+            // Load visibility state
+            const savedVisibility = localStorage.getItem('tg_topup_list_visible');
+            if (savedVisibility !== null) isTopupListVisible = JSON.parse(savedVisibility);
         } catch (e) {
-            console.error('[Filter] Error loading time filter:', e);
+            console.error('[Filter] Error loading settings:', e);
         }
     }
     
@@ -306,6 +311,7 @@ function jsonResponse(data) {
             // TAMBAHAN: Save filter settings
             localStorage.setItem('tg_time_filter', currentTimeFilter);
             localStorage.setItem('tg_custom_range', JSON.stringify(customDateRange));
+            localStorage.setItem('tg_topup_list_visible', JSON.stringify(isTopupListVisible));
         } catch (e) {
             console.error('[Telegram+Saldo] Error saving:', e);
         }
@@ -1223,37 +1229,136 @@ function jsonResponse(data) {
         `;
     }
     
+    // ==========================================
+    // PERBAIKAN: RENDER DAFTAR TOPUP DENGAN FILTER WAKTU & TOGGLE
+    // ==========================================
+    
     function renderTopupList() {
-        const filtered = getFilteredTopups();
+        // Filter berdasarkan waktu terlebih dahulu
+        const timeFiltered = getFilteredByTime();
         
-        let html = `
-            <div class="tg-list-header">
-                <h3>📨 Daftar Topup (${filtered.length})</h3>
-                <div class="tg-filters">
-                    <button class="tg-filter ${currentFilter === 'all' ? 'active' : ''}" onclick="TelegramModule.setFilter('all')">Semua</button>
-                    <button class="tg-filter ${currentFilter === 'pending' ? 'active' : ''}" onclick="TelegramModule.setFilter('pending')">Pending</button>
-                    <button class="tg-filter ${currentFilter === 'confirmed' ? 'active' : ''}" onclick="TelegramModule.setFilter('confirmed')">Dikonfirmasi</button>
-                    <button class="tg-filter ${currentFilter === 'rejected' ? 'active' : ''}" onclick="TelegramModule.setFilter('rejected')">Ditolak</button>
-                </div>
-            </div>
-            <div class="tg-list">
-        `;
-        
-        if (filtered.length === 0) {
-            html += `
-                <div class="tg-empty">
-                    <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
-                    <div>Belum ada data topup</div>
-                </div>
-            `;
-        } else {
-            filtered.forEach(t => {
-                html += renderTopupItem(t);
-            });
+        // Kemudian filter berdasarkan status (all, pending, confirmed, rejected)
+        let statusFiltered = timeFiltered;
+        if (currentFilter !== 'all') {
+            statusFiltered = timeFiltered.filter(t => t.status === currentFilter);
         }
         
-        html += '</div>';
+        // Sort by timestamp descending
+        const filtered = statusFiltered.sort((a, b) => b.timestamp - a.timestamp);
+        
+        const arrowIcon = isTopupListVisible ? '🔽' : '▶️';
+        const containerDisplay = isTopupListVisible ? 'block' : 'none';
+        
+        let html = `
+            <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 24px; 
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                
+                <!-- Header dengan Toggle -->
+                <div style="display: flex; justify-content: space-between; align-items: center; 
+                            cursor: pointer; user-select: none;" 
+                     onclick="TelegramModule.toggleTopupList()">
+                    <h3 style="margin: 0; color: #333; display: flex; align-items: center; gap: 8px; font-size: 18px;">
+                        📨 Daftar Topup 
+                        <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                     color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px;">
+                            ${filtered.length}
+                        </span>
+                        <span style="font-size: 13px; color: #666; font-weight: 400; margin-left: 8px;">
+                            (${getFilterLabel()})
+                        </span>
+                    </h3>
+                    <button style="background: #f5f5f5; border: none; padding: 8px 16px; border-radius: 8px; 
+                                   cursor: pointer; font-size: 16px; transition: all 0.3s;
+                                   display: flex; align-items: center; gap: 6px;"
+                            onmouseover="this.style.background='#e0e0e0'"
+                            onmouseout="this.style.background='#f5f5f5'">
+                        <span id="topupToggleIcon">${arrowIcon}</span>
+                        <span style="font-size: 12px; color: #666; font-weight: 500;">
+                            ${isTopupListVisible ? 'Sembunyikan' : 'Tampilkan'}
+                        </span>
+                    </button>
+                </div>
+                
+                <!-- Filter Status -->
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e0e0e0; 
+                            display: ${containerDisplay}; animation: fadeIn 0.3s ease;" id="topupFilters">
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <span style="font-size: 13px; color: #666; font-weight: 500;">Filter Status:</span>
+                        <button class="tg-filter ${currentFilter === 'all' ? 'active' : ''}" 
+                                onclick="event.stopPropagation(); TelegramModule.setFilter('all')"
+                                style="padding: 6px 14px; border: 2px solid ${currentFilter === 'all' ? '#667eea' : '#e0e0e0'}; 
+                                       background: ${currentFilter === 'all' ? '#667eea' : 'white'}; 
+                                       color: ${currentFilter === 'all' ? 'white' : '#666'}; 
+                                       border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                            Semua
+                        </button>
+                        <button class="tg-filter ${currentFilter === 'pending' ? 'active' : ''}" 
+                                onclick="event.stopPropagation(); TelegramModule.setFilter('pending')"
+                                style="padding: 6px 14px; border: 2px solid ${currentFilter === 'pending' ? '#ff9800' : '#e0e0e0'}; 
+                                       background: ${currentFilter === 'pending' ? '#ff9800' : 'white'}; 
+                                       color: ${currentFilter === 'pending' ? 'white' : '#666'}; 
+                                       border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                            Pending
+                        </button>
+                        <button class="tg-filter ${currentFilter === 'confirmed' ? 'active' : ''}" 
+                                onclick="event.stopPropagation(); TelegramModule.setFilter('confirmed')"
+                                style="padding: 6px 14px; border: 2px solid ${currentFilter === 'confirmed' ? '#4caf50' : '#e0e0e0'}; 
+                                       background: ${currentFilter === 'confirmed' ? '#4caf50' : 'white'}; 
+                                       color: ${currentFilter === 'confirmed' ? 'white' : '#666'}; 
+                                       border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                            Dikonfirmasi
+                        </button>
+                        <button class="tg-filter ${currentFilter === 'rejected' ? 'active' : ''}" 
+                                onclick="event.stopPropagation(); TelegramModule.setFilter('rejected')"
+                                style="padding: 6px 14px; border: 2px solid ${currentFilter === 'rejected' ? '#f44336' : '#e0e0e0'}; 
+                                       background: ${currentFilter === 'rejected' ? '#f44336' : 'white'}; 
+                                       color: ${currentFilter === 'rejected' ? 'white' : '#666'}; 
+                                       border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                            Ditolak
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- List Container -->
+                <div style="display: ${containerDisplay}; margin-top: 16px; animation: fadeIn 0.3s ease;" id="topupListContainer">
+                    ${renderTopupItems(filtered)}
+                </div>
+                
+                <!-- Empty State (hanya tampil jika visible dan kosong) -->
+                ${isTopupListVisible && filtered.length === 0 ? `
+                    <div style="text-align: center; padding: 40px 20px; color: #999; animation: fadeIn 0.3s ease;">
+                        <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
+                        <div style="font-size: 16px; font-weight: 500; color: #666; margin-bottom: 4px;">
+                            Tidak ada data topup
+                        </div>
+                        <div style="font-size: 13px; color: #999;">
+                            untuk periode ${getFilterLabel().toLowerCase()}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+            
+            <style>
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            </style>
+        `;
+        
         return html;
+    }
+    
+    function renderTopupItems(items) {
+        if (items.length === 0) {
+            return '';
+        }
+        
+        return `
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                ${items.map(t => renderTopupItem(t)).join('')}
+            </div>
+        `;
     }
     
     function renderTopupItem(t) {
@@ -1264,52 +1369,77 @@ function jsonResponse(data) {
         
         let statusClass = '';
         let statusText = '';
+        let statusBg = '';
         let actions = '';
         
         if (t.status === 'confirmed') {
             statusClass = 'confirmed';
             statusText = '✅ Dikonfirmasi';
+            statusBg = '#e8f5e9';
         } else if (t.status === 'rejected') {
             statusClass = 'rejected';
             statusText = '❌ Ditolak';
+            statusBg = '#ffebee';
         } else {
             statusClass = 'pending';
             statusText = '⏳ Pending';
+            statusBg = '#fff3e0';
             actions = `
-                <button class="tg-btn-small tg-btn-confirm" onclick="TelegramModule.confirm('${t.id}')">Konfirmasi</button>
-                <button class="tg-btn-small tg-btn-reject" onclick="TelegramModule.reject('${t.id}')">Tolak</button>
+                <button onclick="event.stopPropagation(); TelegramModule.confirm('${t.id}')" 
+                        style="background: #4caf50; color: white; border: none; padding: 6px 12px; 
+                               border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                    Konfirmasi
+                </button>
+                <button onclick="event.stopPropagation(); TelegramModule.reject('${t.id}')" 
+                        style="background: #f44336; color: white; border: none; padding: 6px 12px; 
+                               border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                    Tolak
+                </button>
             `;
         }
         
-        // TAMBAHAN: Tombol Hapus untuk SEMUA item
+        // Tombol Hapus untuk SEMUA item
         const deleteButton = `
-            <button class="tg-btn-small tg-btn-delete" onclick="TelegramModule.deleteTopup('${t.id}')" 
-                    style="background: #9e9e9e; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 4px;"
-                    onmouseover="this.style.background='#757575'"
-                    onmouseout="this.style.background='#9e9e9e'"
+            <button onclick="event.stopPropagation(); TelegramModule.deleteTopup('${t.id}')" 
+                    style="background: #9e9e9e; color: white; border: none; padding: 6px 12px; 
+                           border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;"
                     title="Hapus dari daftar ini (tidak menghapus data di Sheet)">
                 🗑️ Hapus
             </button>
         `;
         
         return `
-            <div class="tg-item ${statusClass}" data-id="${t.id}">
-                <div class="tg-item-main">
-                    <div class="tg-item-amount">
-                        ${formatMoney(t.amount)} 
-                        <span style="font-size: 12px; color: #4caf50;">${isSynced}</span>
+            <div style="background: ${statusBg}; border: 2px solid ${statusBg.replace('0.1', '1').replace('e8f5e9', '#4caf50').replace('ffebee', '#f44336').replace('fff3e0', '#ff9800')}; 
+                        border-radius: 12px; padding: 16px; transition: all 0.3s;"
+                 onmouseover="this.style.transform='translateX(4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'"
+                 onmouseout="this.style.transform='translateX(0)'; this.style.boxShadow='none'">
+                
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                    <div style="flex: 1;">
+                        <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 4px;">
+                            ${formatMoney(t.amount)} 
+                            <span style="font-size: 12px; color: #4caf50; margin-left: 4px;">${isSynced}</span>
+                        </div>
+                        <div style="font-size: 13px; color: #666; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                            <span style="font-weight: 500; color: #333;">${escapeHtml(t.sender || 'Unknown')}</span>
+                            <span style="color: #ccc;">•</span>
+                            <span>${escapeHtml(t.method || '-')}</span>
+                            <span style="color: #ccc;">•</span>
+                            <span>${dateStr} ${timeStr}</span>
+                            ${t.sheetRow ? '<span style="color: #ccc;">•</span><span style="color: #2196f3; font-weight: 500;">Row: ' + t.sheetRow + '</span>' : ''}
+                        </div>
                     </div>
-                    <div class="tg-item-meta">
-                        <span>${escapeHtml(t.sender || 'Unknown')}</span>
-                        <span>•</span>
-                        <span>${escapeHtml(t.method || '-')}</span>
-                        <span>•</span>
-                        <span>${dateStr} ${timeStr}</span>
-                        ${t.sheetRow ? '<span>•</span><span style="color: #2196f3;">Row: ' + t.sheetRow + '</span>' : ''}
+                    
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                        <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; 
+                                     background: white; color: ${statusBg.replace('e8f5e9', '#2e7d32').replace('ffebee', '#c62828').replace('fff3e0', '#e65100')};">
+                            ${statusText}
+                        </span>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;">
+                            ${actions}${deleteButton}
+                        </div>
                     </div>
                 </div>
-                <div class="tg-item-status">${statusText}</div>
-                <div class="tg-item-actions">${actions}${deleteButton}</div>
             </div>
         `;
     }
@@ -1507,6 +1637,13 @@ function jsonResponse(data) {
         init: init,
         renderPage: renderPage,
         SaldoModule: SaldoModule,
+        
+        // TAMBAHAN: Toggle visibility daftar topup
+        toggleTopupList: function() {
+            isTopupListVisible = !isTopupListVisible;
+            saveData();
+            renderPage();
+        },
         
         // TAMBAHAN: Filter waktu methods
         setTimeFilter: function(filter) {
