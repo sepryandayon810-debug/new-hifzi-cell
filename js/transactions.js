@@ -5,11 +5,24 @@ const transactionsModule = {
     init() {
         this.renderHTML();
         this.renderList();
+        
+        // Render Bluetooth Control setelah HTML dirender
+        setTimeout(() => {
+            if (typeof bluetoothModule !== 'undefined') {
+                bluetoothModule.renderBluetoothControl('bluetoothControlTransaction', {
+                    context: 'transaction',
+                    showPrintButton: true
+                });
+            }
+        }, 100);
     },
     
     renderHTML() {
         const html = `
             <div class="content-section active" id="transactionsSection">
+                <!-- BLUETOOTH CONTROL PANEL -->
+                <div id="bluetoothControlTransaction"></div>
+                
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">📝 Manajemen Transaksi</span>
@@ -413,6 +426,19 @@ const transactionsModule = {
         if (!this.currentTransaction) return;
         
         const t = this.currentTransaction;
+        
+        // Coba print via Bluetooth dulu jika tersedia
+        if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
+            bluetoothModule.printCurrentTransaction();
+            return;
+        }
+        
+        // Fallback ke window print
+        this.printReceiptWindow(t);
+    },
+    
+    // Print via Window (fallback)
+    printReceiptWindow(t) {
         const header = dataManager.data.settings.receiptHeader || {};
         
         const receiptLines = [
@@ -783,5 +809,15 @@ const transactionsModule = {
         this.renderList();
         
         app.showToast('✅ Transaksi dikembalikan! ' + stockReduced + ' stok dikurangi, kas ditambah.');
+    },
+
+    // ==========================================
+    // BLUETOOTH PRINT METHODS
+    // ==========================================
+    
+    // Method untuk dipanggil dari bluetoothModule
+    getCurrentTransactionForPrint() {
+        if (!this.currentTransaction) return null;
+        return this.currentTransaction;
     }
 };
