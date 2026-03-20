@@ -1,0 +1,785 @@
+/**
+ * ==========================================
+ * BLUETOOTH PRINTER MODULE - HIFZI CELL POS
+ * ==========================================
+ * Integrasi Web Bluetooth API untuk printing
+ * Support: ESC/POS & StarPRNT thermal printers
+ */
+
+const bluetoothModule = {
+    printer: null,
+    isConnected: false,
+    lastDevice: null,
+    language: 'esc-pos',
+    codepageMapping: 'default',
+    
+    // ESC/POS Commands
+    ESC: '\x1B',
+    GS: '\x1D',
+    LF: '\x0A',
+    INIT: '\x1B\x40',
+    ALIGN_LEFT: '\x1B\x61\x00',
+    ALIGN_CENTER: '\x1B\x61\x01',
+    ALIGN_RIGHT: '\x1B\x61\x02',
+    BOLD_ON: '\x1B\x45\x01',
+    BOLD_OFF: '\x1B\x45\x00',
+    DOUBLE_HEIGHT: '\x1B\x21\x10',
+    DOUBLE_WIDTH: '\x1B\x21\x20',
+    NORMAL: '\x1B\x21\x00',
+    CUT: '\x1D\x56\x41\x00',
+    LINE: '================================',
+    DASH: '--------------------------------',
+
+    init() {
+        // Load library dari CDN
+        if (!window.WebBluetoothReceiptPrinter) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@point-of-sale/webbluetooth-receiptprinter@1.0.0/dist/webbluetooth-receipt-printer.umd.js';
+            script.onload = () => {
+                this.printer = new WebBluetoothReceiptPrinter();
+                this.setupEventListeners();
+                console.log('[Bluetooth] Printer module initialized');
+            };
+            document.head.appendChild(script);
+        } else {
+            this.printer = new WebBluetoothReceiptPrinter();
+            this.setupEventListeners();
+        }
+
+        // Load device tersimpan
+        const saved = localStorage.getItem('hifzi_bluetooth_printer');
+        if (saved) {
+            try {
+                this.lastDevice = JSON.parse(saved);
+            } catch(e) {
+                console.error('[Bluetooth] Error parsing saved device:', e);
+            }
+        }
+    },
+
+    setupEventListeners() {
+        if (!this.printer) return;
+
+        this.printer.addEventListener('connected', (device) => {
+            console.log(`[Bluetooth] Connected to ${device.name}`);
+            this.isConnected = true;
+            this.lastDevice = {
+                id: device.id,
+                name: device.name,
+                language: device.language,
+                codepageMapping: device.codepageMapping
+            };
+            this.language = device.language || 'esc-pos';
+            this.codepageMapping = device.codepageMapping || 'default';
+            
+            localStorage.setItem('hifzi_bluetooth_printer', JSON.stringify(this.lastDevice));
+            this.updateUIStatus('connected', device.name);
+            app.showToast(`✅ Printer ${device.name} terhubung!`);
+        });
+
+        this.printer.addEventListener('disconnected', (device) => {
+            console.log(`[Bluetooth] Disconnected from ${device.name}`);
+            this.isConnected = false;
+            this.updateUIStatus('disconnected');
+            app.showToast(`⚠️ Printer ${device.name} terputus`);
+        });
+
+        this.printer.addEventListener('error', (error) => {
+            console.error('[Bluetooth] Error:', error);
+            this.updateUIStatus('error');
+            app.showToast(`❌ Error printer: ${error.message}`);
+        });
+    },
+
+    async connect() {
+        if (!this.printer) {
+            app.showToast('❌ Modul printer belum siap');
+            return;
+        }
+
+        try {
+            await this.printer.connect();
+        } catch (error) {
+            console.error('[Bluetooth] Connect error:', error);
+            app.showToast('❌ Gagal menghubungkan printer');
+        }
+    },
+
+    async reconnect() {
+        if (!this.printer || !this.lastDevice) {
+            app.showToast('❌ Tidak ada printer tersimpan');
+            return;
+        }
+
+        try {
+            await this.printer.reconnect(this.lastDevice);
+        } catch (error) {
+            console.error('[Bluetooth] Reconnect error:', error);
+            // Fallback ke connect manual
+            await this.connect();
+        }
+    },
+
+    disconnect() {
+        if (this.printer && this.isConnected) {
+            this.printer.disconnect();
+        }
+    },
+
+    updateUIStatus(status, deviceName = '') {
+        // Update semua status indicator di UI
+        document.querySelectorAll('.bluetooth-status').forEach(el => {
+            el.className = `bluetooth-status ${status}`;
+            if (status === 'connected') {
+                el.innerHTML = `🖨️ ${deviceName}`;
+            } else if (status === 'disconnected') {
+                el.innerHTML = `🖨️ Offline`;
+            } else {
+                el.innerHTML = `🖨️ Error`;
+            }
+        });
+    },
+
+    // Helper: Encode text ke Uint8Array dengan codepage yang tepat
+    encodeText(text) {
+        const encoder = new TextEncoder();
+        return encoder.encode(text);
+    },
+
+    // Helper: Gabungkan multiple Uint8Array
+    concatArrays(...arrays) {
+        const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        arrays.forEach(arr => {
+            result.set(arr, offset);
+            offset += arr.length;
+        });
+        return result;
+    },
+
+    // Helper: Buat command ESC/POS
+    createEscPosCommand(text, options = {}) {
+        let commands = [];
+        
+        // Init printer
+        commands.push(new Uint8Array([0x1B, 0x40]));
+        
+        // Alignment
+        if (options.align === 'center') {
+            commands.push(new Uint8Array([0x1B, 0x61, 0x01]));
+        } else if (options.align === 'right') {
+            commands.push(new Uint8Array([0x1B, 0x61, 0x02]));
+        }
+        
+        // Bold
+        if (options.bold) {
+            commands.push(new Uint8Array([0x1B, 0x45, 0x01]));
+        }
+        
+        // Double height/width
+        if (options.doubleHeight) {
+            commands.push(new Uint8Array([0x1B, 0x21, 0x10]));
+        }
+        if (options.doubleWidth) {
+            commands.push(new Uint8Array([0x1B, 0x21, 0x20]));
+        }
+        
+        // Text content
+        commands.push(this.encodeText(text + '\n'));
+        
+        // Reset formatting
+        if (options.bold || options.doubleHeight || options.doubleWidth) {
+            commands.push(new Uint8Array([0x1B, 0x21, 0x00]));
+            commands.push(new Uint8Array([0x1B, 0x45, 0x00]));
+        }
+        
+        // Reset alignment
+        if (options.align) {
+            commands.push(new Uint8Array([0x1B, 0x61, 0x00]));
+        }
+        
+        return this.concatArrays(...commands);
+    },
+
+    // Fungsi utama untuk print raw data
+    async print(data) {
+        if (!this.isConnected) {
+            app.showToast('❌ Printer tidak terhubung');
+            return false;
+        }
+
+        try {
+            // Konversi data ke format yang sesuai
+            let printData;
+            if (typeof data === 'string') {
+                printData = this.encodeText(data);
+            } else if (data instanceof Uint8Array) {
+                printData = data;
+            } else if (Array.isArray(data)) {
+                printData = this.concatArrays(...data);
+            } else {
+                printData = this.encodeText(String(data));
+            }
+
+            await this.printer.print(printData);
+            return true;
+        } catch (error) {
+            console.error('[Bluetooth] Print error:', error);
+            app.showToast('❌ Gagal mencetak');
+            return false;
+        }
+    },
+
+    // Print dengan auto-connect jika belum connected
+    async printAuto(data) {
+        if (!this.isConnected && this.lastDevice) {
+            try {
+                await this.reconnect();
+            } catch(e) {
+                console.log('[Bluetooth] Auto-reconnect failed, trying manual connect');
+                await this.connect();
+            }
+        }
+        
+        if (!this.isConnected) {
+            app.showToast('❌ Hubungkan printer terlebih dahulu');
+            return false;
+        }
+        
+        return await this.print(data);
+    },
+
+    // Render UI Bluetooth Control
+    renderBluetoothControl(containerId, options = {}) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const { showPrintButton = true, printCallback = null, context = 'general' } = options;
+
+        let html = `
+            <div class="bluetooth-control-panel">
+                <div class="bluetooth-header">
+                    <div class="bluetooth-icon">🖨️</div>
+                    <div class="bluetooth-info">
+                        <div class="bluetooth-title">Printer Bluetooth</div>
+                        <div class="bluetooth-status ${this.isConnected ? 'connected' : 'disconnected'}" id="btStatus_${context}">
+                            ${this.isConnected ? `🟢 ${this.lastDevice?.name || 'Connected'}` : '🔴 Offline'}
+                        </div>
+                    </div>
+                    <button class="bluetooth-toggle-btn" onclick="bluetoothModule.toggleConnection('${context}')" id="btBtn_${context}">
+                        ${this.isConnected ? 'Putuskan' : 'Hubungkan'}
+                    </button>
+                </div>
+                
+                ${showPrintButton ? `
+                <div class="bluetooth-actions">
+                    <button class="bluetooth-print-btn ${!this.isConnected ? 'disabled' : ''}" 
+                            onclick="${printCallback || `bluetoothModule.printCurrent${context.charAt(0).toUpperCase() + context.slice(1)}()`}"
+                            id="btPrintBtn_${context}"
+                            ${!this.isConnected ? 'disabled' : ''}>
+                        🖨️ Cetak ${this.getContextLabel(context)}
+                    </button>
+                    <button class="bluetooth-test-btn" onclick="bluetoothModule.printTestPage()">
+                        🧪 Test Print
+                    </button>
+                </div>
+                ` : ''}
+                
+                <div class="bluetooth-settings" id="btSettings_${context}" style="display: none;">
+                    <div class="bluetooth-setting-item">
+                        <label>Bahasa Printer:</label>
+                        <select id="btLanguage_${context}" onchange="bluetoothModule.setLanguage(this.value)">
+                            <option value="esc-pos" ${this.language === 'esc-pos' ? 'selected' : ''}>ESC/POS</option>
+                            <option value="star-prnt" ${this.language === 'star-prnt' ? 'selected' : ''}>StarPRNT</option>
+                        </select>
+                    </div>
+                    <div class="bluetooth-setting-item">
+                        <label>Lebar Kertas:</label>
+                        <select id="btPaperWidth_${context}">
+                            <option value="58">58mm</option>
+                            <option value="80" selected>80mm</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button class="bluetooth-settings-toggle" onclick="bluetoothModule.toggleSettings('${context}')">
+                    ⚙️ Pengaturan Printer
+                </button>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    },
+
+    getContextLabel(context) {
+        const labels = {
+            'pos': 'Struk',
+            'transaction': 'Transaksi',
+            'debt': 'Hutang',
+            'receipt': 'Bukti',
+            'general': 'Dokumen'
+        };
+        return labels[context] || 'Dokumen';
+    },
+
+    toggleConnection(context) {
+        if (this.isConnected) {
+            this.disconnect();
+        } else {
+            this.connect();
+        }
+    },
+
+    toggleSettings(context) {
+        const settings = document.getElementById(`btSettings_${context}`);
+        if (settings) {
+            settings.style.display = settings.style.display === 'none' ? 'block' : 'none';
+        }
+    },
+
+    setLanguage(lang) {
+        this.language = lang;
+        localStorage.setItem('hifzi_printer_language', lang);
+    },
+
+    // Test Print Page
+    async printTestPage() {
+        const testContent = [
+            this.createEscPosCommand('HIFZI CELL POS', { align: 'center', bold: true, doubleHeight: true }),
+            this.createEscPosCommand('Test Printer Bluetooth', { align: 'center' }),
+            this.createEscPosCommand(this.LINE, { align: 'center' }),
+            this.createEscPosCommand(`Tanggal: ${new Date().toLocaleString('id-ID')}`, { align: 'left' }),
+            this.createEscPosCommand(`Printer: ${this.lastDevice?.name || 'Unknown'}`, { align: 'left' }),
+            this.createEscPosCommand(`Bahasa: ${this.language.toUpperCase()}`, { align: 'left' }),
+            this.createEscPosCommand(this.DASH, { align: 'center' }),
+            this.createEscPosCommand('Printer berfungsi dengan baik!', { align: 'center' }),
+            this.createEscPosCommand(this.LINE, { align: 'center' }),
+            this.createEscPosCommand('Terima kasih', { align: 'center' }),
+            new Uint8Array([0x0A, 0x0A, 0x0A]),
+            new Uint8Array([0x1D, 0x56, 0x41, 0x00]) // Cut
+        ];
+
+        const success = await this.printAuto(this.concatArrays(...testContent));
+        if (success) {
+            app.showToast('✅ Test print berhasil!');
+        }
+    },
+
+    // ==========================================
+    // POS MODULE INTEGRATION
+    // ==========================================
+    
+    async printCurrentPos() {
+        if (typeof posModule === 'undefined' || posModule.cart.length === 0) {
+            app.showToast('❌ Keranjang kosong');
+            return;
+        }
+
+        const header = dataManager.data.settings.receiptHeader || {};
+        const cart = posModule.cart;
+        const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const transactionNumber = 'TRX-' + Date.now().toString().slice(-8);
+
+        let content = [];
+
+        // Header
+        content.push(this.createEscPosCommand((header.storeName || 'HIFZI CELL').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand(header.address || '', { align: 'center' }));
+        if (header.phone) {
+            content.push(this.createEscPosCommand('HP: ' + header.phone, { align: 'center' }));
+        }
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`No: ${transactionNumber}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Tgl: ${new Date().toLocaleString('id-ID')}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        // Items
+        cart.forEach(item => {
+            const subtotal = item.price * item.qty;
+            const priceIndicator = item.priceEdited ? '*' : '';
+            content.push(this.createEscPosCommand(item.name, { align: 'left' }));
+            content.push(this.createEscPosCommand(
+                `${item.qty} x Rp ${this.formatNumber(item.price)}${priceIndicator} = Rp ${this.formatNumber(subtotal)}`, 
+                { align: 'right' }
+            ));
+        });
+
+        // Footer
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+        content.push(this.createEscPosCommand(`TOTAL: Rp ${this.formatNumber(total)}`, { align: 'right', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
+        content.push(this.createEscPosCommand('Dicetak via Bluetooth', { align: 'center', align: 'center' }));
+        
+        // Cut
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Struk POS tercetak!');
+        }
+    },
+
+    // ==========================================
+    // TRANSACTIONS MODULE INTEGRATION
+    // ==========================================
+    
+    async printCurrentTransaction() {
+        if (typeof transactionsModule === 'undefined') {
+            app.showToast('❌ Modul transaksi tidak tersedia');
+            return;
+        }
+
+        // Ambil transaksi yang sedang dilihat/dipilih
+        const selectedTransaction = transactionsModule.selectedTransaction || 
+                                   transactionsModule.lastViewedTransaction;
+
+        if (!selectedTransaction) {
+            app.showToast('❌ Pilih transaksi yang akan dicetak');
+            return;
+        }
+
+        const t = selectedTransaction;
+        const header = dataManager.data.settings.receiptHeader || {};
+
+        let content = [];
+
+        // Header
+        content.push(this.createEscPosCommand((header.storeName || 'HIFZI CELL').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand('BUKTI TRANSAKSI', { align: 'center' }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`No: ${t.transactionNumber || t.id}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Tgl: ${new Date(t.date).toLocaleString('id-ID')}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Status: ${t.status?.toUpperCase() || 'COMPLETED'}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        // Items
+        if (t.items && t.items.length > 0) {
+            t.items.forEach(item => {
+                const subtotal = item.price * item.qty;
+                content.push(this.createEscPosCommand(item.name, { align: 'left' }));
+                content.push(this.createEscPosCommand(
+                    `${item.qty} x Rp ${this.formatNumber(item.price)} = Rp ${this.formatNumber(subtotal)}`, 
+                    { align: 'right' }
+                ));
+            });
+        }
+
+        // Payment Info
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+        content.push(this.createEscPosCommand(`Total: Rp ${this.formatNumber(t.total)}`, { align: 'right', bold: true }));
+        content.push(this.createEscPosCommand(`Metode: ${(t.paymentMethod || 'cash').toUpperCase()}`, { align: 'left' }));
+        
+        if (t.paymentMethod === 'cash') {
+            content.push(this.createEscPosCommand(`Bayar: Rp ${this.formatNumber(t.received || t.total)}`, { align: 'left' }));
+            content.push(this.createEscPosCommand(`Kembali: Rp ${this.formatNumber(t.change || 0)}`, { align: 'left' }));
+        }
+
+        content.push(this.createEscPosCommand(`Laba: Rp ${this.formatNumber(t.profit || 0)}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
+        
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Bukti transaksi tercetak!');
+        }
+    },
+
+    // ==========================================
+    // DEBT MODULE INTEGRATION
+    // ==========================================
+    
+    async printCurrentDebt() {
+        if (typeof debtModule === 'undefined') {
+            app.showToast('❌ Modul hutang tidak tersedia');
+            return;
+        }
+
+        // Ambil hutang yang sedang dilihat detailnya
+        const selectedDebt = debtModule.selectedDebt || debtModule.lastViewedDebt;
+
+        if (!selectedDebt) {
+            // Print summary semua hutang aktif
+            await this.printDebtSummary();
+            return;
+        }
+
+        await this.printSingleDebt(selectedDebt);
+    },
+
+    async printSingleDebt(debt) {
+        const header = dataManager.data.settings.receiptHeader || {};
+        const remaining = debt.total - debt.paid;
+
+        let content = [];
+
+        // Header
+        content.push(this.createEscPosCommand((header.storeName || 'HIFZI CELL').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand('BUKTI HUTANG/PIUTANG', { align: 'center' }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`No: #${debt.id}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Pelanggan: ${debt.customerName}`, { align: 'left', bold: true }));
+        if (debt.customerPhone) {
+            content.push(this.createEscPosCommand(`HP: ${debt.customerPhone}`, { align: 'left' }));
+        }
+        content.push(this.createEscPosCommand(`Tgl Hutang: ${debt.date}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Jatuh Tempo: ${debt.dueDate}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        // Items
+        if (debt.items && debt.items.length > 0) {
+            content.push(this.createEscPosCommand('Detail Barang:', { align: 'left', bold: true }));
+            debt.items.forEach(item => {
+                const subtotal = item.price * item.qty;
+                content.push(this.createEscPosCommand(`${item.name} x${item.qty}`, { align: 'left' }));
+                content.push(this.createEscPosCommand(`Rp ${this.formatNumber(subtotal)}`, { align: 'right' }));
+            });
+        }
+
+        // Payment Summary
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+        content.push(this.createEscPosCommand(`Total Hutang: Rp ${this.formatNumber(debt.total)}`, { align: 'right', bold: true }));
+        content.push(this.createEscPosCommand(`Sudah Dibayar: Rp ${this.formatNumber(debt.paid)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(`Sisa: Rp ${this.formatNumber(remaining)}`, { align: 'right', bold: true, doubleHeight: true }));
+        
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand('Harap segera melunasi hutang', { align: 'center' }));
+        content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
+        
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Bukti hutang tercetak!');
+        }
+    },
+
+    async printDebtSummary() {
+        const summary = debtModule.getSummary();
+        const groupedDebts = debtModule.getGroupedDebts();
+
+        const header = dataManager.data.settings.receiptHeader || {};
+
+        let content = [];
+
+        // Header
+        content.push(this.createEscPosCommand((header.storeName || 'HIFZI CELL').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand('LAPORAN HUTANG/PIUTANG', { align: 'center' }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`Tgl: ${new Date().toLocaleString('id-ID')}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        // Summary
+        content.push(this.createEscPosCommand('RINGKASAN:', { align: 'left', bold: true }));
+        content.push(this.createEscPosCommand(`Total Piutang Aktif: Rp ${this.formatNumber(summary.activeRemaining)}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Sudah Dibayar: Rp ${this.formatNumber(summary.totalPaid)}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Pelanggan Aktif: ${summary.customerCount}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Overdue: ${summary.overdueCount}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        // Detail per pelanggan
+        content.push(this.createEscPosCommand('DETAIL PELANGGAN:', { align: 'left', bold: true }));
+        
+        groupedDebts.slice(0, 10).forEach(group => { // Max 10 untuk kertas
+            content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+            content.push(this.createEscPosCommand(group.customerName, { align: 'left', bold: true }));
+            content.push(this.createEscPosCommand(`Sisa: Rp ${this.formatNumber(group.totalRemaining)} (${group.count} transaksi)`, { align: 'left' }));
+            
+            if (group.hasOverdue) {
+                content.push(this.createEscPosCommand('⚠️ OVERDUE', { align: 'left' }));
+            }
+        });
+
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand('Dicetak via Bluetooth', { align: 'center' }));
+        
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Laporan hutang tercetak!');
+        }
+    },
+
+    // ==========================================
+    // RECEIPT MODULE INTEGRATION (Struk)
+    // ==========================================
+    
+    async printCurrentReceipt() {
+        if (typeof receiptModule === 'undefined') {
+            app.showToast('❌ Modul struk tidak tersedia');
+            return;
+        }
+
+        // Cek apakah ada data struk yang sedang dibuat
+        const receiptType = receiptModule.receiptType || 'transfer';
+        
+        switch(receiptType) {
+            case 'transfer':
+                await this.printTransferReceipt();
+                break;
+            case 'tarik_tunai':
+                await this.printTarikTunaiReceipt();
+                break;
+            case 'top_up':
+                await this.printTopUpReceipt();
+                break;
+            default:
+                app.showToast('❌ Tipe struk tidak dikenali');
+        }
+    },
+
+    async printTransferReceipt() {
+        const header = dataManager.data.settings.receiptHeader || {};
+        
+        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
+        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
+        const sender = document.getElementById('manualSender')?.value || '-';
+        const senderAcc = document.getElementById('manualSenderAccount')?.value || '-';
+        const bankFrom = document.getElementById('manualBankFrom')?.value || '';
+        const receiver = document.getElementById('manualReceiver')?.value || '-';
+        const receiverAcc = document.getElementById('manualReceiverAccount')?.value || '-';
+        const bankTo = document.getElementById('manualBankTo')?.value || '';
+        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
+        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+
+        let content = [];
+
+        content.push(this.createEscPosCommand((header.storeName || 'KONTER').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand(header.address || '', { align: 'center' }));
+        content.push(this.createEscPosCommand('BUKTI TRANSFER', { align: 'center', bold: true }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`No: TF-${Date.now().toString().slice(-8)}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Tgl: ${date} ${time}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand('PENGIRIM:', { align: 'left', bold: true }));
+        content.push(this.createEscPosCommand(`Nama: ${sender}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`No Rek: ${senderAcc}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Bank: ${bankFrom}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand('PENERIMA:', { align: 'left', bold: true }));
+        content.push(this.createEscPosCommand(`Nama: ${receiver}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`No Rek: ${receiverAcc}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Bank: ${bankTo}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand(`Nominal: Rp ${this.formatNumber(nominal)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(`Admin: Rp ${this.formatNumber(admin)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+        content.push(this.createEscPosCommand(`TOTAL: Rp ${this.formatNumber(nominal + admin)}`, { align: 'right', bold: true, doubleHeight: true }));
+
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
+        
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Bukti transfer tercetak!');
+        }
+    },
+
+    async printTarikTunaiReceipt() {
+        const header = dataManager.data.settings.receiptHeader || {};
+        
+        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
+        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
+        const customer = document.getElementById('manualCustomer')?.value || '-';
+        const bank = document.getElementById('manualBank')?.value || '';
+        const account = document.getElementById('manualAccount')?.value || '-';
+        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
+        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+
+        let content = [];
+
+        content.push(this.createEscPosCommand((header.storeName || 'KONTER').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand('BUKTI TARIK TUNAI', { align: 'center', bold: true }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`No: TT-${Date.now().toString().slice(-8)}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Tgl: ${date} ${time}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand(`Customer: ${customer}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Bank: ${bank}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`No Rek: ${account}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand(`Nominal: Rp ${this.formatNumber(nominal)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(`Admin: Rp ${this.formatNumber(admin)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+        content.push(this.createEscPosCommand(`TOTAL: Rp ${this.formatNumber(nominal + admin)}`, { align: 'right', bold: true, doubleHeight: true }));
+
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
+        
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Bukti tarik tunai tercetak!');
+        }
+    },
+
+    async printTopUpReceipt() {
+        const header = dataManager.data.settings.receiptHeader || {};
+        
+        const date = document.getElementById('manualDate')?.value || new Date().toISOString().split('T')[0];
+        const time = document.getElementById('manualTime')?.value || new Date().toTimeString().slice(0, 5);
+        const type = document.getElementById('manualTopUpType')?.value || 'DANA';
+        const target = document.getElementById('manualTarget')?.value || '-';
+        const customer = document.getElementById('manualCustomer')?.value || '-';
+        const nominal = parseInt(document.getElementById('manualNominal')?.value) || 0;
+        const admin = parseInt(document.getElementById('manualAdmin')?.value) || 0;
+
+        let content = [];
+
+        content.push(this.createEscPosCommand((header.storeName || 'KONTER').toUpperCase(), { align: 'center', bold: true, doubleHeight: true }));
+        content.push(this.createEscPosCommand(`BUKTI TOP UP ${type.toUpperCase()}`, { align: 'center', bold: true }));
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(`No: TP-${Date.now().toString().slice(-8)}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`Tgl: ${date} ${time}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand(`Customer: ${customer}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(`No Tujuan: ${target}`, { align: 'left' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+
+        content.push(this.createEscPosCommand(`Nominal: Rp ${this.formatNumber(nominal)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(`Admin: Rp ${this.formatNumber(admin)}`, { align: 'right' }));
+        content.push(this.createEscPosCommand(this.DASH, { align: 'center' }));
+        content.push(this.createEscPosCommand(`TOTAL: Rp ${this.formatNumber(nominal + admin)}`, { align: 'right', bold: true, doubleHeight: true }));
+
+        content.push(this.createEscPosCommand(this.LINE, { align: 'center' }));
+        content.push(this.createEscPosCommand(header.note || 'Terima kasih', { align: 'center' }));
+        
+        content.push(new Uint8Array([0x0A, 0x0A]));
+        content.push(new Uint8Array([0x1D, 0x56, 0x41, 0x00]));
+
+        const success = await this.printAuto(this.concatArrays(...content));
+        if (success) {
+            app.showToast('✅ Bukti top up tercetak!');
+        }
+    },
+
+    formatNumber(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+};
+
+// Initialize saat app ready
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        bluetoothModule.init();
+    }, 1000);
+});
