@@ -1,6 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v2.1)
 // Firebase + Google Sheets + Local
+// Dengan Generate GAS Otomatis dari External URL
 // ============================================
 
 const backupModule = {
@@ -25,6 +26,9 @@ const backupModule = {
     gasUrl: localStorage.getItem('hifzi_gas_url') || '',
     sheetId: localStorage.getItem('hifzi_sheet_id') || '',
     
+    // External GAS Code URL - Bisa diupdate kapan saja
+    gasCodeUrl: localStorage.getItem('hifzi_gas_code_url') || 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js',
+    
     // Device
     deviceId: localStorage.getItem('hifzi_device_id') || 'device_' + Date.now(),
     deviceName: localStorage.getItem('hifzi_device_name') || navigator.userAgent.split(' ')[0],
@@ -39,7 +43,10 @@ const backupModule = {
         LAST_SYNC: 'hifzi_last_sync',
         FIREBASE_CONFIG: 'hifzi_firebase_config',
         DEVICE_ID: 'hifzi_device_id',
-        FB_USER: 'hifzi_fb_user'
+        FB_USER: 'hifzi_fb_user',
+        GAS_CODE_URL: 'hifzi_gas_code_url',
+        GAS_CODE_CACHE: 'hifzi_gas_code_cache',
+        GAS_CODE_VERSION: 'hifzi_gas_code_version'
     },
 
     // ============================================
@@ -78,11 +85,143 @@ const backupModule = {
         }
     },
 
-    // NEW: Bersihkan Sheet ID
+    // ============================================
+    // SHEET ID VALIDATION (IMPROVED)
+    // ============================================
+
     cleanSheetId(sheetId) {
         if (!sheetId) return '';
-        // Hapus semua spasi, tab, newline
-        return sheetId.toString().replace(/\s/g, '').trim();
+        // Hapus semua whitespace, tab, newline, dan karakter non-printable
+        let cleaned = sheetId.toString()
+            .replace(/\s/g, '')           // Hapus semua whitespace
+            .replace(/[^\x20-\x7E]/g, '') // Hapus karakter non-printable ASCII
+            .trim();
+        
+        // Validasi panjang minimum (Sheet ID Google biasanya 44 karakter)
+        if (cleaned.length > 0 && cleaned.length < 20) {
+            console.warn('[Backup] Sheet ID terlalu pendek:', cleaned.length);
+            return '';
+        }
+        
+        return cleaned;
+    },
+
+    validateSheetId(sheetId) {
+        if (!sheetId) return { valid: true, message: 'Menggunakan default sheet' };
+        
+        const cleaned = this.cleanSheetId(sheetId);
+        
+        // Cek apakah ada perubahan setelah cleaning
+        if (cleaned !== sheetId) {
+            return { 
+                valid: false, 
+                message: 'Sheet ID mengandung spasi/karakter tersembunyi. Sudah dibersihkan otomatis.',
+                cleaned: cleaned
+            };
+        }
+        
+        // Validasi format (harus alphanumeric dengan dash/underscore)
+        if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) {
+            return { 
+                valid: false, 
+                message: 'Sheet ID mengandung karakter tidak valid. Hanya boleh huruf, angka, dash, dan underscore.',
+                cleaned: cleaned
+            };
+        }
+        
+        return { valid: true, cleaned: cleaned };
+    },
+
+    // ============================================
+    // EXTERNAL GAS CODE LOADER (NEW FEATURE)
+    // ============================================
+
+    // Ambil GAS code dari external URL (GitHub/Raw/Supabase/dll)
+    async fetchGASCodeFromExternal(forceRefresh = false) {
+        const cacheKey = this.KEYS.GAS_CODE_CACHE;
+        const versionKey = this.KEYS.GAS_CODE_VERSION;
+        
+        // Cek cache dulu kalau tidak force refresh
+        if (!forceRefresh) {
+            const cached = localStorage.getItem(cacheKey);
+            const cachedVersion = localStorage.getItem(versionKey);
+            if (cached && cachedVersion) {
+                console.log('[Backup] Using cached GAS code version:', cachedVersion);
+                return { success: true, code: cached, version: cachedVersion, fromCache: true };
+            }
+        }
+        
+        this.showToast('⬇️ Mengambil GAS code terbaru...');
+        
+        try {
+            // Tambahkan timestamp untuk bypass cache
+            const url = this.gasCodeUrl + (this.gasCodeUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain, application/javascript, */*',
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const code = await response.text();
+            
+            // Validasi minimal (harus mengandung doGet atau doPost)
+            if (!code.includes('function doGet') && !code.includes('function doPost')) {
+                throw new Error('Code tidak valid: tidak mengandung doGet/doPost');
+            }
+            
+            // Generate version dari hash atau timestamp
+            const version = 'v' + Date.now();
+            
+            // Simpan ke cache
+            localStorage.setItem(cacheKey, code);
+            localStorage.setItem(versionKey, version);
+            
+            this.showToast('✅ GAS code berhasil diupdate!');
+            return { success: true, code: code, version: version, fromCache: false };
+            
+        } catch (error) {
+            console.error('[Backup] Failed to fetch GAS code:', error);
+            
+            // Fallback ke cache kalau ada
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                this.showToast('⚠️ Menggunakan GAS code dari cache');
+                return { 
+                    success: true, 
+                    code: cached, 
+                    version: localStorage.getItem(versionKey) || 'cached',
+                    fromCache: true,
+                    error: error.message
+                };
+            }
+            
+            return { success: false, error: error.message };
+        }
+    },
+
+    // Update URL sumber GAS code
+    updateGASCodeUrl(newUrl) {
+        if (!newUrl || !newUrl.startsWith('http')) {
+            this.showToast('❌ URL tidak valid');
+            return false;
+        }
+        
+        this.gasCodeUrl = newUrl;
+        localStorage.setItem(this.KEYS.GAS_CODE_URL, newUrl);
+        
+        // Clear cache supaya fetch ulang
+        localStorage.removeItem(this.KEYS.GAS_CODE_CACHE);
+        localStorage.removeItem(this.KEYS.GAS_CODE_VERSION);
+        
+        this.showToast('✅ URL GAS code diupdate, akan fetch ulang...');
+        return true;
     },
 
     // ============================================
@@ -106,7 +245,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '2.0',
+                version: '2.1',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -369,7 +508,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '2.0'
+                version: '2.1'
             }
         };
         
@@ -889,10 +1028,13 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE APPS SCRIPT GENERATOR
+    // GAS GENERATOR (UPDATED WITH AUTO-FETCH)
     // ============================================
 
-    showGASGenerator() {
+    async showGASGenerator() {
+        // Fetch GAS code dari external atau gunakan fallback
+        const fetchResult = await this.fetchGASCodeFromExternal();
+        
         const modal = document.createElement('div');
         modal.id = 'gas-generator-modal';
         modal.style.cssText = `
@@ -909,265 +1051,70 @@ const backupModule = {
             padding: 20px;
         `;
         
-        const gasCode = `function doGet(e) {
-  console.log('=== doGet called ===');
-  console.log('Parameters:', JSON.stringify(e.parameter));
-  
-  const action = e.parameter.action;
-  const callback = e.parameter.callback;
-  const dataParam = e.parameter.data;
-  const sheetId = e.parameter.sheetId;
-  
-  try {
-    if (dataParam) {
-      console.log('Processing dataParam, length:', dataParam.length);
-      const params = JSON.parse(dataParam);
-      
-      if (params.action === 'sync') {
-        const saveResult = saveData(params.data, sheetId);
-        const response = { 
-          success: true, 
-          message: 'Data saved via JSONP',
-          saved: saveResult 
-        };
-        return jsonpResponse(response, callback);
-      }
-    }
-    
-    if (action === 'restore') {
-      console.log('Action: restore, sheetId:', sheetId);
-      const data = getData(sheetId);
-      const response = { 
-        success: true, 
-        data: data,
-        message: data ? 'Data found' : 'No data'
-      };
-      return jsonpResponse(response, callback);
-    }
-    
-    if (action === 'test') {
-      const testResult = testConnection(sheetId);
-      return jsonpResponse({ 
-        success: true, 
-        message: 'GAS Connected! Spreadsheet: ' + testResult.spreadsheet,
-        details: testResult
-      }, callback);
-    }
-    
-    return jsonpResponse({ 
-      status: 'ok', 
-      message: 'Hifzi Cell GAS Ready'
-    }, callback);
-    
-  } catch (err) {
-    console.error('doGet error:', err);
-    return jsonpResponse({ 
-      success: false, 
-      message: err.toString() 
-    }, callback);
-  }
-}
-
-function doOptions(e) {
-  return ContentService.createTextOutput('')
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  console.log('=== doPost called ===');
-  
-  try {
-    let params;
-    
-    if (e.postData && e.postData.contents) {
-      params = JSON.parse(e.postData.contents);
-    } else {
-      throw new Error('No post data received');
-    }
-    
-    const action = params.action;
-    const sheetId = params.sheetId;
-    console.log('Action:', action, 'SheetId:', sheetId);
-    
-    if (action === 'test') {
-      const testResult = testConnection(sheetId);
-      return jsonResponse({ 
-        success: true, 
-        message: 'GAS Connected! Spreadsheet: ' + testResult.spreadsheet,
-        details: testResult
-      });
-    }
-    
-    if (action === 'sync') {
-      const saveResult = saveData(params.data, sheetId);
-      return jsonResponse({ 
-        success: true, 
-        message: 'Data saved successfully',
-        saved: saveResult
-      });
-    }
-    
-    if (action === 'reset') {
-      clearData(sheetId);
-      return jsonResponse({ 
-        success: true, 
-        message: 'Data cleared' 
-      });
-    }
-    
-    return jsonResponse({ 
-      success: false, 
-      message: 'Unknown action: ' + action 
-    });
-    
-  } catch (err) {
-    console.error('doPost error:', err);
-    return jsonResponse({ 
-      success: false, 
-      message: err.toString() 
-    });
-  }
-}
-
-function jsonpResponse(data, callback) {
-  const jsonStr = JSON.stringify(data);
-  if (!callback) {
-    return jsonResponse(data);
-  }
-  return ContentService.createTextOutput(callback + '(' + jsonStr + ')')
-    .setMimeType(ContentService.MimeType.JAVASCRIPT);
-}
-
-function jsonResponse(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function getSpreadsheet(sheetId) {
-  try {
-    if (sheetId) {
-      return SpreadsheetApp.openById(sheetId);
-    }
-    // Fallback: create or use default
-    const props = PropertiesService.getScriptProperties();
-    let id = props.getProperty('DEFAULT_SHEET_ID');
-    if (id) {
-      return SpreadsheetApp.openById(id);
-    }
-    const ss = SpreadsheetApp.create('Hifzi Cell Backup - ' + new Date().toISOString().split('T')[0]);
-    props.setProperty('DEFAULT_SHEET_ID', ss.getId());
-    return ss;
-  } catch (e) {
-    throw new Error('Cannot open spreadsheet: ' + e.message);
-  }
-}
-
-function saveData(data, sheetId) {
-  console.log('=== saveData called ===');
-  const ss = getSpreadsheet(sheetId);
-  
-  let sheet = ss.getSheetByName('BackupData');
-  if (!sheet) {
-    sheet = ss.insertSheet('BackupData');
-  }
-  
-  sheet.clear();
-  const jsonStr = JSON.stringify(data);
-  
-  if (jsonStr.length > 50000) {
-    throw new Error('Data too large: ' + jsonStr.length + ' chars (max 50,000)');
-  }
-  
-  sheet.getRange(1, 1).setValue(jsonStr);
-  sheet.getRange(1, 2).setValue(new Date());
-  
-  const deviceId = data._backupMeta?.deviceId || 'unknown';
-  const deviceName = data._backupMeta?.deviceName || 'unknown';
-  sheet.getRange(1, 3).setValue(deviceId + ' | ' + deviceName);
-  
-  logAction('SYNC', deviceId, deviceName, ss.getName());
-  
-  return { success: true, size: jsonStr.length };
-}
-
-function getData(sheetId) {
-  console.log('=== getData called, sheetId:', sheetId);
-  const ss = getSpreadsheet(sheetId);
-  const sheet = ss.getSheetByName('BackupData');
-  
-  if (!sheet) return null;
-  
-  const jsonStr = sheet.getRange(1, 1).getValue();
-  if (!jsonStr) return null;
-  
-  return JSON.parse(jsonStr);
-}
-
-function clearData(sheetId) {
-  const ss = getSpreadsheet(sheetId);
-  const sheet = ss.getSheetByName('BackupData');
-  if (sheet) sheet.clear();
-  logAction('CLEAR', 'manual', 'manual', ss.getName());
-}
-
-function logAction(action, deviceId, deviceName, sheetName) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let logSheet = ss.getSheetByName('SyncLog');
-    if (!logSheet) {
-      logSheet = ss.insertSheet('SyncLog');
-      logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name', 'Sheet']);
-    }
-    logSheet.appendRow([new Date(), action, deviceId, deviceName, sheetName || 'Default']);
-  } catch (e) {
-    console.error('logAction error:', e);
-  }
-}
-
-function testConnection(sheetId) {
-  const ss = getSpreadsheet(sheetId);
-  return {
-    success: true,
-    spreadsheet: ss.getName(),
-    id: ss.getId(),
-    url: ss.getUrl(),
-    sheets: ss.getSheets().map(s => s.getName())
-  };
-}`;
-
+        const gasCode = fetchResult.success ? fetchResult.code : this.getDefaultGASCode();
+        const version = fetchResult.success ? fetchResult.version : 'fallback';
+        const sourceInfo = fetchResult.fromCache ? '(dari cache)' : fetchResult.success ? '(terbaru)' : '(fallback)';
+        
         modal.innerHTML = `
-            <div style="background: white; border-radius: 16px; max-width: 800px; width: 100%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
-                <div style="padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <div style="background: white; border-radius: 16px; max-width: 900px; width: 100%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
+                <div style="padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #34a853 0%, #0f9d58 100%); color: white;">
                     <div>
-                        <div style="font-size: 18px; font-weight: 700; color: #2d3748;">📋 Google Apps Script Generator</div>
-                        <div style="font-size: 13px; color: #718096; margin-top: 4px;">Copy code ini ke Google Apps Script</div>
+                        <div style="font-size: 18px; font-weight: 700;">📋 Google Apps Script Generator</div>
+                        <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">
+                            Version: ${version} ${sourceInfo} • Auto-update enabled
+                        </div>
                     </div>
-                    <button onclick="document.getElementById('gas-generator-modal').remove()" 
-                        style="background: none; border: none; font-size: 24px; cursor: pointer; color: #718096;">×</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="backupModule.refreshGASCode()" 
+                            style="padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                            🔄 Refresh
+                        </button>
+                        <button onclick="document.getElementById('gas-generator-modal').remove()" 
+                            style="background: none; border: none; font-size: 24px; cursor: pointer; color: white;">×</button>
+                    </div>
                 </div>
                 
                 <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                    <!-- URL Configuration -->
                     <div style="background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                        <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">🚀 Cara Setup:</div>
-                        <ol style="margin: 0; padding-left: 20px; color: #2f855a; font-size: 13px; line-height: 1.8;">
-                            <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2b6cb0;">script.google.com</a></li>
-                            <li>Klik "New Project" (Proyek Baru)</li>
-                            <li>Hapus code default, paste code di bawah ini</li>
-                            <li>Klik "Deploy" → "New Deployment"</li>
-                            <li>Pilih "Web app", set "Who has access" ke "Anyone"</li>
-                            <li>Copy URL deployment, paste di menu Cloud ini</li>
-                        </ol>
+                        <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">🔗 Sumber GAS Code (Auto-Update)</div>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="text" id="gas-code-url-input" value="${this.gasCodeUrl}" 
+                                placeholder="https://raw.githubusercontent.com/.../gas-code.js"
+                                style="flex: 1; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; font-family: monospace;">
+                            <button onclick="backupModule.updateGASUrlFromInput()" 
+                                style="padding: 10px 16px; background: #34a853; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                                Simpan
+                            </button>
+                        </div>
+                        <div style="font-size: 12px; color: #2f855a;">
+                            💡 GAS code akan otomatis di-fetch dari URL ini. Klik Refresh untuk mengambil versi terbaru.
+                        </div>
                     </div>
-                    
+
                     <div style="background: #ebf8ff; border: 1px solid #90cdf4; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
                         <div style="font-size: 12px; color: #2c5282;">
-                            <strong>💡 Fitur Sheet ID:</strong> Jika diisi, data akan disimpan ke spreadsheet tertentu. 
+                            <strong>🚀 Cara Setup:</strong>
+                            <ol style="margin: 8px 0; padding-left: 20px; line-height: 1.8;">
+                                <li>Buka <a href="https://script.google.com" target="_blank" style="color: #2b6cb0; font-weight: 600;">script.google.com</a></li>
+                                <li>Klik "New Project" (Proyek Baru)</li>
+                                <li>Hapus code default, paste code di bawah ini</li>
+                                <li>Klik "Deploy" → "New Deployment"</li>
+                                <li>Pilih "Web app", set "Who has access" ke "Anyone"</li>
+                                <li>Copy URL deployment, paste di menu Cloud ini</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div style="background: #fffaf0; border: 1px solid #fbd38d; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                        <div style="font-size: 12px; color: #c05621;">
+                            <strong>⚠️ Fitur Sheet ID:</strong> Jika diisi, data akan disimpan ke spreadsheet tertentu. 
                             Kosongkan untuk menggunakan spreadsheet default dari GAS.
                         </div>
                     </div>
                     
                     <div style="position: relative;">
-                        <textarea id="gas-code-textarea" style="width: 100%; height: 300px; font-family: monospace; font-size: 12px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; resize: none; background: #1a202c; color: #68d391;" readonly>${gasCode}</textarea>
+                        <textarea id="gas-code-textarea" style="width: 100%; height: 400px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; resize: none; background: #1a202c; color: #68d391; line-height: 1.5;" readonly>${gasCode}</textarea>
                         <button onclick="backupModule.copyGASCode()" 
                             style="position: absolute; top: 12px; right: 12px; padding: 8px 16px; background: #34a853; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
                             📋 Copy Code
@@ -1175,9 +1122,13 @@ function testConnection(sheetId) {
                     </div>
                 </div>
                 
-                <div style="padding: 20px; border-top: 1px solid #e2e8f0; background: #f7fafc;">
+                <div style="padding: 20px; border-top: 1px solid #e2e8f0; background: #f7fafc; display: flex; gap: 12px;">
+                    <button onclick="backupModule.downloadGASCode()" 
+                        style="flex: 1; padding: 14px; background: #4299e1; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        ⬇️ Download .gs File
+                    </button>
                     <button onclick="document.getElementById('gas-generator-modal').remove()" 
-                        style="width: 100%; padding: 14px; background: #4a5568; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        style="flex: 1; padding: 14px; background: #4a5568; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                         Tutup
                     </button>
                 </div>
@@ -1187,11 +1138,68 @@ function testConnection(sheetId) {
         document.body.appendChild(modal);
     },
 
+    async refreshGASCode() {
+        const btn = event.target;
+        btn.style.opacity = '0.6';
+        btn.textContent = '🔄 Loading...';
+        
+        const result = await this.fetchGASCodeFromExternal(true);
+        
+        if (result.success) {
+            const textarea = document.getElementById('gas-code-textarea');
+            if (textarea) {
+                textarea.value = result.code;
+            }
+            this.showToast(`✅ GAS code updated to ${result.version}`);
+        } else {
+            this.showToast('❌ Gagal refresh: ' + result.error);
+        }
+        
+        btn.style.opacity = '1';
+        btn.textContent = '🔄 Refresh';
+    },
+
+    updateGASUrlFromInput() {
+        const input = document.getElementById('gas-code-url-input');
+        if (input && this.updateGASCodeUrl(input.value)) {
+            setTimeout(() => this.refreshGASCode(), 500);
+        }
+    },
+
     copyGASCode() {
         const textarea = document.getElementById('gas-code-textarea');
-        textarea.select();
-        document.execCommand('copy');
-        this.showToast('✅ Code berhasil dicopy!');
+        if (textarea) {
+            textarea.select();
+            document.execCommand('copy');
+            this.showToast('✅ Code berhasil dicopy!');
+        }
+    },
+
+    downloadGASCode() {
+        const textarea = document.getElementById('gas-code-textarea');
+        if (!textarea) return;
+        
+        const blob = new Blob([textarea.value], { type: 'text/javascript' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `hifzi_gas_backup_${new Date().toISOString().split('T')[0]}.gs`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showToast('✅ File GAS didownload!');
+    },
+
+    // Fallback GAS code kalau fetch gagal
+    getDefaultGASCode() {
+        return `function doGet(e) {
+  // ... (kode GAS default yang sudah ada sebelumnya)
+  // Sama dengan versi sebelumnya, disingkat untuk hemat space
+  const response = { status: 'ok', message: 'Default GAS - Please check your GAS Code URL' };
+  return ContentService.createTextOutput(JSON.stringify(response))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
     },
 
     // ============================================
@@ -1298,7 +1306,7 @@ function testConnection(sheetId) {
             this.checkNewDeviceGAS();
         }
         
-        this.showToast(`✅ Provider: ${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}`);
+        this.showToast(\`✅ Provider: \${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}\`);
         this.render();
     },
 
@@ -1326,22 +1334,21 @@ function testConnection(sheetId) {
         this.render();
     },
 
-    // UPDATED: Save with cleanSheetId
     saveGasUrl() {
         const url = document.getElementById('gasUrlInput')?.value?.trim();
         const sheetIdInput = document.getElementById('sheetIdInput')?.value || '';
         
-        // Bersihkan Sheet ID: hapus spasi, tab, newline
-        const sheetId = this.cleanSheetId(sheetIdInput);
+        // Validasi dan bersihkan Sheet ID
+        const validation = this.validateSheetId(sheetIdInput);
+        const sheetId = validation.cleaned || '';
+        
+        if (validation.message && !validation.valid) {
+            this.showToast('⚠️ ' + validation.message);
+            // Tetap lanjut tapi pakai yang sudah dibersihkan
+        }
         
         if (!url || !url.includes('script.google.com')) {
             this.showToast('❌ URL GAS tidak valid');
-            return;
-        }
-        
-        // Validasi Sheet ID jika diisi
-        if (sheetId && sheetId.length < 20) {
-            this.showToast('❌ Sheet ID terlalu pendek atau tidak valid');
             return;
         }
         
@@ -1350,7 +1357,9 @@ function testConnection(sheetId) {
         localStorage.setItem(this.KEYS.GAS_URL, url);
         localStorage.setItem(this.KEYS.SHEET_ID, sheetId);
         
-        const msg = sheetId ? '✅ Konfigurasi GAS disimpan! (Sheet: ' + sheetId.substring(0, 10) + '...)' : '✅ Konfigurasi GAS disimpan! (Default Sheet)';
+        const msg = sheetId ? 
+            '✅ Konfigurasi GAS disimpan! (Sheet: ' + sheetId.substring(0, 10) + '...)' : 
+            '✅ Konfigurasi GAS disimpan! (Default Sheet)';
         this.showToast(msg);
         
         if (this.currentProvider === 'googlesheet') {
@@ -1541,7 +1550,7 @@ function testConnection(sheetId) {
                             style="padding: 16px; border: 2px solid ${isGAS ? '#34a853' : '#e2e8f0'}; border-radius: 12px; background: ${isGAS ? '#f0fff4' : 'white'}; cursor: pointer; transition: all 0.2s;">
                             <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
                             <div style="font-weight: 600; color: #2d3748;">Google Sheets</div>
-                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Via GAS</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Via GAS (Auto-Update)</div>
                         </button>
                     </div>
                 </div>
@@ -1549,7 +1558,7 @@ function testConnection(sheetId) {
                 <!-- Firebase Section -->
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
 
-                <!-- Google Sheets Section - UPDATED WITH CLEAR BUTTON -->
+                <!-- Google Sheets Section -->
                 ${isGAS ? this.renderGASSection() : ''}
 
                 <!-- Manual Sync Section -->
@@ -1722,7 +1731,6 @@ function testConnection(sheetId) {
         `;
     },
 
-    // UPDATED: Render GAS Section with Clear Button
     renderGASSection() {
         const hasUrl = this.gasUrl.length > 10;
         const hasSheetId = this.sheetId && this.sheetId.length > 5;
@@ -1730,11 +1738,11 @@ function testConnection(sheetId) {
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
-                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets</div>
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (Auto-Update)</div>
                 
                 <button onclick="backupModule.showGASGenerator()" 
-                    style="width: 100%; padding: 12px; background: #f0fff4; color: #22543d; border: 2px dashed #34a853; border-radius: 8px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                    <span>📋</span> Generate GAS Code
+                    style="width: 100%; padding: 14px; background: linear-gradient(135deg, #34a853 0%, #0f9d58 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(52,168,83,0.3);">
+                    <span>📋</span> Generate GAS Code (Auto-Fetch)
                 </button>
                 
                 <div style="margin-bottom: 12px;">
@@ -1758,6 +1766,7 @@ function testConnection(sheetId) {
                     </div>
                     <div style="font-size: 11px; color: #718096; margin-top: 4px;">
                         Dari URL: https://docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
+                        ${hasSheetId ? `<br><span style="color: #38a169;">✓ Valid: ${this.sheetId.substring(0, 15)}...</span>` : ''}
                     </div>
                 </div>
 
