@@ -114,10 +114,10 @@ const cashModule = {
         const periodLabel = this.getFilterLabel();
         const { startDate, endDate } = this.getDateRange();
         
-        // ⬅️ PERBARUI: Hitung statistik untuk periode yang dipilih
+        // ✅ PERBARUI: Hitung statistik untuk periode yang dipilih
         const periodStats = this.calculatePeriodStats(startDate, endDate);
         
-        // ⬅️ PERBARUI: Format tanggal untuk display
+        // ✅ PERBARUI: Format tanggal untuk display
         const dateRangeText = this.getDateRangeText(startDate, endDate);
         
         document.getElementById('mainContent').innerHTML = `
@@ -155,26 +155,41 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- LABA CARD -->
+                <!-- ✅ PERBARUI: LABA CARD - Hanya dari Top Up & Tarik Tunai -->
                 <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid ${periodStats.net >= 0 ? '#4caf50' : '#f44336'};">
+                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid ${periodStats.laba >= 0 ? '#4caf50' : '#f44336'};">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <div style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
-                                Laba ${periodLabel}
+                                💰 Laba ${periodLabel}
                             </div>
-                            <div style="font-size: 28px; font-weight: 700; color: ${periodStats.net >= 0 ? '#2e7d32' : '#c62828'};">
-                                Rp ${utils.formatNumber(periodStats.net)}
+                            <div style="font-size: 28px; font-weight: 700; color: ${periodStats.laba >= 0 ? '#2e7d32' : '#c62828'};">
+                                Rp ${utils.formatNumber(periodStats.laba)}
+                            </div>
+                            <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                                Dari Top Up & Tarik Tunai saja
                             </div>
                         </div>
-                        <div style="width: 56px; height: 56px; background: ${periodStats.net >= 0 ? '#e8f5e9' : '#ffebee'}; 
+                        <div style="width: 56px; height: 56px; background: ${periodStats.laba >= 0 ? '#e8f5e9' : '#ffebee'}; 
                              border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">
-                            ${periodStats.net >= 0 ? '📈' : '📉'}
+                            ${periodStats.laba >= 0 ? '📈' : '📉'}
+                        </div>
+                    </div>
+                    
+                    <!-- ✅ TAMBAH: Breakdown laba -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 11px; color: #9c27b0; font-weight: 600; margin-bottom: 4px;">💜 Top Up</div>
+                            <div style="font-size: 16px; font-weight: 700; color: #6a1b9a;">Rp ${utils.formatNumber(periodStats.labaTopUp)}</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 11px; color: #2196f3; font-weight: 600; margin-bottom: 4px;">🏧 Tarik Tunai</div>
+                            <div style="font-size: 16px; font-weight: 700; color: #1565c0;">Rp ${utils.formatNumber(periodStats.labaTarikTunai)}</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Stat Cards Pemasukan & Pengeluaran -->
+                <!-- Stat Cards Pemasukan & Pengeluaran Kas -->
                 <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
                     <div style="background: white; border-radius: 10px; padding: 16px; 
                          box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
@@ -182,10 +197,10 @@ const cashModule = {
                              border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💵</div>
                         <div>
                             <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Masuk
+                                Kas Masuk
                             </div>
                             <div style="font-size: 18px; font-weight: 700; color: #2e7d32;">
-                                Rp ${utils.formatNumber(periodStats.income)}
+                                Rp ${utils.formatNumber(periodStats.kasMasuk)}
                             </div>
                         </div>
                     </div>
@@ -196,14 +211,34 @@ const cashModule = {
                              border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💸</div>
                         <div>
                             <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Keluar
+                                Kas Keluar
                             </div>
                             <div style="font-size: 18px; font-weight: 700; color: #c62828;">
-                                Rp ${utils.formatNumber(periodStats.expense)}
+                                Rp ${utils.formatNumber(periodStats.kasKeluar)}
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- ✅ TAMBAH: Card Modal Awal terpisah -->
+                ${periodStats.modalMasuk > 0 ? `
+                <div style="background: white; border-radius: 10px; padding: 16px; margin-bottom: 20px;
+                     box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px; border-left: 4px solid #ffc107;">
+                    <div style="width: 40px; height: 40px; background: #fff8e1; 
+                         border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💰</div>
+                    <div style="flex: 1;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Modal Awal
+                        </div>
+                        <div style="font-size: 18px; font-weight: 700; color: #f57f17;">
+                            Rp ${utils.formatNumber(periodStats.modalMasuk)}
+                        </div>
+                    </div>
+                    <div style="font-size: 11px; color: #999; font-style: italic;">
+                        *tidak masuk laba
+                    </div>
+                </div>
+                ` : ''}
 
                 <!-- Manajemen Kas -->
                 <div class="card" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
@@ -290,25 +325,49 @@ const cashModule = {
         }
     },
     
-    // Method untuk menghitung statistik periode
+    // ✅ PERBARUI: Method untuk menghitung statistik periode - LABA HANYA DARI TOP UP & TARIK TUNAI
     calculatePeriodStats(startDate, endDate) {
         const transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
             return tDate >= startDate && tDate <= endDate;
         });
         
-        const income = transactions
+        // Kas Masuk: semua yang masuk ke kas (in, modal_in, topup)
+        const kasMasuk = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        const expense = transactions
+        // Kas Keluar: semua yang keluar dari kas
+        const kasKeluar = transactions
             .filter(t => t.type === 'out')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
+        // ✅ LABA: HANYA dari Top Up dan Tarik Tunai (admin fee)
+        // Top Up: laba = admin fee (sudah tersimpan di details.adminFee)
+        const labaTopUp = transactions
+            .filter(t => t.type === 'topup')
+            .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
+        
+        // Tarik Tunai: laba = admin fee (sudah tersimpan di details.adminFee)
+        const labaTarikTunai = transactions
+            .filter(t => t.category === 'tarik_tunai')
+            .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
+        
+        // Total laba
+        const laba = labaTopUp + labaTarikTunai;
+        
+        // Modal masuk (untuk ditampilkan terpisah, tidak masuk laba)
+        const modalMasuk = transactions
+            .filter(t => t.type === 'modal_in')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
         return {
-            income,
-            expense,
-            net: income - expense,
+            kasMasuk,           // Total kas masuk (in + modal + topup)
+            kasKeluar,          // Total kas keluar
+            laba,               // ✅ Laba bersih: hanya dari admin fee top up & tarik tunai
+            labaTopUp,          // Detail laba top up
+            labaTarikTunai,     // Detail laba tarik tunai
+            modalMasuk,         // Modal awal (terpisah, bukan laba)
             totalTransactions: transactions.length
         };
     },
@@ -416,8 +475,8 @@ const cashModule = {
         const incomeEl = document.getElementById('todayIncome');
         const expenseEl = document.getElementById('todayExpense');
         
-        if (incomeEl) incomeEl.textContent = 'Rp ' + utils.formatNumber(stats.income);
-        if (expenseEl) expenseEl.textContent = 'Rp ' + utils.formatNumber(stats.expense);
+        if (incomeEl) incomeEl.textContent = 'Rp ' + utils.formatNumber(stats.kasMasuk);
+        if (expenseEl) expenseEl.textContent = 'Rp ' + utils.formatNumber(stats.kasKeluar);
     },
     
     renderTransactions() {
@@ -431,21 +490,34 @@ const cashModule = {
             return tDate >= startDate && tDate <= endDate;
         }).sort((a, b) => new Date(b.date) - new Date(a.date));
         
-        const totalIncome = transactions
+        // ✅ PERBARUI: Hitung berdasarkan logika laba yang baru
+        const totalKasMasuk = transactions
             .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
             
-        const totalExpense = transactions
+        const totalKasKeluar = transactions
             .filter(t => t.type === 'out')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        const net = totalIncome - totalExpense;
+        // ✅ LABA: hanya dari admin fee top up & tarik tunai
+        const totalLabaTopUp = transactions
+            .filter(t => t.type === 'topup')
+            .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
+        
+        const totalLabaTarikTunai = transactions
+            .filter(t => t.category === 'tarik_tunai')
+            .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
+        
+        const totalLaba = totalLabaTopUp + totalLabaTarikTunai;
+        const totalModal = transactions
+            .filter(t => t.type === 'modal_in')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
         const summaryEl = document.getElementById('filterSummary');
         if (summaryEl) {
             const periodLabel = this.getFilterLabel();
             summaryEl.innerHTML = `
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: center;">
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: flex-start;">
                     <div>
                         <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px;">
                             Ringkasan ${periodLabel}
@@ -455,10 +527,14 @@ const cashModule = {
                         </div>
                     </div>
                     <div style="text-align: right;">
-                        <div style="color: #4caf50; font-weight: 600; font-size: 15px;">⬇️ Masuk: Rp ${utils.formatNumber(totalIncome)}</div>
-                        <div style="color: #f44336; font-weight: 600; font-size: 15px; margin: 4px 0;">⬆️ Keluar: Rp ${utils.formatNumber(totalExpense)}</div>
-                        <div style="font-weight: 700; font-size: 16px; color: ${net >= 0 ? '#2e7d32' : '#c62828'}; padding-top: 4px; border-top: 1px solid #e0e0e0; margin-top: 4px;">
-                            Net: Rp ${utils.formatNumber(net)}
+                        <div style="color: #2e7d32; font-weight: 600; font-size: 15px;">⬇️ Kas Masuk: Rp ${utils.formatNumber(totalKasMasuk)}</div>
+                        <div style="color: #c62828; font-weight: 600; font-size: 15px; margin: 4px 0;">⬆️ Kas Keluar: Rp ${utils.formatNumber(totalKasKeluar)}</div>
+                        ${totalModal > 0 ? `<div style="color: #f57f17; font-weight: 600; font-size: 14px; margin: 4px 0;">💰 Modal: Rp ${utils.formatNumber(totalModal)} <span style="font-size: 11px; color: #999;">(bukan laba)</span></div>` : ''}
+                        <div style="font-weight: 700; font-size: 16px; color: #6a1b9a; padding-top: 8px; border-top: 2px solid #e0e0e0; margin-top: 8px;">
+                            💰 Laba: Rp ${utils.formatNumber(totalLaba)}
+                            <div style="font-size: 11px; color: #999; font-weight: normal; margin-top: 2px;">
+                                (Top Up: Rp ${utils.formatNumber(totalLabaTopUp)} + Tarik Tunai: Rp ${utils.formatNumber(totalLabaTarikTunai)})
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -481,17 +557,34 @@ const cashModule = {
         let html = '';
         Object.keys(grouped).forEach(dateKey => {
             const dayTrans = grouped[dateKey];
-            const dayTotal = dayTrans.reduce((sum, t) => {
+            
+            // ✅ PERBARUI: Hitung laba harian (hanya admin fee)
+            const dayLaba = dayTrans.reduce((sum, t) => {
+                if (t.type === 'topup' || t.category === 'tarik_tunai') {
+                    return sum + (parseInt(t.details?.adminFee) || 0);
+                }
+                return sum;
+            }, 0);
+            
+            const dayKasNet = dayTrans.reduce((sum, t) => {
                 const amt = parseInt(t.amount) || 0;
-                return t.type === 'in' || t.type === 'modal_in' || t.type === 'topup' ? sum + amt : sum - amt;
+                if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
+                    return sum + amt;
+                } else if (t.type === 'out') {
+                    return sum - amt;
+                }
+                return sum;
             }, 0);
             
             html += `
-                <div style="background: #f5f5f5; padding: 10px 16px; margin: 16px 0 8px 0; border-radius: 8px; font-weight: 600; font-size: 14px; color: #555; display: flex; justify-content: space-between; align-items: center;">
+                <div style="background: #f5f5f5; padding: 10px 16px; margin: 16px 0 8px 0; border-radius: 8px; font-weight: 600; font-size: 14px; color: #555; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <span>${dateKey}</span>
-                    <span style="color: ${dayTotal >= 0 ? '#4caf50' : '#f44336'}; font-weight: 700;">
-                        ${dayTotal >= 0 ? '+' : ''}Rp ${utils.formatNumber(Math.abs(dayTotal))}
-                    </span>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        ${dayLaba > 0 ? `<span style="color: #9c27b0; font-size: 12px; font-weight: 700;">💰 Laba: Rp ${utils.formatNumber(dayLaba)}</span>` : ''}
+                        <span style="color: ${dayKasNet >= 0 ? '#4caf50' : '#f44336'}; font-weight: 700;">
+                            Kas: ${dayKasNet >= 0 ? '+' : ''}Rp ${utils.formatNumber(Math.abs(dayKasNet))}
+                        </span>
+                    </div>
                 </div>
             `;
             
@@ -501,16 +594,33 @@ const cashModule = {
                 const amountColor = isIncome ? '#2e7d32' : '#c62828';
                 
                 let typeLabel = '';
-                if (t.type === 'modal_in') typeLabel = ' (Modal)';
-                else if (t.type === 'topup') typeLabel = ' (Top Up)';
-                else if (t.category === 'tarik_tunai') typeLabel = ' (Tarik Tunai)';
+                let labaBadge = '';
+                
+                if (t.type === 'modal_in') {
+                    typeLabel = ' (Modal)';
+                } else if (t.type === 'topup') {
+                    typeLabel = ' (Top Up)';
+                    const adminFee = parseInt(t.details?.adminFee) || 0;
+                    if (adminFee > 0) {
+                        labaBadge = `<span style="background: #f3e5f5; color: #6a1b9a; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
+                    }
+                } else if (t.category === 'tarik_tunai') {
+                    typeLabel = ' (Tarik Tunai)';
+                    const adminFee = parseInt(t.details?.adminFee) || 0;
+                    if (adminFee > 0) {
+                        labaBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
+                    }
+                }
                 
                 const timeStr = new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                 
                 html += `
                     <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='transparent'">
                         <div class="transaction-info" style="flex: 1;">
-                            <div class="transaction-title" style="font-weight: 600; margin-bottom: 4px; color: #333; font-size: 14px;">${t.note || t.category}${typeLabel}</div>
+                            <div class="transaction-title" style="font-weight: 600; margin-bottom: 4px; color: #333; font-size: 14px; display: flex; align-items: center; flex-wrap: wrap;">
+                                ${t.note || t.category}${typeLabel}
+                                ${labaBadge}
+                            </div>
                             <div class="transaction-meta" style="font-size: 12px; color: #999;">${timeStr}</div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 12px;">
@@ -727,7 +837,7 @@ const cashModule = {
                     <div style="padding: 24px;">
                         <div style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
                             <div style="font-weight: 600; color: #f57f17; margin-bottom: 4px; font-size: 14px;">📌 Modal Awal Shift</div>
-                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Modal akan ditambahkan ke Kas di Tangan untuk memulai shift baru.</div>
+                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Modal akan ditambahkan ke Kas di Tangan untuk memulai shift baru.<br><strong>Tidak masuk ke perhitungan laba.</strong></div>
                         </div>
 
                         <div class="form-group" style="margin-bottom: 20px;">
@@ -792,7 +902,7 @@ const cashModule = {
                     
                     <div style="padding: 24px;">
                         <div style="background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="font-weight: 600; color: #6a1b9a; margin-bottom: 4px; font-size: 14px;">Admin Fee = Laba!</div>
+                            <div style="font-weight: 600; color: #6a1b9a; margin-bottom: 4px; font-size: 14px;">💰 Admin Fee = Laba!</div>
                             <div style="color: #666; font-size: 13px; line-height: 1.5;">Total bayar = Nominal + Admin Fee<br>Admin fee masuk ke laba bersih</div>
                         </div>
 
@@ -821,8 +931,8 @@ const cashModule = {
                                 <span>Total Bayar:</span>
                                 <span id="topUpTotal" style="font-weight: 700;">Rp 0</span>
                             </div>
-                            <div style="display: flex; justify-content: space-between; color: #4caf50; font-weight: 600;">
-                                <span>Laba (Admin):</span>
+                            <div style="display: flex; justify-content: space-between; color: #6a1b9a; font-weight: 700; font-size: 16px;">
+                                <span>💰 Laba (Admin):</span>
                                 <span id="topUpProfit">Rp 0</span>
                             </div>
                         </div>
@@ -870,9 +980,10 @@ const cashModule = {
             amount: total,
             category: 'topup_' + type,
             note: `Top Up ${type.toUpperCase()}`,
-            details: { nominal, adminFee: admin }
+            details: { nominal, adminFee: admin }  // ✅ Simpan detail untuk hitung laba
         });
         
+        // ✅ Simpan juga ke transactions sebagai pendapatan laba (opsional, untuk laporan gabungan)
         if (admin > 0) {
             dataManager.data.transactions.push({
                 id: Date.now() + 1,
@@ -910,7 +1021,7 @@ const cashModule = {
                     
                     <div style="padding: 24px;">
                         <div style="background: #e1f5fe; border-left: 4px solid #2196f3; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="font-weight: 600; color: #1565c0; margin-bottom: 4px; font-size: 14px;">Admin Fee = Laba!</div>
+                            <div style="font-weight: 600; color: #1565c0; margin-bottom: 4px; font-size: 14px;">💰 Admin Fee = Laba!</div>
                             <div style="color: #666; font-size: 13px; line-height: 1.5;">Nominal = Uang diberikan ke customer<br>Admin fee = Keuntungan konter</div>
                         </div>
 
@@ -929,8 +1040,8 @@ const cashModule = {
                                 <span>Total Keluar dari Kas:</span>
                                 <span id="tarikTotal" style="font-weight: 700; color: #f44336;">Rp 0</span>
                             </div>
-                            <div style="display: flex; justify-content: space-between; color: #4caf50; font-weight: 600;">
-                                <span>Laba (Admin):</span>
+                            <div style="display: flex; justify-content: space-between; color: #1565c0; font-weight: 700; font-size: 16px;">
+                                <span>💰 Laba (Admin):</span>
                                 <span id="tarikProfit">Rp 0</span>
                             </div>
                         </div>
@@ -982,9 +1093,10 @@ const cashModule = {
             amount: total,
             category: 'tarik_tunai',
             note: 'Tarik Tunai',
-            details: { nominal, adminFee: admin }
+            details: { nominal, adminFee: admin }  // ✅ Simpan detail untuk hitung laba
         });
         
+        // ✅ Simpan juga ke transactions sebagai pendapatan laba (opsional)
         if (admin > 0) {
             dataManager.data.transactions.push({
                 id: Date.now() + 1,
