@@ -19,10 +19,11 @@ const backupModule = {
     database: null,
     auth: null,
     currentUser: null,
-    firebaseBackupData: null, // Menyimpan data backup untuk tampilan Excel
+    firebaseBackupData: null,
     
-    // Google Sheets
+    // Google Sheets - UPDATED WITH SHEET ID
     gasUrl: localStorage.getItem('hifzi_gas_url') || '',
+    sheetId: localStorage.getItem('hifzi_sheet_id') || '', // NEW: Sheet ID storage
     
     // Device
     deviceId: localStorage.getItem('hifzi_device_id') || 'device_' + Date.now(),
@@ -32,6 +33,7 @@ const backupModule = {
     KEYS: {
         PROVIDER: 'hifzi_provider',
         GAS_URL: 'hifzi_gas_url',
+        SHEET_ID: 'hifzi_sheet_id', // NEW: Sheet ID key
         AUTO_SYNC: 'hifzi_auto_sync',
         AUTO_SAVE_LOCAL: 'hifzi_auto_save_local',
         LAST_SYNC: 'hifzi_last_sync',
@@ -51,7 +53,6 @@ const backupModule = {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
         }
         
-        // Setup online/offline listeners
         window.addEventListener('online', () => {
             this.isOnline = true;
             this.showToast('🌐 Online');
@@ -63,21 +64,19 @@ const backupModule = {
             this.showToast('📴 Offline');
         });
 
-        // Initialize provider
         if (this.currentProvider === 'firebase') {
             this.initFirebase();
         } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
             this.checkNewDeviceGAS();
         }
 
-        // Start auto sync if enabled
         if (this.isAutoSyncEnabled) {
             this.startAutoSync();
         }
     },
 
     // ============================================
-    // DATA COLLECTION (Exclude Telegram)
+    // DATA COLLECTION
     // ============================================
 
     getBackupData() {
@@ -160,7 +159,7 @@ const backupModule = {
         this.autoSyncInterval = setInterval(() => {
             console.log('[Backup] Running auto-sync...');
             this.syncToCloud(true);
-        }, 180000); // 3 menit
+        }, 180000);
         
         console.log(`[Backup] Auto-sync started for ${this.currentProvider}`);
     },
@@ -197,7 +196,7 @@ const backupModule = {
     },
 
     // ============================================
-    // MANUAL SYNC (UPLOAD/DOWNLOAD)
+    // MANUAL SYNC
     // ============================================
 
     manualUpload() {
@@ -225,7 +224,7 @@ const backupModule = {
     },
 
     // ============================================
-    // FIREBASE
+    // FIREBASE (unchanged)
     // ============================================
 
     initFirebase() {
@@ -398,7 +397,7 @@ const backupModule = {
             .then((snapshot) => {
                 const cloudData = snapshot.val();
                 if (cloudData) {
-                    this.firebaseBackupData = cloudData; // Simpan untuk tampilan Excel
+                    this.firebaseBackupData = cloudData;
                     this.saveBackupData(cloudData);
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
@@ -419,10 +418,8 @@ const backupModule = {
             });
     },
 
-    // Tampilkan data Firebase dalam format Excel/Table
     showFirebaseExcelView() {
         if (!this.firebaseBackupData && this.currentUser) {
-            // Jika belum ada data, download dulu
             this.showToast('⬇️ Mengambil data dari Firebase...');
             this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value')
                 .then((snapshot) => {
@@ -461,7 +458,6 @@ const backupModule = {
             overflow-y: auto;
         `;
 
-        // Generate tabs untuk setiap tabel
         const tabs = [
             { id: 'products', label: '📦 Produk', data: data.products || [] },
             { id: 'transactions', label: '📝 Transaksi', data: data.transactions || [] },
@@ -565,7 +561,6 @@ const backupModule = {
 
         document.body.appendChild(modal);
         
-        // Aktifkan tab pertama yang ada datanya
         const firstTabWithData = tabs.find(t => t.data.length > 0);
         if (firstTabWithData) {
             this.switchExcelTab(firstTabWithData.id);
@@ -575,14 +570,12 @@ const backupModule = {
     },
 
     switchExcelTab(tabId) {
-        // Hide all tabs
         document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.style.display = 'none');
         document.querySelectorAll('[id^="tab-btn-"]').forEach(el => {
             el.style.background = '#fed7d7';
             el.style.color = '#c53030';
         });
         
-        // Show selected tab
         const content = document.getElementById(`tab-content-${tabId}`);
         const btn = document.getElementById(`tab-btn-${tabId}`);
         if (content) content.style.display = 'block';
@@ -598,7 +591,6 @@ const backupModule = {
         const data = this.firebaseBackupData;
         const wb = XLSX.utils.book_new();
         
-        // Tambahkan sheet untuk setiap data
         const sheets = [
             { name: 'Produk', data: data.products || [] },
             { name: 'Transaksi', data: data.transactions || [] },
@@ -616,7 +608,6 @@ const backupModule = {
             }
         });
         
-        // Tambahkan metadata sheet
         const metaData = [{
             backupDate: data._backupMeta?.backupDate || new Date().toISOString(),
             deviceId: data._backupMeta?.deviceId || '-',
@@ -634,7 +625,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE SHEETS - FIXED METHODS
+    // GOOGLE SHEETS - UPDATED WITH SHEET ID & TEST CONNECTION
     // ============================================
 
     checkNewDeviceGAS() {
@@ -652,6 +643,51 @@ const backupModule = {
         }
     },
 
+    // NEW: Test Connection Method
+    testGASConnection() {
+        if (!this.gasUrl) {
+            this.showToast('❌ URL GAS belum diisi');
+            return Promise.reject('No URL');
+        }
+
+        this.showToast('🧪 Testing koneksi...');
+        
+        const testPayload = {
+            action: 'test',
+            deviceId: this.deviceId,
+            timestamp: new Date().toISOString()
+        };
+
+        return fetch(this.gasUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify(testPayload)
+        })
+        .then(async (r) => {
+            if (!r.ok) {
+                const text = await r.text();
+                throw new Error(`HTTP ${r.status}: ${text}`);
+            }
+            return r.json();
+        })
+        .then(result => {
+            if (result?.success) {
+                this.showToast('✅ Koneksi berhasil! ' + (result.message || 'GAS Ready'));
+                return result;
+            } else {
+                throw new Error(result?.message || 'Test failed');
+            }
+        })
+        .catch((err) => {
+            console.error('[GAS Test Error]', err);
+            this.showToast('❌ Koneksi gagal: ' + err.message);
+            throw err;
+        });
+    },
+
     uploadToGAS(data, silent = false) {
         if (!this.gasUrl) {
             if (!silent) this.showToast('❌ URL GAS belum diisi');
@@ -665,10 +701,10 @@ const backupModule = {
             data: data,
             deviceId: this.deviceId,
             deviceName: this.deviceName,
+            sheetId: this.sheetId || null, // NEW: Include sheetId if provided
             timestamp: new Date().toISOString()
         };
         
-        // FIX: Use text/plain to avoid CORS preflight
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
@@ -678,7 +714,6 @@ const backupModule = {
             body: JSON.stringify(payload)
         })
         .then(async (r) => {
-            // FIX: Check response status before parsing
             if (!r.ok) {
                 const text = await r.text();
                 throw new Error(`HTTP ${r.status}: ${text}`);
@@ -701,7 +736,6 @@ const backupModule = {
             console.error('[GAS Upload Error]', err);
             this.pendingSync = true;
             if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
-            // Try JSONP fallback for CORS issues
             return this.uploadGAS_JSONP(payload, silent);
         });
     },
@@ -711,14 +745,12 @@ const backupModule = {
             const cbName = 'gas_cb_' + Date.now();
             const jsonStr = JSON.stringify(payload);
             
-            // FIX: Check data size limit
             if (jsonStr.length > 8000) {
                 if (!silent) this.showToast('❌ Data terlalu besar untuk JSONP');
                 reject(new Error('Data too large for JSONP'));
                 return;
             }
             
-            // FIX: Better cleanup and error handling
             const cleanup = () => {
                 if (window[cbName]) delete window[cbName];
                 if (script && script.parentNode) script.parentNode.removeChild(script);
@@ -742,7 +774,6 @@ const backupModule = {
             const script = document.createElement('script');
             script.src = `${this.gasUrl}?callback=${cbName}&data=${encodeURIComponent(jsonStr)}`;
             
-            // FIX: Add error handler for script load failure
             script.onerror = () => {
                 cleanup();
                 reject(new Error('JSONP script failed to load'));
@@ -750,7 +781,6 @@ const backupModule = {
             
             document.head.appendChild(script);
             
-            // FIX: Longer timeout for slow connections
             const timeout = setTimeout(() => {
                 cleanup();
                 reject(new Error('JSONP timeout'));
@@ -772,8 +802,7 @@ const backupModule = {
         
         if (!silent) this.showToast('⬇️ Mengunduh dari Google Sheets...');
         
-        // FIX: Add cache-buster and proper headers
-        const url = `${this.gasUrl}?action=restore&_t=${Date.now()}&_=${Math.random()}`;
+        const url = `${this.gasUrl}?action=restore&sheetId=${encodeURIComponent(this.sheetId || '')}&_t=${Date.now()}&_=${Math.random()}`;
         
         return fetch(url, {
             method: 'GET',
@@ -783,7 +812,6 @@ const backupModule = {
             }
         })
         .then(async (r) => {
-            // FIX: Check response status
             if (!r.ok) {
                 const text = await r.text();
                 throw new Error(`HTTP ${r.status}: ${text}`);
@@ -793,7 +821,6 @@ const backupModule = {
         .then(result => this.handleGASDownload(result, silent))
         .catch((err) => {
             console.error('[GAS Download Error]', err);
-            // Try JSONP fallback
             return this.downloadGAS_JSONP(silent);
         });
     },
@@ -816,7 +843,7 @@ const backupModule = {
             };
             
             const script = document.createElement('script');
-            script.src = `${this.gasUrl}?action=restore&callback=${cbName}&_t=${Date.now()}`;
+            script.src = `${this.gasUrl}?action=restore&sheetId=${encodeURIComponent(this.sheetId || '')}&callback=${cbName}&_t=${Date.now()}`;
             
             script.onerror = () => {
                 cleanup();
@@ -853,7 +880,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE APPS SCRIPT GENERATOR - FIXED VERSION
+    // GOOGLE APPS SCRIPT GENERATOR - UPDATED WITH SHEET ID SUPPORT
     // ============================================
 
     showGASGenerator() {
@@ -873,22 +900,22 @@ const backupModule = {
             padding: 20px;
         `;
         
+        // UPDATED GAS CODE WITH SHEET ID SUPPORT
         const gasCode = `function doGet(e) {
   const action = e.parameter.action;
   const callback = e.parameter.callback;
+  const sheetId = e.parameter.sheetId;
   
   if (action === 'restore') {
-    const data = getData();
+    const data = getData(sheetId);
     const response = { success: true, data: data };
     
     if (callback) {
-      // JSONP response
       const output = ContentService.createTextOutput(callback + '(' + JSON.stringify(response) + ')');
       output.setMimeType(ContentService.MimeType.JAVASCRIPT);
       return output;
     }
     
-    // Regular JSON response
     const output = ContentService.createTextOutput(JSON.stringify(response));
     output.setMimeType(ContentService.MimeType.JSON);
     return output;
@@ -898,7 +925,6 @@ const backupModule = {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// FIX: Handle CORS preflight requests
 function doOptions(e) {
   return ContentService.createTextOutput('')
     .setMimeType(ContentService.MimeType.JSON);
@@ -906,7 +932,6 @@ function doOptions(e) {
 
 function doPost(e) {
   try {
-    // FIX: Handle text/plain content type properly
     let params;
     if (e.postData && e.postData.contents) {
       params = JSON.parse(e.postData.contents);
@@ -915,15 +940,24 @@ function doPost(e) {
     }
     
     const action = params.action;
+    const sheetId = params.sheetId;
+    
+    // NEW: Test connection endpoint
+    if (action === 'test') {
+      return ContentService.createTextOutput(JSON.stringify({ 
+        success: true, 
+        message: 'GAS Connected! Sheet: ' + (sheetId ? 'Custom' : 'Default')
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
     
     if (action === 'sync') {
-      saveData(params.data);
+      saveData(params.data, sheetId);
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data saved' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
     
     if (action === 'reset') {
-      clearData();
+      clearData(sheetId);
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data cleared' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -937,9 +971,9 @@ function doPost(e) {
   }
 }
 
-// Simpan data ke Spreadsheet
-function saveData(data) {
-  const ss = getOrCreateSpreadsheet();
+// MODIFIED: Support specific sheet ID
+function saveData(data, specificSheetId) {
+  const ss = getOrCreateSpreadsheet(specificSheetId);
   const sheet = ss.getSheetByName('Data') || ss.insertSheet('Data');
   sheet.clear();
   
@@ -948,12 +982,12 @@ function saveData(data) {
   sheet.getRange(1, 2).setValue(new Date());
   
   // Log
-  logAction('SYNC', data._backupMeta?.deviceId || 'unknown', data._backupMeta?.deviceName || 'unknown');
+  logAction('SYNC', data._backupMeta?.deviceId || 'unknown', data._backupMeta?.deviceName || 'unknown', ss.getName());
 }
 
-// Ambil data dari Spreadsheet
-function getData() {
-  const ss = getOrCreateSpreadsheet();
+// MODIFIED: Support specific sheet ID
+function getData(specificSheetId) {
+  const ss = getOrCreateSpreadsheet(specificSheetId);
   const sheet = ss.getSheetByName('Data');
   
   if (!sheet) return null;
@@ -968,15 +1002,25 @@ function getData() {
   }
 }
 
-// Clear data
-function clearData() {
-  const ss = getOrCreateSpreadsheet();
+// MODIFIED: Support specific sheet ID
+function clearData(specificSheetId) {
+  const ss = getOrCreateSpreadsheet(specificSheetId);
   const sheet = ss.getSheetByName('Data');
   if (sheet) sheet.clear();
 }
 
-// Get or Create Spreadsheet
-function getOrCreateSpreadsheet() {
+// MODIFIED: Support opening specific spreadsheet by ID
+function getOrCreateSpreadsheet(specificSheetId) {
+  // If specific sheet ID provided, try to open it
+  if (specificSheetId) {
+    try {
+      return SpreadsheetApp.openById(specificSheetId);
+    } catch (e) {
+      throw new Error('Invalid Sheet ID: ' + specificSheetId);
+    }
+  }
+  
+  // Otherwise use default from properties
   const propKey = 'SPREADSHEET_ID';
   const props = PropertiesService.getScriptProperties();
   let id = props.getProperty(propKey);
@@ -995,20 +1039,19 @@ function getOrCreateSpreadsheet() {
   
   // Setup log sheet
   const logSheet = ss.insertSheet('Log');
-  logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name']);
+  logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name', 'Sheet']);
   
   return ss;
 }
 
-// Log actions
-function logSheet() {
-  const ss = getOrCreateSpreadsheet();
+function logSheet(ss) {
   return ss.getSheetByName('Log') || ss.insertSheet('Log');
 }
 
-function logAction(action, deviceId, deviceName) {
-  const sheet = logSheet();
-  sheet.appendRow([new Date(), action, deviceId, deviceName]);
+function logAction(action, deviceId, deviceName, sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = logSheet(ss);
+  sheet.appendRow([new Date(), action, deviceId, deviceName, sheetName || 'Default']);
 }`;
 
         modal.innerHTML = `
@@ -1033,6 +1076,13 @@ function logAction(action, deviceId, deviceName) {
                             <li>Pilih "Web app", set "Who has access" ke "Anyone"</li>
                             <li>Copy URL deployment, paste di menu Cloud ini</li>
                         </ol>
+                    </div>
+                    
+                    <div style="background: #ebf8ff; border: 1px solid #90cdf4; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                        <div style="font-size: 12px; color: #2c5282;">
+                            <strong>💡 Fitur Sheet ID:</strong> Jika diisi, data akan disimpan ke spreadsheet tertentu. 
+                            Kosongkan untuk menggunakan spreadsheet default dari GAS.
+                        </div>
                     </div>
                     
                     <div style="position: relative;">
@@ -1152,14 +1202,14 @@ function logAction(action, deviceId, deviceName) {
     },
 
     // ============================================
-    // CONFIG & SETTINGS
+    // CONFIG & SETTINGS - UPDATED WITH SHEET ID
     // ============================================
 
     setProvider(provider) {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
         this.stopAutoSync();
-        this.firebaseBackupData = null; // Reset cached data
+        this.firebaseBackupData = null;
         
         if (provider === 'firebase') {
             this.initFirebase();
@@ -1195,8 +1245,10 @@ function logAction(action, deviceId, deviceName) {
         this.render();
     },
 
+    // UPDATED: Save both URL and Sheet ID
     saveGasUrl() {
         const url = document.getElementById('gasUrlInput')?.value?.trim();
+        const sheetId = document.getElementById('sheetIdInput')?.value?.trim();
         
         if (!url || !url.includes('script.google.com')) {
             this.showToast('❌ URL GAS tidak valid');
@@ -1204,8 +1256,10 @@ function logAction(action, deviceId, deviceName) {
         }
         
         this.gasUrl = url;
+        this.sheetId = sheetId;
         localStorage.setItem(this.KEYS.GAS_URL, url);
-        this.showToast('✅ URL GAS disimpan!');
+        localStorage.setItem(this.KEYS.SHEET_ID, sheetId);
+        this.showToast('✅ Konfigurasi GAS disimpan!');
         
         if (this.currentProvider === 'googlesheet') {
             this.checkNewDeviceGAS();
@@ -1261,7 +1315,7 @@ function logAction(action, deviceId, deviceName) {
             fetch(this.gasUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ action: 'reset' })
+                body: JSON.stringify({ action: 'reset', sheetId: this.sheetId || null })
             }).then(() => this.showToast('✅ GAS direset!'));
         }
     },
@@ -1296,7 +1350,7 @@ function logAction(action, deviceId, deviceName) {
     },
 
     // ============================================
-    // RENDER UI (MAIN)
+    // RENDER UI (MAIN) - UPDATED WITH SHEET ID FIELD
     // ============================================
 
     render() {
@@ -1403,7 +1457,7 @@ function logAction(action, deviceId, deviceName) {
                 <!-- Firebase Section -->
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
 
-                <!-- Google Sheets Section -->
+                <!-- Google Sheets Section - UPDATED -->
                 ${isGAS ? this.renderGASSection() : ''}
 
                 <!-- Manual Sync Section -->
@@ -1576,8 +1630,10 @@ function logAction(action, deviceId, deviceName) {
         `;
     },
 
+    // UPDATED: Render GAS Section with Sheet ID and Test Connection
     renderGASSection() {
         const hasUrl = this.gasUrl.length > 10;
+        const hasSheetId = this.sheetId && this.sheetId.length > 5;
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
@@ -1589,12 +1645,35 @@ function logAction(action, deviceId, deviceName) {
                     <span>📋</span> Generate GAS Code
                 </button>
                 
-                <div style="margin-bottom: 16px;">
+                <!-- URL Input -->
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">🔗 GAS Web App URL</label>
                     <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" 
-                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; margin-bottom: 12px;">
+                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                </div>
+
+                <!-- NEW: Sheet ID Input -->
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">
+                        📄 Google Sheet ID (Opsional)
+                        <span style="font-weight: normal; color: #718096; font-size: 12px;"> - Kosongkan untuk default</span>
+                    </label>
+                    <input type="text" id="sheetIdInput" value="${this.sheetId}" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" 
+                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                    <div style="font-size: 11px; color: #718096; margin-top: 4px;">
+                        Dari URL: https://docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <button onclick="backupModule.saveGasUrl()" 
-                        style="width: 100%; padding: 14px; background: #34a853; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
-                        💾 Simpan URL
+                        style="padding: 14px; background: #34a853; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        💾 Simpan Konfigurasi
+                    </button>
+                    <button onclick="backupModule.testGASConnection()" 
+                        style="padding: 14px; background: #4299e1; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                        🧪 Test Koneksi
                     </button>
                 </div>
                 
@@ -1602,7 +1681,9 @@ function logAction(action, deviceId, deviceName) {
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f0fff4; border-radius: 10px;">
                         <div>
                             <div style="font-weight: 600; color: #2d3748;">Auto Sync</div>
-                            <div style="font-size: 12px; color: #718096; margin-top: 2px;">Sinkron otomatis tiap 3 menit</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 2px;">
+                                ${hasSheetId ? '📄 Sheet ID: ' + this.sheetId.substring(0, 15) + '...' : '📄 Sheet: Default'}
+                            </div>
                         </div>
                         <div onclick="backupModule.toggleAutoSync()" 
                             style="width: 50px; height: 28px; background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'}; border-radius: 14px; position: relative; cursor: pointer; transition: all 0.3s;">
@@ -1629,5 +1710,4 @@ if (typeof dataManager !== 'undefined') {
     }
 }
 
-// Expose globally
 window.backupModule = backupModule;
