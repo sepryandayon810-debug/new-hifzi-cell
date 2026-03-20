@@ -1,14 +1,12 @@
 // ============================================
-// N8N DATA MANAGEMENT MODULE
+// N8N DATA MANAGEMENT MODULE - FIXED VERSION
 // ============================================
-// Module untuk pencarian dan manajemen data dari Google Sheets
-// Posisi: CRUD di atas, Konfigurasi di bawah (collapsible)
+// Perbaikan: CORS handling, Selection fix, Better error logging
 
 (function() {
     'use strict';
 
     const n8nModule = {
-        // State management
         state: {
             data: [],
             filteredData: [],
@@ -22,14 +20,8 @@
             gasCode: localStorage.getItem('n8n_gas_code') || ''
         },
 
-        // ============================================
-        // INITIALIZATION
-        // ============================================
         init() {
-            console.log('[n8nModule] ✅ Module loaded dengan nama HURUF KECIL SEMUA');
-            console.log('[n8nModule] Module initialized - huruf kecil semua');
-
-            // Load saved config
+            console.log('[n8nModule] ✅ Module loaded - FIXED VERSION');
             this.loadConfig();
 
             // Bind methods
@@ -44,18 +36,20 @@
             this.saveGASCode = this.saveGASCode.bind(this);
             this.loadGASCode = this.loadGASCode.bind(this);
             this.getChatId = this.getChatId.bind(this);
+            this.selectRow = this.selectRow.bind(this);
+            this.renderTable = this.renderTable.bind(this);
         },
 
         loadConfig() {
             const saved = localStorage.getItem('n8n_config');
             if (saved) {
-                const config = JSON.parse(saved);
-                this.state.gasUrl = config.gasUrl || '';
-                this.state.sheetId = config.sheetId || '';
-                this.state.sheetName = config.sheetName || 'Data Base Hifzi Cell';
-                this.state.botToken = config.botToken || '';
-                this.state.chatId = config.chatId || '';
-                this.state.gasCode = config.gasCode || '';
+                try {
+                    const config = JSON.parse(saved);
+                    Object.assign(this.state, config);
+                    console.log('[n8nModule] Config loaded:', config);
+                } catch(e) {
+                    console.error('[n8nModule] Error loading config:', e);
+                }
             }
         },
 
@@ -70,20 +64,14 @@
             };
             localStorage.setItem('n8n_config', JSON.stringify(config));
 
-            // Also save individual items for backward compatibility
-            localStorage.setItem('n8n_gas_url', this.state.gasUrl);
-            localStorage.setItem('n8n_sheet_id', this.state.sheetId);
-            localStorage.setItem('n8n_sheet_name', this.state.sheetName);
-            localStorage.setItem('n8n_bot_token', this.state.botToken);
-            localStorage.setItem('n8n_chat_id', this.state.chatId);
-            localStorage.setItem('n8n_gas_code', this.state.gasCode);
+            // Also save individual items
+            Object.keys(config).forEach(key => {
+                localStorage.setItem(`n8n_${key === 'gasUrl' ? 'gas_url' : key === 'sheetId' ? 'sheet_id' : key === 'sheetName' ? 'sheet_name' : key === 'botToken' ? 'bot_token' : key === 'chatId' ? 'chat_id' : key === 'gasCode' ? 'gas_code' : key}`, config[key]);
+            });
 
             this.showNotification('✅ Konfigurasi berhasil disimpan!', 'success');
         },
 
-        // ============================================
-        // RENDER PAGE
-        // ============================================
         renderPage() {
             console.log('[n8nModule] renderPage() called');
             const mainContent = document.getElementById('mainContent');
@@ -95,22 +83,28 @@
             mainContent.innerHTML = this.getHTML();
             this.attachEventListeners();
 
-            // Auto-get chat ID if token exists but chat ID empty
+            // Set initial values
+            document.getElementById('sheetId').value = this.state.sheetId;
+            document.getElementById('sheetName').value = this.state.sheetName;
+            document.getElementById('gasUrl').value = this.state.gasUrl;
+            document.getElementById('botToken').value = this.state.botToken;
+            document.getElementById('chatId').value = this.state.chatId;
+
+            if (this.state.gasCode) {
+                document.getElementById('gasCodeEditor').value = this.state.gasCode;
+            }
+
+            // Auto get chat ID
             if (this.state.botToken && !this.state.chatId) {
                 this.getChatId();
             }
 
-            // Load saved GAS code to textarea if exists
-            const gasTextarea = document.getElementById('gasCodeEditor');
-            if (gasTextarea && this.state.gasCode) {
-                gasTextarea.value = this.state.gasCode;
-            }
+            console.log('[n8nModule] Page rendered, listeners attached');
         },
 
         getHTML() {
             return `
                 <div class="n8n-container">
-                    <!-- HEADER -->
                     <div class="n8n-header">
                         <h2>🔍 Pencarian Data N8N</h2>
                         <p>Kelola data nama dan nomor dari Google Sheets</p>
@@ -137,7 +131,6 @@
                             </button>
                         </div>
 
-                        <!-- Search Input -->
                         <div class="n8n-search-box">
                             <input type="text" id="searchInput" class="n8n-input" placeholder="Ketik nama atau nomor untuk mencari...">
                             <button class="n8n-btn n8n-btn-primary" id="btnExecuteSearch">
@@ -152,10 +145,10 @@
                             <table class="n8n-table" id="dataTable">
                                 <thead>
                                     <tr>
-                                        <th>No</th>
+                                        <th style="width: 50px;">No</th>
                                         <th>NAMA</th>
                                         <th>NOMOR</th>
-                                        <th>Aksi</th>
+                                        <th style="width: 80px;">Pilih</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tableBody">
@@ -163,7 +156,7 @@
                                         <td colspan="4" class="n8n-empty-message">
                                             <div class="empty-state">
                                                 <span class="empty-icon">📭</span>
-                                                <p>Belum ada data. Klik "Cari Data" atau "Tambah Data" untuk memulai.</p>
+                                                <p>Belum ada data. Klik "Cari Data" untuk memuat data.</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -172,7 +165,7 @@
                         </div>
                     </div>
 
-                    <!-- CONFIG TOGGLE BUTTON -->
+                    <!-- CONFIG TOGGLE -->
                     <div class="n8n-config-toggle">
                         <button class="n8n-btn n8n-btn-ghost" id="btnToggleConfig" title="Konfigurasi">
                             <span class="icon">⚙️</span>
@@ -181,26 +174,26 @@
                         </button>
                     </div>
 
-                    <!-- CONFIGURATION SECTION - POSISI BAWAH (COLLAPSIBLE) -->
+                    <!-- CONFIGURATION SECTION -->
                     <div class="n8n-config-section" id="configSection" style="display: none;">
                         <div class="n8n-config-card">
                             <h3>⚙️ Pengaturan Koneksi</h3>
 
                             <div class="n8n-form-group">
                                 <label>Google Sheet ID</label>
-                                <input type="text" id="sheetId" class="n8n-input" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE" value="${this.state.sheetId}">
+                                <input type="text" id="sheetId" class="n8n-input" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE">
                                 <small>ID dari spreadsheet Google Sheets</small>
                             </div>
 
                             <div class="n8n-form-group">
                                 <label>Sheet Name</label>
-                                <input type="text" id="sheetName" class="n8n-input" placeholder="Data Base Hifzi Cell" value="${this.state.sheetName}">
+                                <input type="text" id="sheetName" class="n8n-input" placeholder="Data Base Hifzi Cell">
                                 <small>Nama sheet/tab di dalam spreadsheet</small>
                             </div>
 
                             <div class="n8n-form-group">
                                 <label>GAS Web App URL</label>
-                                <input type="text" id="gasUrl" class="n8n-input" placeholder="https://script.google.com/macros/s/XXXX/exec" value="${this.state.gasUrl}">
+                                <input type="text" id="gasUrl" class="n8n-input" placeholder="https://script.google.com/macros/s/XXXX/exec">
                                 <small>URL dari Google Apps Script yang sudah di-deploy</small>
                             </div>
 
@@ -208,13 +201,13 @@
 
                             <div class="n8n-form-group">
                                 <label>Telegram Bot Token (Opsional)</label>
-                                <input type="password" id="botToken" class="n8n-input" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" value="${this.state.botToken}">
+                                <input type="password" id="botToken" class="n8n-input" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz">
                                 <small>Token dari @BotFather (auto-get Chat ID)</small>
                             </div>
 
                             <div class="n8n-form-group">
                                 <label>Telegram Chat ID (Auto)</label>
-                                <input type="text" id="chatId" class="n8n-input" placeholder="Akan terisi otomatis" value="${this.state.chatId}" readonly>
+                                <input type="text" id="chatId" class="n8n-input" placeholder="Akan terisi otomatis" readonly>
                                 <small>Terisi otomatis setelah test koneksi</small>
                             </div>
 
@@ -231,7 +224,6 @@
 
                             <div class="n8n-divider"></div>
 
-                            <!-- GAS CODE GENERATOR & STORAGE -->
                             <div class="n8n-gas-section">
                                 <h4>📜 Google Apps Script Code</h4>
                                 <p class="gas-desc">Generate atau paste kode GAS di sini. Kode akan tersimpan otomatis.</p>
@@ -273,7 +265,6 @@
                         </div>
                     </div>
 
-                    <!-- STATUS BAR -->
                     <div class="n8n-status-bar" id="statusBar">
                         <span class="status-text">Siap</span>
                         <span class="status-badge" id="statusBadge">🟢</span>
@@ -282,7 +273,6 @@
 
                 <!-- MODALS -->
                 <div class="n8n-modal-overlay" id="modalOverlay" style="display: none;">
-                    <!-- Add/Edit Modal -->
                     <div class="n8n-modal" id="dataModal" style="display: none;">
                         <div class="n8n-modal-header">
                             <h3 id="modalTitle">Tambah Data</h3>
@@ -305,7 +295,6 @@
                         </div>
                     </div>
 
-                    <!-- Delete Confirmation -->
                     <div class="n8n-modal n8n-modal-small" id="deleteModal" style="display: none;">
                         <div class="n8n-modal-header">
                             <h3>⚠️ Konfirmasi Hapus</h3>
@@ -321,25 +310,61 @@
                     </div>
                 </div>
 
-                <!-- NOTIFICATION -->
                 <div class="n8n-notification" id="notification"></div>
             `;
         },
 
-        // ============================================
-        // EVENT LISTENERS
-        // ============================================
         attachEventListeners() {
+            console.log('[n8nModule] Attaching event listeners...');
+
             // CRUD Buttons
-            document.getElementById('btnSearch')?.addEventListener('click', this.handleSearch);
-            document.getElementById('btnExecuteSearch')?.addEventListener('click', this.handleSearch);
-            document.getElementById('btnAdd')?.addEventListener('click', this.handleAdd);
-            document.getElementById('btnEdit')?.addEventListener('click', this.handleEdit);
-            document.getElementById('btnDelete')?.addEventListener('click', this.handleDelete);
+            const btnSearch = document.getElementById('btnSearch');
+            const btnExecuteSearch = document.getElementById('btnExecuteSearch');
+            const btnAdd = document.getElementById('btnAdd');
+            const btnEdit = document.getElementById('btnEdit');
+            const btnDelete = document.getElementById('btnDelete');
+
+            if (btnSearch) {
+                btnSearch.addEventListener('click', () => {
+                    console.log('[n8nModule] Search button clicked');
+                    this.handleSearch();
+                });
+            }
+            if (btnExecuteSearch) {
+                btnExecuteSearch.addEventListener('click', () => {
+                    console.log('[n8nModule] Execute search clicked');
+                    this.handleSearch();
+                });
+            }
+            if (btnAdd) {
+                btnAdd.addEventListener('click', () => {
+                    console.log('[n8nModule] Add button clicked');
+                    this.handleAdd();
+                });
+            }
+            if (btnEdit) {
+                btnEdit.addEventListener('click', () => {
+                    console.log('[n8nModule] Edit button clicked, selectedRow:', this.state.selectedRow);
+                    this.handleEdit();
+                });
+            }
+            if (btnDelete) {
+                btnDelete.addEventListener('click', () => {
+                    console.log('[n8nModule] Delete button clicked, selectedRow:', this.state.selectedRow);
+                    this.handleDelete();
+                });
+            }
 
             // Config
             document.getElementById('btnToggleConfig')?.addEventListener('click', this.toggleConfig);
-            document.getElementById('btnSaveConfig')?.addEventListener('click', this.saveConfig);
+            document.getElementById('btnSaveConfig')?.addEventListener('click', () => {
+                this.state.sheetId = document.getElementById('sheetId').value;
+                this.state.sheetName = document.getElementById('sheetName').value;
+                this.state.gasUrl = document.getElementById('gasUrl').value;
+                this.state.botToken = document.getElementById('botToken').value;
+                this.state.chatId = document.getElementById('chatId').value;
+                this.saveConfig();
+            });
             document.getElementById('btnTest')?.addEventListener('click', this.testConnection);
 
             // GAS
@@ -349,36 +374,23 @@
             document.getElementById('btnClearGAS')?.addEventListener('click', () => {
                 document.getElementById('gasCodeEditor').value = '';
                 this.state.gasCode = '';
-                this.saveConfig();
             });
 
             // Modal
             document.getElementById('btnCloseModal')?.addEventListener('click', this.closeModal);
             document.getElementById('btnCancel')?.addEventListener('click', this.closeModal);
-            document.getElementById('btnSave')?.addEventListener('click', this.saveData.bind(this));
+            document.getElementById('btnSave')?.addEventListener('click', () => this.saveData());
             document.getElementById('btnCancelDelete')?.addEventListener('click', this.closeModal);
-            document.getElementById('btnConfirmDelete')?.addEventListener('click', this.confirmDelete.bind(this));
+            document.getElementById('btnConfirmDelete')?.addEventListener('click', () => this.confirmDelete());
 
             // Enter key on search
             document.getElementById('searchInput')?.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') this.handleSearch();
             });
 
-            // Input changes update state
-            document.getElementById('sheetId')?.addEventListener('change', (e) => this.state.sheetId = e.target.value);
-            document.getElementById('sheetName')?.addEventListener('change', (e) => this.state.sheetName = e.target.value);
-            document.getElementById('gasUrl')?.addEventListener('change', (e) => this.state.gasUrl = e.target.value);
-            document.getElementById('botToken')?.addEventListener('change', (e) => {
-                this.state.botToken = e.target.value;
-                if (e.target.value && !this.state.chatId) {
-                    this.getChatId();
-                }
-            });
+            console.log('[n8nModule] Event listeners attached successfully');
         },
 
-        // ============================================
-        // CONFIGURATION TOGGLE
-        // ============================================
         toggleConfig() {
             const configSection = document.getElementById('configSection');
             const arrow = document.getElementById('configArrow');
@@ -395,35 +407,24 @@
         },
 
         // ============================================
-        // GAS CODE MANAGEMENT
+        // GAS CODE GENERATOR - WITH PROPER CORS
         // ============================================
         generateGAS() {
             const gasCode = `// ============================================
 // GOOGLE APPS SCRIPT - N8N Data Module
 // ============================================
-// 1. Buat Spreadsheet baru
-// 2. Extensions > Apps Script
-// 3. Hapus kode default, paste ini
-// 4. Deploy > New deployment > Web App
-// 5. Execute as: Me
-// 6. Who has access: ANYONE
-// 7. Copy URL ke POS
+// Deploy sebagai Web App dengan:
+// - Execute as: Me
+// - Who has access: ANYONE
 
-const SHEET_NAME = 'Data Base Hifzi Cell';
+const SHEET_NAME = '${this.state.sheetName || 'Data Base Hifzi Cell'}';
 
 function doGet(e) {
   const action = e.parameter.action;
   const sheetId = e.parameter.sheetId;
-  const nama = e.parameter.nama;
-  const nomor = e.parameter.nomor;
+  const nama = e.parameter.nama || '';
+  const nomor = e.parameter.nomor || '';
   const row = e.parameter.row;
-
-  // Set CORS headers
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
-  };
 
   try {
     const ss = SpreadsheetApp.openById(sheetId);
@@ -435,16 +436,19 @@ function doGet(e) {
       sheet.getRange(1,1,1,2).setFontWeight('bold').setBackground('#4caf50').setFontColor('white');
     }
 
+    let result = { success: false };
+
     switch(action) {
       case 'test':
         const sheets = ss.getSheets().map(s => s.getName());
-        return jsonResponse({ 
+        result = { 
           success: true, 
           message: 'Koneksi berhasil',
           sheets: sheets,
           targetSheet: SHEET_NAME,
           sheetExists: sheets.includes(SHEET_NAME)
-        }, headers);
+        };
+        break;
 
       case 'getData':
         const data = sheet.getDataRange().getValues();
@@ -456,65 +460,56 @@ function doGet(e) {
             nomor: data[i][1] || ''
           });
         }
-        return jsonResponse({ success: true, data: rows }, headers);
+        result = { success: true, data: rows };
+        break;
 
       case 'addData':
         sheet.appendRow([nama, nomor]);
-        return jsonResponse({ 
+        result = { 
           success: true, 
           message: 'Data berhasil ditambahkan',
           row: sheet.getLastRow()
-        }, headers);
+        };
+        break;
 
       case 'editData':
-        sheet.getRange(row, 1).setValue(nama);
-        sheet.getRange(row, 2).setValue(nomor);
-        return jsonResponse({ 
+        if (!row) throw new Error('Row number required');
+        sheet.getRange(parseInt(row), 1).setValue(nama);
+        sheet.getRange(parseInt(row), 2).setValue(nomor);
+        result = { 
           success: true, 
           message: 'Data berhasil diupdate'
-        }, headers);
+        };
+        break;
 
       case 'deleteData':
+        if (!row) throw new Error('Row number required');
         sheet.deleteRow(parseInt(row));
-        return jsonResponse({ 
+        result = { 
           success: true, 
           message: 'Data berhasil dihapus'
-        }, headers);
+        };
+        break;
 
       default:
-        return jsonResponse({ success: false, error: 'Invalid action' }, headers);
+        result = { success: false, error: 'Invalid action: ' + action };
     }
 
+    return jsonResponse(result);
+
   } catch (error) {
+    console.error('Error in doGet:', error);
     return jsonResponse({ 
       success: false, 
       error: error.toString(),
-      message: 'Error: ' + error.message
-    }, headers);
-  }
-}
-
-// Handle OPTIONS for CORS preflight
-function doOptions(e) {
-  return ContentService.createTextOutput()
-    .setResponseCode(200)
-    .setHeaders({
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
+      message: error.message
     });
+  }
 }
 
-function jsonResponse(data, headers) {
-  let output = ContentService.createTextOutput(JSON.stringify(data))
+function jsonResponse(data) {
+  const output = ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
-
-  // Add CORS headers
-  if (headers) {
-    for (let key in headers) {
-      output = output.setHeader(key, headers[key]);
-    }
-  }
 
   return output;
 }`;
@@ -532,7 +527,7 @@ function jsonResponse(data, headers) {
             }
             this.state.gasCode = code;
             this.saveConfig();
-            this.showNotification('✅ Kode GAS berhasil disimpan ke localStorage!', 'success');
+            this.showNotification('✅ Kode GAS berhasil disimpan!', 'success');
         },
 
         loadGASCode() {
@@ -544,9 +539,6 @@ function jsonResponse(data, headers) {
             }
         },
 
-        // ============================================
-        // TELEGRAM AUTO GET CHAT ID
-        // ============================================
         async getChatId() {
             if (!this.state.botToken) return;
 
@@ -555,14 +547,11 @@ function jsonResponse(data, headers) {
                 const data = await response.json();
 
                 if (data.ok && data.result.length > 0) {
-                    // Get chat ID from latest message
                     const chatId = data.result[data.result.length - 1].message.chat.id;
                     this.state.chatId = chatId;
                     document.getElementById('chatId').value = chatId;
                     this.saveConfig();
-                    this.showNotification(`✅ Chat ID berhasil didapatkan: ${chatId}`, 'success');
-                } else {
-                    this.showNotification('⚠️ Kirim pesan ke bot terlebih dahulu untuk mendapatkan Chat ID', 'warning');
+                    this.showNotification(`✅ Chat ID: ${chatId}`, 'success');
                 }
             } catch (error) {
                 console.error('Error getting chat ID:', error);
@@ -570,7 +559,7 @@ function jsonResponse(data, headers) {
         },
 
         // ============================================
-        // API CALLS
+        // API CALLS - WITH BETTER ERROR HANDLING
         // ============================================
         async makeRequest(action, params = {}) {
             if (!this.state.gasUrl || !this.state.sheetId) {
@@ -578,32 +567,60 @@ function jsonResponse(data, headers) {
                 return null;
             }
 
+            // Build URL with query params
             const url = new URL(this.state.gasUrl);
             url.searchParams.append('action', action);
             url.searchParams.append('sheetId', this.state.sheetId);
 
             for (let key in params) {
-                url.searchParams.append(key, params[key]);
+                if (params[key] !== undefined && params[key] !== null) {
+                    url.searchParams.append(key, params[key]);
+                }
             }
+
+            console.log('[n8nModule] Making request to:', url.toString());
 
             try {
                 this.setStatus('🟡', 'Loading...');
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
                 const response = await fetch(url.toString(), {
                     method: 'GET',
                     headers: {
-                        'Accept': 'application/json'
-                    }
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    signal: controller.signal,
+                    mode: 'cors' // Explicitly request CORS mode
                 });
 
-                if (!response.ok) throw new Error('Network response was not ok');
+                clearTimeout(timeoutId);
+
+                console.log('[n8nModule] Response status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
 
                 const data = await response.json();
+                console.log('[n8nModule] Response data:', data);
+
                 this.setStatus('🟢', 'Siap');
                 return data;
             } catch (error) {
-                console.error('API Error:', error);
+                console.error('[n8nModule] API Error:', error);
                 this.setStatus('🔴', 'Error');
-                this.showNotification('❌ Error: ' + error.message, 'error');
+
+                let errorMsg = error.message;
+                if (error.name === 'AbortError') {
+                    errorMsg = 'Request timeout (30s). Cek koneksi internet.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMsg = 'CORS Error atau GAS tidak accessible. Pastikan: 1) GAS sudah deploy sebagai Web App, 2) Access: ANYONE, 3) Cek console untuk detail';
+                }
+
+                this.showNotification('❌ ' + errorMsg, 'error');
                 return null;
             }
         },
@@ -612,22 +629,30 @@ function jsonResponse(data, headers) {
         // CRUD OPERATIONS
         // ============================================
         async handleSearch() {
-            const keyword = document.getElementById('searchInput').value.toLowerCase();
+            const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
+
+            console.log('[n8nModule] Searching with keyword:', keyword);
 
             const result = await this.makeRequest('getData');
-            if (!result || !result.success) return;
+            if (!result) return;
 
-            this.state.data = result.data;
+            if (!result.success) {
+                this.showNotification('❌ Error: ' + (result.error || 'Unknown error'), 'error');
+                return;
+            }
+
+            this.state.data = result.data || [];
 
             if (keyword) {
                 this.state.filteredData = this.state.data.filter(item => 
-                    item.nama.toLowerCase().includes(keyword) || 
-                    item.nomor.toLowerCase().includes(keyword)
+                    (item.nama && item.nama.toLowerCase().includes(keyword)) || 
+                    (item.nomor && item.nomor.toLowerCase().includes(keyword))
                 );
             } else {
                 this.state.filteredData = this.state.data;
             }
 
+            console.log('[n8nModule] Filtered data:', this.state.filteredData);
             this.renderTable();
             this.showNotification(`✅ Ditemukan ${this.state.filteredData.length} data`, 'success');
         },
@@ -641,31 +666,45 @@ function jsonResponse(data, headers) {
         },
 
         handleEdit() {
+            console.log('[n8nModule] HandleEdit called, selectedRow:', this.state.selectedRow);
+
             if (!this.state.selectedRow) {
-                this.showNotification('⚠️ Pilih data yang akan diedit', 'warning');
+                this.showNotification('⚠️ Pilih data yang akan diedit (klik baris di tabel)', 'warning');
                 return;
             }
 
             const item = this.state.filteredData.find(d => d.row == this.state.selectedRow);
-            if (!item) return;
+            if (!item) {
+                console.error('[n8nModule] Item not found for row:', this.state.selectedRow);
+                this.showNotification('❌ Data tidak ditemukan', 'error');
+                return;
+            }
 
+            console.log('[n8nModule] Editing item:', item);
             document.getElementById('modalTitle').textContent = 'Edit Data';
             document.getElementById('editId').value = item.row;
-            document.getElementById('inputNama').value = item.nama;
-            document.getElementById('inputNomor').value = item.nomor;
+            document.getElementById('inputNama').value = item.nama || '';
+            document.getElementById('inputNomor').value = item.nomor || '';
             this.openModal('dataModal');
         },
 
         handleDelete() {
+            console.log('[n8nModule] HandleDelete called, selectedRow:', this.state.selectedRow);
+
             if (!this.state.selectedRow) {
-                this.showNotification('⚠️ Pilih data yang akan dihapus', 'warning');
+                this.showNotification('⚠️ Pilih data yang akan dihapus (klik baris di tabel)', 'warning');
                 return;
             }
 
             const item = this.state.filteredData.find(d => d.row == this.state.selectedRow);
-            if (!item) return;
+            if (!item) {
+                console.error('[n8nModule] Item not found for row:', this.state.selectedRow);
+                this.showNotification('❌ Data tidak ditemukan', 'error');
+                return;
+            }
 
-            document.getElementById('deleteInfo').textContent = `${item.nama} - ${item.nomor}`;
+            console.log('[n8nModule] Deleting item:', item);
+            document.getElementById('deleteInfo').textContent = `${item.nama || 'N/A'} - ${item.nomor || 'N/A'}`;
             this.openModal('deleteModal');
         },
 
@@ -683,30 +722,39 @@ function jsonResponse(data, headers) {
             const params = { nama, nomor };
             if (row) params.row = row;
 
+            console.log('[n8nModule] Saving data:', { action, params });
+
             const result = await this.makeRequest(action, params);
             if (result && result.success) {
                 this.closeModal();
                 this.handleSearch();
-                this.showNotification(result.message, 'success');
+                this.showNotification(result.message || '✅ Data berhasil disimpan', 'success');
+            } else if (result) {
+                this.showNotification('❌ Error: ' + (result.error || 'Gagal menyimpan data'), 'error');
             }
         },
 
         async confirmDelete() {
+            console.log('[n8nModule] Confirming delete for row:', this.state.selectedRow);
+
             const result = await this.makeRequest('deleteData', { row: this.state.selectedRow });
             if (result && result.success) {
                 this.closeModal();
                 this.state.selectedRow = null;
                 this.updateButtonStates();
                 this.handleSearch();
-                this.showNotification(result.message, 'success');
+                this.showNotification(result.message || '✅ Data berhasil dihapus', 'success');
+            } else if (result) {
+                this.showNotification('❌ Error: ' + (result.error || 'Gagal menghapus data'), 'error');
             }
         },
 
         // ============================================
-        // TABLE RENDERING
+        // TABLE RENDERING - FIXED SELECTION
         // ============================================
         renderTable() {
             const tbody = document.getElementById('tableBody');
+            console.log('[n8nModule] Rendering table with', this.state.filteredData.length, 'rows');
 
             if (this.state.filteredData.length === 0) {
                 tbody.innerHTML = `
@@ -714,81 +762,113 @@ function jsonResponse(data, headers) {
                         <td colspan="4" class="n8n-empty-message">
                             <div class="empty-state">
                                 <span class="empty-icon">📭</span>
-                                <p>Belum ada data. Klik "Cari Data" atau "Tambah Data" untuk memulai.</p>
+                                <p>Belum ada data. Klik "Cari Data" untuk memuat data.</p>
                             </div>
                         </td>
                     </tr>
                 `;
+                this.updateButtonStates();
                 return;
             }
 
-            tbody.innerHTML = this.state.filteredData.map((item, index) => `
-                <tr class="n8n-data-row ${this.state.selectedRow == item.row ? 'selected' : ''}" data-row="${item.row}">
-                    <td>${index + 1}</td>
-                    <td>${this.escapeHtml(item.nama)}</td>
-                    <td>${this.escapeHtml(item.nomor)}</td>
-                    <td>
-                        <button class="n8n-btn n8n-btn-sm n8n-btn-ghost" onclick="n8nModule.selectRow(${item.row})">
-                            ${this.state.selectedRow == item.row ? '✓' : '☐'}
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = this.state.filteredData.map((item, index) => {
+                const isSelected = this.state.selectedRow == item.row;
+                return `
+                    <tr class="n8n-data-row ${isSelected ? 'selected' : ''}" data-row="${item.row}">
+                        <td>${index + 1}</td>
+                        <td>${this.escapeHtml(item.nama || '')}</td>
+                        <td>${this.escapeHtml(item.nomor || '')}</td>
+                        <td>
+                            <button class="n8n-btn n8n-btn-sm n8n-btn-select ${isSelected ? 'selected' : ''}" data-row="${item.row}">
+                                ${isSelected ? '✓' : '☐'}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
 
-            // Add click handlers
-            tbody.querySelectorAll('.n8n-data-row').forEach(row => {
+            // Attach click handlers to rows
+            const rows = tbody.querySelectorAll('.n8n-data-row');
+            rows.forEach(row => {
                 row.addEventListener('click', (e) => {
-                    if (!e.target.closest('button')) {
-                        const rowNum = row.getAttribute('data-row');
-                        this.selectRow(rowNum);
+                    // Don't trigger if clicking the select button directly
+                    if (e.target.closest('.n8n-btn-select')) {
+                        return;
                     }
+                    const rowNum = parseInt(row.getAttribute('data-row'));
+                    console.log('[n8nModule] Row clicked:', rowNum);
+                    this.selectRow(rowNum);
                 });
             });
+
+            // Attach click handlers to select buttons
+            const selectBtns = tbody.querySelectorAll('.n8n-btn-select');
+            selectBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent row click
+                    const rowNum = parseInt(btn.getAttribute('data-row'));
+                    console.log('[n8nModule] Select button clicked:', rowNum);
+                    this.selectRow(rowNum);
+                });
+            });
+
+            this.updateButtonStates();
         },
 
         selectRow(row) {
-            if (this.state.selectedRow == row) {
-                this.state.selectedRow = null;
+            console.log('[n8nModule] selectRow called:', row, 'current:', this.state.selectedRow);
+
+            if (this.state.selectedRow === row) {
+                this.state.selectedRow = null; // Deselect if same row
+                console.log('[n8nModule] Deselected row');
             } else {
                 this.state.selectedRow = row;
+                console.log('[n8nModule] Selected row:', row);
             }
-            this.renderTable();
-            this.updateButtonStates();
+
+            this.renderTable(); // Re-render to update UI
         },
 
         updateButtonStates() {
             const editBtn = document.getElementById('btnEdit');
             const deleteBtn = document.getElementById('btnDelete');
 
-            if (this.state.selectedRow) {
-                editBtn.disabled = false;
-                deleteBtn.disabled = false;
-            } else {
-                editBtn.disabled = true;
-                deleteBtn.disabled = true;
+            const hasSelection = this.state.selectedRow !== null;
+
+            if (editBtn) {
+                editBtn.disabled = !hasSelection;
+                console.log('[n8nModule] Edit button disabled:', !hasSelection);
+            }
+            if (deleteBtn) {
+                deleteBtn.disabled = !hasSelection;
+                console.log('[n8nModule] Delete button disabled:', !hasSelection);
             }
         },
 
-        // ============================================
-        // TEST CONNECTION
-        // ============================================
         async testConnection() {
+            this.state.sheetId = document.getElementById('sheetId').value;
+            this.state.sheetName = document.getElementById('sheetName').value;
+            this.state.gasUrl = document.getElementById('gasUrl').value;
+            this.state.botToken = document.getElementById('botToken').value;
+
+            console.log('[n8nModule] Testing connection with:', {
+                sheetId: this.state.sheetId,
+                sheetName: this.state.sheetName,
+                gasUrl: this.state.gasUrl
+            });
+
             const result = await this.makeRequest('test');
             if (result && result.success) {
-                this.showNotification(`✅ ${result.message} - Sheets: ${result.sheets.join(', ')}`, 'success');
+                this.showNotification(`✅ ${result.message} | Sheets: ${(result.sheets || []).join(', ')}`, 'success');
 
-                // Auto get chat ID if token exists
                 if (this.state.botToken && !this.state.chatId) {
                     this.getChatId();
                 }
-            } else {
-                this.showNotification('❌ Koneksi gagal: ' + (result?.error || 'Unknown error'), 'error');
+            } else if (result) {
+                this.showNotification('❌ Error: ' + (result.error || 'Koneksi gagal'), 'error');
             }
         },
 
-        // ============================================
-        // MODAL HANDLERS
-        // ============================================
         openModal(modalId) {
             document.getElementById('modalOverlay').style.display = 'flex';
             document.getElementById(modalId).style.display = 'block';
@@ -799,32 +879,35 @@ function jsonResponse(data, headers) {
             document.querySelectorAll('.n8n-modal').forEach(m => m.style.display = 'none');
         },
 
-        // ============================================
-        // UTILITIES
-        // ============================================
         escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         },
 
         setStatus(badge, text) {
-            document.getElementById('statusBadge').textContent = badge;
-            document.querySelector('.status-text').textContent = text;
+            const badgeEl = document.getElementById('statusBadge');
+            const textEl = document.querySelector('.status-text');
+            if (badgeEl) badgeEl.textContent = badge;
+            if (textEl) textEl.textContent = text;
         },
 
         showNotification(message, type = 'info') {
             const notif = document.getElementById('notification');
+            if (!notif) return;
+
             notif.textContent = message;
             notif.className = `n8n-notification show ${type}`;
 
             setTimeout(() => {
                 notif.classList.remove('show');
-            }, 3000);
+            }, 4000);
         }
     };
 
     // Expose to global scope
     window.n8nModule = n8nModule;
+    console.log('[n8nModule] Module exposed to window.n8nModule');
 
 })();
