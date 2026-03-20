@@ -166,8 +166,16 @@ const router = {
                     break;
                 case 'cloud':
                 case 'backup':
-                    backupModule.init();
-                    backupModule.render();  // ✅ TAMBAHAN: Render UI backup module
+                    // PERBAIKAN: Pastikan backupModule di-init dengan benar
+                    if (typeof backupModule !== 'undefined') {
+                        backupModule.init();
+                        // Delay render untuk memastikan DOM siap
+                        setTimeout(() => {
+                            backupModule.render();
+                        }, 50);
+                    } else {
+                        throw new Error('Backup module not found');
+                    }
                     break;
                 default:
                     console.error(`[Router] Unknown page: ${page}`);
@@ -465,7 +473,39 @@ const router = {
 
         navContainer.innerHTML = navHTML;
         console.log(`[Router] Navigation rendered for role: ${currentUser.role}`);
+    },
+
+    /**
+     * Refresh navigation setelah login/logout
+     */
+    refreshNavigation() {
+        this.renderNavigation();
+    },
+
+    /**
+     * Navigate to page programmatically (tanpa click element)
+     */
+    goTo(page) {
+        const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
+        this.navigate(page, navTab);
+    },
+
+    /**
+     * Check if current page is active
+     */
+    isCurrentPage(page) {
+        return this.currentPage === page;
+    },
+
+    /**
+     * Get current active page
+     */
+    getCurrentPage() {
+        return this.currentPage;
     }
 };
 
-console.log('[Router] Router system loaded');
+// Expose ke window
+window.router = router;
+
+console.log('[Router] Router system loaded v1.1');
