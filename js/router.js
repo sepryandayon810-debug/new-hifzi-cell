@@ -5,18 +5,18 @@
 
 const router = {
     currentPage: null,
-    
+
     // Menu yang bisa diakses saat kasir TUTUP (tanpa membuka kasir baru)
-    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram', 'n8n'],
-    
+    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram', 'n8n', 'pencarian'],
+
     // Menu yang butuh kasir BUKA
     requiresKasirOpen: ['pos', 'products', 'cash', 'debt'],
 
     // Definisi akses menu berdasarkan role
     menuAccess: {
-        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n'],
-        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n'],
-        'kasir': ['pos', 'products', 'transactions']
+        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n', 'pencarian'],
+        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n', 'pencarian'],
+        'kasir': ['pos', 'products', 'transactions', 'n8n', 'pencarian']
     },
 
     // Definisi label menu untuk pesan error
@@ -32,7 +32,8 @@ const router = {
         'telegram': 'Telegram',
         'cloud': 'Cloud',
         'backup': 'Backup',
-        'n8n': 'Pencarian'
+        'n8n': 'Pencarian',
+        'pencarian': 'Pencarian'
     },
 
     // Cek apakah module tersedia
@@ -49,7 +50,8 @@ const router = {
             'telegram': typeof TelegramModule !== 'undefined',
             'cloud': typeof backupModule !== 'undefined',
             'backup': typeof backupModule !== 'undefined',
-            'n8n': typeof n8nModule !== 'undefined'
+            'n8n': typeof n8nModule !== 'undefined',
+            'pencarian': typeof n8nModule !== 'undefined'
         };
         return modules[moduleName] || false;
     },
@@ -61,7 +63,7 @@ const router = {
      */
     navigate(page, element) {
         console.log(`[Router] Navigating to: ${page}`);
-        
+
         const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
         const currentUser = dataManager.getCurrentUser();
         const kasirCurrentUser = app.data && app.data.kasir ? app.data.kasir.currentUser : null;
@@ -75,7 +77,7 @@ const router = {
         // Cek akses berdasarkan role user
         const userRole = currentUser.role;
         const allowedMenus = this.menuAccess[userRole] || [];
-        
+
         if (!allowedMenus.includes(page)) {
             this.showAccessDeniedModal(userRole, page);
             return;
@@ -112,7 +114,7 @@ const router = {
         // Sembunyikan cart bar (akan ditampilkan lagi jika di POS)
         const cartBar = document.getElementById('cartBar');
         if (cartBar) cartBar.style.display = 'none';
-        
+
         this.currentPage = page;
 
         // Cek module tersedia sebelum dipanggil
@@ -158,9 +160,11 @@ const router = {
                     }
                     break;
                 case 'n8n':
+                case 'pencarian':
                     // PERBAIKAN: Inisialisasi dan render n8nModule
                     if (typeof n8nModule !== 'undefined') {
                         n8nModule.init();
+                        n8nModule.renderPage();
                     }
                     break;
                 case 'cloud':
@@ -176,7 +180,7 @@ const router = {
             console.error(`[Router] Error initializing ${page}:`, error);
             app.showToast(`❌ Error membuka menu ${this.menuLabels[page] || page}`);
         }
-        
+
         window.scrollTo(0, 0);
     },
 
@@ -185,26 +189,26 @@ const router = {
      */
     takeOverKasir(page, element) {
         const currentUser = dataManager.getCurrentUser();
-        
+
         if (!app.data.kasir) {
             app.data.kasir = {};
         }
-        
+
         app.data.kasir.currentUser = currentUser.userId;
         app.data.kasir.userName = currentUser.name;
         app.data.kasir.userRole = currentUser.role;
-        
+
         if (typeof dataManager !== 'undefined') {
             dataManager.save();
         }
-        
+
         app.showToast(`✅ Kasir diambil alih oleh ${currentUser.name}`);
         app.updateHeader();
         app.updateKasirStatus();
-        
+
         const modal = document.getElementById('takeOverModal');
         if (modal) modal.remove();
-        
+
         this.navigate(page, element);
     },
 
@@ -250,7 +254,7 @@ const router = {
     hasAccess(page) {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return false;
-        
+
         const allowedMenus = this.menuAccess[currentUser.role] || [];
         return allowedMenus.includes(page);
     },
@@ -267,7 +271,7 @@ const router = {
     showAccessDeniedModal(userRole, page) {
         const menuName = this.menuLabels[page] || page;
         const allowedMenus = this.menuAccess[userRole] || [];
-        
+
         const allowedMenuList = allowedMenus
             .map(m => `• ${this.menuLabels[m] || m}`)
             .join('<br>');
@@ -287,7 +291,7 @@ const router = {
                             Menu <strong>${menuName}</strong> hanya dapat diakses oleh Owner dan Admin.
                         </div>
                     </div>
-                    
+
                     <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 10px; padding: 15px; margin-bottom: 20px; text-align: left;">
                         <div style="font-size: 12px; color: #1565c0; font-weight: 600; margin-bottom: 8px;">
                             📋 Menu yang dapat Anda akses:
@@ -381,7 +385,8 @@ const router = {
             'telegram': 'Pastikan file telegram.js ada di folder js/',
             'cloud': 'Pastikan file backup.js ada di folder js/',
             'backup': 'Pastikan file backup.js ada di folder js/',
-            'n8n': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html'
+            'n8n': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html',
+            'pencarian': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html'
         };
 
         const modalHTML = `
@@ -429,7 +434,7 @@ const router = {
 
         const allowedMenus = this.menuAccess[currentUser.role] || [];
         const navContainer = document.getElementById('navTabs');
-        
+
         if (!navContainer) {
             console.error('[Router] navTabs container not found!');
             return;
@@ -447,7 +452,8 @@ const router = {
             'telegram': '✈️',
             'cloud': '☁️',
             'backup': '💾',
-            'n8n': '🔍'
+            'n8n': '🔍',
+            'pencarian': '🔍'
         };
 
         let navHTML = '';
