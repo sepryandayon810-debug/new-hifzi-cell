@@ -1,868 +1,611 @@
 /**
- * n8n Module - Data Management (Cari, Edit, Tambah, Hapus)
- * Integrasi dengan Google Sheets via Google Apps Script
- * Model sama seperti TelegramModule.SaldoModule
+ * N8N Data Management Module
+ * Integrated with Google Sheets via GAS Web App
+ * Compatible with Telegram Bot notifications
+ * 
+ * NAMA MODULE: n8nModule (huruf kecil semua - sesuai router.js)
  */
 
-const n8nModule = {
-    // Konfigurasi default (sama dengan bot Telegram n8n Anda)
-    config: {
-        sheetId: '1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE',
-        sheetName: 'Data Base Hifzi Cell',
-        scriptUrl: '',
-        gasCode: ''
-    },
+(function() {
+    'use strict';
 
-    // State
-    data: [],
-    isLoading: false,
-    currentMode: 'search', // search, add, edit, delete
-    transaksiAktif: null,
+    const n8nModule = {
+        // Configuration
+        config: {
+            sheetId: '',
+            sheetName: 'Data Base Hifzi Cell',
+            gasUrl: '',
+            botToken: '',
+            chatId: ''
+        },
 
-    // Storage keys
-    STORAGE_KEY: 'n8n_module_config',
-    STORAGE_KEY_DATA: 'n8n_module_data',
+        // Data storage
+        data: [],
+        filteredData: [],
 
-    /**
-     * Google Apps Script Code Template
-     */
-    GAS_CODE: `function doGet(e) {
-  const action = e.parameter.action;
-  const sheetId = e.parameter.sheetId;
-  const sheetName = e.parameter.sheetName || 'Data Base Hifzi Cell';
+        // DOM Elements cache
+        elements: {},
 
-  if (!sheetId) {
-    return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      message: 'Sheet ID diperlukan'
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
+        /**
+         * Initialize module
+         */
+        init() {
+            this.loadConfig();
+            console.log('[n8nModule] Module initialized - huruf kecil semua');
+        },
 
-  try {
-    const ss = SpreadsheetApp.openById(sheetId);
-    const sheet = ss.getSheetByName(sheetName);
-
-    if (!sheet) {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        message: 'Sheet tidak ditemukan: ' + sheetName
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    switch(action) {
-      case 'search':
-        return searchData(sheet, e.parameter.query);
-      case 'add':
-        return addData(sheet, e.parameter.nama, e.parameter.nomor);
-      case 'edit':
-        return editData(sheet, e.parameter.nama, e.parameter.nomor);
-      case 'delete':
-        return deleteData(sheet, e.parameter.nama);
-      case 'test':
-        return ContentService.createTextOutput(JSON.stringify({
-          success: true,
-          message: 'Koneksi berhasil!',
-          timestamp: new Date().toISOString()
-        })).setMimeType(ContentService.MimeType.JSON);
-      default:
-        return ContentService.createTextOutput(JSON.stringify({
-          success: false,
-          message: 'Action tidak valid: ' + action
-        })).setMimeType(ContentService.MimeType.JSON);
-    }
-  } catch(error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function searchData(sheet, query) {
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const results = [];
-
-  const queryUpper = query.toUpperCase();
-
-  for(let i = 1; i < data.length; i++) {
-    const nama = String(data[i][0] || '').toUpperCase();
-    if(nama.includes(queryUpper)) {
-      const row = {};
-      headers.forEach((header, index) => {
-        row[header] = data[i][index];
-      });
-      row._rowNumber = i + 1;
-      results.push(row);
-    }
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({
-    success: true,
-    data: results,
-    count: results.length
-  })).setMimeType(ContentService.MimeType.JSON);
-}
-
-function addData(sheet, nama, nomor) {
-  const data = sheet.getDataRange().getValues();
-  const namaUpper = nama.toUpperCase();
-
-  for(let i = 1; i < data.length; i++) {
-    if(String(data[i][0] || '').toUpperCase() === namaUpper) {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        message: 'Data dengan nama ' + nama + ' sudah ada!'
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  sheet.appendRow([namaUpper, nomor]);
-
-  return ContentService.createTextOutput(JSON.stringify({
-    success: true,
-    message: 'Data berhasil ditambahkan',
-    data: { nama: namaUpper, nomor: nomor }
-  })).setMimeType(ContentService.MimeType.JSON);
-}
-
-function editData(sheet, nama, nomor) {
-  const data = sheet.getDataRange().getValues();
-  const namaUpper = nama.toUpperCase();
-
-  for(let i = 1; i < data.length; i++) {
-    if(String(data[i][0] || '').toUpperCase() === namaUpper) {
-      sheet.getRange(i + 1, 2).setValue(nomor);
-      return ContentService.createTextOutput(JSON.stringify({
-        success: true,
-        message: 'Data berhasil diupdate',
-        data: { nama: namaUpper, nomor: nomor, row: i + 1 }
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({
-    success: false,
-    message: 'Data dengan nama ' + nama + ' tidak ditemukan'
-  })).setMimeType(ContentService.MimeType.JSON);
-}
-
-function deleteData(sheet, nama) {
-  const data = sheet.getDataRange().getValues();
-  const namaUpper = nama.toUpperCase();
-
-  for(let i = 1; i < data.length; i++) {
-    if(String(data[i][0] || '').toUpperCase() === namaUpper) {
-      const deletedNama = data[i][0];
-      const deletedNomor = data[i][1];
-      sheet.deleteRow(i + 1);
-      return ContentService.createTextOutput(JSON.stringify({
-        success: true,
-        message: 'Data berhasil dihapus',
-        data: { nama: deletedNama, nomor: deletedNomor }
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({
-    success: false,
-    message: 'Data dengan nama ' + nama + ' tidak ditemukan'
-  })).setMimeType(ContentService.MimeType.JSON);
-}`,
-
-    /**
-     * Initialize module
-     */
-    init() {
-        this.loadConfig();
-        console.log('[n8n] Module initialized');
-    },
-
-    /**
-     * Load config from localStorage
-     */
-    loadConfig() {
-        try {
-            const saved = localStorage.getItem(this.STORAGE_KEY);
+        /**
+         * Load configuration from localStorage
+         */
+        loadConfig() {
+            const saved = localStorage.getItem('n8n_config');
             if (saved) {
                 this.config = { ...this.config, ...JSON.parse(saved) };
             }
-        } catch (e) {
-            console.error('[n8n] Error loading config:', e);
-        }
-    },
+        },
 
-    /**
-     * Save config to localStorage
-     */
-    saveConfig() {
-        try {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
-        } catch (e) {
-            console.error('[n8n] Error saving config:', e);
-        }
-    },
+        /**
+         * Save configuration to localStorage
+         */
+        saveConfig() {
+            localStorage.setItem('n8n_config', JSON.stringify(this.config));
+        },
 
-    /**
-     * Build URL untuk API call (sama seperti SaldoModule)
-     */
-    buildUrl(action, params = {}) {
-        let url = `${this.config.scriptUrl}?action=${action}&sheetId=${this.config.sheetId}&sheetName=${encodeURIComponent(this.config.sheetName)}`;
+        /**
+         * Render main page
+         */
+        renderPage() {
+            const mainContent = document.getElementById('mainContent');
+            if (!mainContent) return;
 
-        Object.keys(params).forEach(key => {
-            if (params[key] !== undefined && params[key] !== null) {
-                url += `&${key}=${encodeURIComponent(params[key])}`;
+            mainContent.innerHTML = this.getHTML();
+            this.cacheElements();
+            this.bindEvents();
+            this.loadData();
+        },
+
+        /**
+         * Get HTML template
+         */
+        getHTML() {
+            return `
+                <div class="n8n-container">
+                    <div class="n8n-header">
+                        <h2>🔍 Manajemen Data n8n</h2>
+                        <p>Cari, tambah, edit, dan hapus data di Google Sheets</p>
+                    </div>
+
+                    <!-- Configuration Section -->
+                    <div class="n8n-section n8n-config">
+                        <h3>⚙️ Konfigurasi Google Sheets</h3>
+                        <div class="n8n-form-row">
+                            <div class="n8n-form-group">
+                                <label>Sheet ID</label>
+                                <input type="text" id="n8nSheetId" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE" value="${this.config.sheetId}">
+                            </div>
+                            <div class="n8n-form-group">
+                                <label>Sheet Name</label>
+                                <input type="text" id="n8nSheetName" placeholder="Data Base Hifzi Cell" value="${this.config.sheetName}">
+                            </div>
+                        </div>
+                        <div class="n8n-form-group">
+                            <label>GAS Web App URL</label>
+                            <input type="text" id="n8nGasUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${this.config.gasUrl}">
+                        </div>
+                        <button class="n8n-btn n8n-btn-primary" onclick="n8nModule.saveSheetConfig()">💾 Simpan Config</button>
+                    </div>
+
+                    <!-- Telegram Config Section -->
+                    <div class="n8n-section n8n-telegram-config">
+                        <h3>✈️ Konfigurasi Telegram Bot (Opsional)</h3>
+                        <div class="n8n-form-row">
+                            <div class="n8n-form-group">
+                                <label>Bot Token</label>
+                                <input type="password" id="n8nBotToken" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" value="${this.config.botToken}">
+                            </div>
+                            <div class="n8n-form-group">
+                                <label>Chat ID</label>
+                                <input type="text" id="n8nChatId" placeholder="123456789 atau -1001234567890" value="${this.config.chatId}">
+                            </div>
+                        </div>
+                        <div class="n8n-btn-group">
+                            <button class="n8n-btn n8n-btn-secondary" onclick="n8nModule.saveTelegramConfig()">💾 Simpan Telegram</button>
+                            <button class="n8n-btn n8n-btn-test" onclick="n8nModule.testBotConnection()">🔌 Test Bot</button>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="n8n-section n8n-actions">
+                        <h3>🚀 Aksi</h3>
+                        <div class="n8n-btn-group">
+                            <button class="n8n-btn n8n-btn-success" onclick="n8nModule.showAddModal()">➕ Tambah Data</button>
+                            <button class="n8n-btn n8n-btn-warning" onclick="n8nModule.showEditModal()">✏️ Edit Data</button>
+                            <button class="n8n-btn n8n-btn-danger" onclick="n8nModule.showDeleteModal()">🗑️ Hapus Data</button>
+                            <button class="n8n-btn n8n-btn-info" onclick="n8nModule.refreshData()">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Search Section -->
+                    <div class="n8n-section n8n-search">
+                        <h3>🔍 Pencarian Data</h3>
+                        <div class="n8n-search-box">
+                            <input type="text" id="n8nSearchInput" placeholder="Ketik nama untuk mencari..." oninput="n8nModule.handleSearch()">
+                            <button class="n8n-btn n8n-btn-primary" onclick="n8nModule.handleSearch()">Cari</button>
+                        </div>
+                        <div id="n8nSearchResults" class="n8n-results"></div>
+                    </div>
+
+                    <!-- Data Table -->
+                    <div class="n8n-section n8n-data">
+                        <h3>📊 Semua Data (${this.data.length} records)</h3>
+                        <div id="n8nDataTable" class="n8n-table-container">
+                            <p class="n8n-empty">Klik "Refresh" untuk memuat data</p>
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div id="n8nStatus" class="n8n-status"></div>
+                </div>
+
+                <!-- Modal Template -->
+                <div id="n8nModal" class="n8n-modal">
+                    <div class="n8n-modal-content">
+                        <span class="n8n-modal-close" onclick="n8nModule.closeModal()">&times;</span>
+                        <h3 id="n8nModalTitle">Modal Title</h3>
+                        <div id="n8nModalBody"></div>
+                    </div>
+                </div>
+            `;
+        },
+
+        /**
+         * Cache DOM elements
+         */
+        cacheElements() {
+            this.elements = {
+                sheetId: document.getElementById('n8nSheetId'),
+                sheetName: document.getElementById('n8nSheetName'),
+                gasUrl: document.getElementById('n8nGasUrl'),
+                botToken: document.getElementById('n8nBotToken'),
+                chatId: document.getElementById('n8nChatId'),
+                searchInput: document.getElementById('n8nSearchInput'),
+                searchResults: document.getElementById('n8nSearchResults'),
+                dataTable: document.getElementById('n8nDataTable'),
+                status: document.getElementById('n8nStatus'),
+                modal: document.getElementById('n8nModal'),
+                modalTitle: document.getElementById('n8nModalTitle'),
+                modalBody: document.getElementById('n8nModalBody')
+            };
+        },
+
+        /**
+         * Bind events
+         */
+        bindEvents() {
+            if (this.elements.searchInput) {
+                this.elements.searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.handleSearch();
+                });
             }
-        });
+        },
 
-        return url;
-    },
+        /**
+         * Save Sheet configuration
+         */
+        saveSheetConfig() {
+            this.config.sheetId = this.elements.sheetId.value.trim();
+            this.config.sheetName = this.elements.sheetName.value.trim();
+            this.config.gasUrl = this.elements.gasUrl.value.trim();
+            this.saveConfig();
+            this.showStatus('✅ Konfigurasi Sheets disimpan!', 'success');
+        },
 
-    /**
-     * API Call dengan error handling
-     */
-    async apiCall(action, params = {}) {
-        if (!this.config.scriptUrl) {
-            throw new Error('Script URL belum diisi!');
-        }
+        /**
+         * Save Telegram configuration
+         */
+        saveTelegramConfig() {
+            this.config.botToken = this.elements.botToken.value.trim();
+            this.config.chatId = this.elements.chatId.value.trim();
+            this.saveConfig();
+            this.showStatus('✅ Konfigurasi Telegram disimpan!', 'success');
+        },
 
-        const url = this.buildUrl(action, params);
+        /**
+         * Test bot connection
+         */
+        async testBotConnection() {
+            if (!this.config.botToken || !this.config.chatId) {
+                this.showStatus('❌ Isi bot token dan chat ID dulu!', 'error');
+                return;
+            }
 
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
+            this.showStatus('🔄 Testing koneksi...', 'info');
+
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${this.config.botToken}/getMe`);
+                const data = await response.json();
+
+                if (data.ok) {
+                    await this.sendTelegramMessage('🔌 *Test Koneksi*\n\nKoneksi Web POS ke Telegram berhasil! ✅\n\n_Bot: ' + data.result.username + '_');
+                    this.showStatus('✅ Koneksi berhasil! Cek Telegram Anda.', 'success');
+                } else {
+                    this.showStatus('❌ Bot token invalid!', 'error');
+                }
+            } catch (error) {
+                this.showStatus('❌ Error: ' + error.message, 'error');
+            }
+        },
+
+        /**
+         * Send message to Telegram
+         */
+        async sendTelegramMessage(message) {
+            if (!this.config.botToken || !this.config.chatId) return false;
+
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${this.config.botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: this.config.chatId,
+                        text: message,
+                        parse_mode: 'Markdown'
+                    })
+                });
+                return response.ok;
+            } catch (error) {
+                console.error('[n8nModule] Telegram error:', error);
+                return false;
+            }
+        },
+
+        /**
+         * Load data from Google Sheets
+         */
+        async loadData() {
+            if (!this.config.gasUrl) {
+                this.showStatus('⚠️ Isi GAS URL terlebih dahulu!', 'warning');
+                return;
+            }
+
+            this.showStatus('🔄 Memuat data...', 'info');
+
+            try {
+                const url = `${this.config.gasUrl}?action=getData&sheetId=${encodeURIComponent(this.config.sheetId)}&sheetName=${encodeURIComponent(this.config.sheetName)}`;
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.success) {
+                    this.data = result.data || [];
+                    this.renderTable();
+                    this.showStatus(`✅ Data dimuat: ${this.data.length} records`, 'success');
+                } else {
+                    throw new Error(result.message || 'Gagal memuat data');
+                }
+            } catch (error) {
+                this.showStatus('❌ Error: ' + error.message, 'error');
+                console.error('[n8nModule] Load error:', error);
+            }
+        },
+
+        /**
+         * Refresh data
+         */
+        refreshData() {
+            this.loadData();
+        },
+
+        /**
+         * Render data table
+         */
+        renderTable() {
+            if (!this.elements.dataTable) return;
+
+            if (this.data.length === 0) {
+                this.elements.dataTable.innerHTML = '<p class="n8n-empty">Tidak ada data</p>';
+                return;
+            }
+
+            let html = `
+                <table class="n8n-table">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>NAMA</th>
+                            <th>NOMOR</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            this.data.forEach((row, index) => {
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${row.NAMA || '-'}</td>
+                        <td>${row.NOMOR || '-'}</td>
+                        <td>
+                            <button class="n8n-btn-small n8n-btn-edit" onclick="n8nModule.editRow('${row.NAMA}')">✏️</button>
+                            <button class="n8n-btn-small n8n-btn-delete" onclick="n8nModule.deleteRow('${row.NAMA}')">🗑️</button>
+                        </td>
+                    </tr>
+                `;
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            html += '</tbody></table>';
+            this.elements.dataTable.innerHTML = html;
+        },
+
+        /**
+         * Handle search
+         */
+        handleSearch() {
+            const query = this.elements.searchInput.value.trim().toUpperCase();
+            if (!query) {
+                this.elements.searchResults.innerHTML = '';
+                return;
             }
 
-            return await response.json();
-        } catch (error) {
-            console.error('[n8n] API Error:', error);
-            throw error;
-        }
-    },
+            const results = this.data.filter(row => 
+                (row.NAMA && row.NAMA.toUpperCase().includes(query)) ||
+                (row.NOMOR && row.NOMOR.includes(query))
+            );
 
-    /**
-     * Render main page
-     */
-    renderPage() {
-        const container = document.getElementById('mainContent');
-        if (!container) {
-            console.error('[n8n] mainContent not found');
-            return;
-        }
+            if (results.length === 0) {
+                this.elements.searchResults.innerHTML = '<p class="n8n-no-result">Tidak ditemukan</p>';
+            } else {
+                let html = `<p class="n8n-result-count">Ditemukan ${results.length} data:</p>`;
+                html += '<div class="n8n-result-list">';
+                results.forEach(row => {
+                    html += `
+                        <div class="n8n-result-item">
+                            <strong>${row.NAMA}</strong>
+                            <span>${row.NOMOR}</span>
+                            <button class="n8n-btn-small" onclick="n8nModule.editRow('${row.NAMA}')">Edit</button>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                this.elements.searchResults.innerHTML = html;
+            }
+        },
 
-        container.innerHTML = this.getHTML();
-        this.attachEventListeners();
-
-        // Restore focus jika ada transaksi aktif
-        if (this.transaksiAktif) {
-            setTimeout(() => {
-                const input = document.getElementById('n8nInput');
-                if (input) {
-                    input.focus();
-                    input.select();
-                }
-            }, 100);
-        }
-    },
-
-    /**
-     * Get HTML template
-     */
-    getHTML() {
-        const isConfigured = this.config.scriptUrl && this.config.scriptUrl.length > 10;
-        const validation = this.validateConfig();
-
-        return `
-        <div class="n8n-container">
-            <!-- Header -->
-            <div class="n8n-header">
-                <div class="n8n-header-icon">🔍</div>
-                <div class="n8n-header-info">
-                    <div class="n8n-header-title">Pencarian Data</div>
-                    <div class="n8n-header-subtitle">Cari, Tambah, Edit, Hapus Data Customer</div>
+        /**
+         * Show add modal
+         */
+        showAddModal() {
+            this.elements.modalTitle.textContent = '➕ Tambah Data Baru';
+            this.elements.modalBody.innerHTML = `
+                <div class="n8n-form-group">
+                    <label>Format: NAMA:NOMOR</label>
+                    <input type="text" id="n8nAddInput" placeholder="BUDI:08123456789">
+                    <small>Atau isi terpisah:</small>
                 </div>
-                <div class="n8n-status ${isConfigured ? 'ready' : 'inactive'}">
-                    ${isConfigured ? '✅ Siap' : '⚠️ Setup'}
-                </div>
-            </div>
-
-            <!-- Mode Tabs -->
-            <div class="n8n-tabs">
-                <button class="n8n-tab ${this.currentMode === 'search' ? 'active' : ''}" data-mode="search">
-                    🔍 Cari
-                </button>
-                <button class="n8n-tab ${this.currentMode === 'add' ? 'active' : ''}" data-mode="add">
-                    ➕ Tambah
-                </button>
-                <button class="n8n-tab ${this.currentMode === 'edit' ? 'active' : ''}" data-mode="edit">
-                    ✏️ Edit
-                </button>
-                <button class="n8n-tab ${this.currentMode === 'delete' ? 'active' : ''}" data-mode="delete">
-                    🗑️ Hapus
-                </button>
-            </div>
-
-            <!-- Warning Config -->
-            ${!validation.valid ? `
-            <div class="n8n-warning">
-                <div class="n8n-warning-title">⚠️ Konfigurasi Belum Lengkap</div>
-                <ul class="n8n-warning-list">
-                    ${validation.errors.map(e => `<li>${e}</li>`).join('')}
-                </ul>
-                <div class="n8n-warning-hint">Scroll ke bawah untuk mengisi konfigurasi</div>
-            </div>
-            ` : ''}
-
-            <!-- Action Section -->
-            <div class="n8n-action-box">
-                <div class="n8n-action-title">${this.getActionTitle()}</div>
-                <div class="n8n-input-group">
-                    <input type="text" id="n8nInput" class="n8n-input n8n-input-large" 
-                        placeholder="${this.getInputPlaceholder()}"
-                        value="${this.transaksiAktif ? this.transaksiAktif.inputValue || '' : ''}">
-                    <button class="n8n-btn n8n-btn-action ${!validation.valid ? 'disabled' : ''}" 
-                            onclick="n8nModule.executeAction()"
-                            ${!validation.valid ? 'disabled' : ''}>
-                        ${this.getActionButtonText()}
-                    </button>
-                </div>
-                <div class="n8n-hint">${this.getHintText()}</div>
-            </div>
-
-            <!-- Results Section -->
-            <div class="n8n-results" id="n8nResults"></div>
-
-            <!-- Config Section -->
-            <div class="n8n-config-section">
-                <h3>☁️ Konfigurasi Google Sheets</h3>
-                <div class="n8n-info-box">
-                    <strong>📋 Cara Setup:</strong>
-                    <ol>
-                        <li>Buka <a href="https://script.google.com" target="_blank">script.google.com</a></li>
-                        <li>New Project → Copy kode di bawah → Save</li>
-                        <li>Deploy → New deployment → Web App</li>
-                        <li><strong>Execute as:</strong> Me | <strong>Access:</strong> Anyone</li>
-                        <li>Copy URL Web App ke kolom "Script URL" di bawah</li>
-                    </ol>
-                </div>
-
                 <div class="n8n-form-row">
-                    <div class="n8n-form-group" style="flex: 2;">
-                        <label>Google Sheet ID</label>
-                        <input type="text" id="n8nSheetId" class="n8n-input" 
-                            value="${this.config.sheetId}" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE">
-                        <div class="n8n-hint">Dari URL: docs.google.com/spreadsheets/d/<strong>SheetID</strong>/edit</div>
+                    <div class="n8n-form-group">
+                        <label>NAMA</label>
+                        <input type="text" id="n8nAddNama" placeholder="BUDI">
                     </div>
                     <div class="n8n-form-group">
-                        <label>Nama Sheet</label>
-                        <input type="text" id="n8nSheetName" class="n8n-input" 
-                            value="${this.config.sheetName}" placeholder="Data Base Hifzi Cell">
+                        <label>NOMOR</label>
+                        <input type="text" id="n8nAddNomor" placeholder="08123456789">
                     </div>
                 </div>
-                <div class="n8n-form-row">
-                    <div class="n8n-form-group" style="flex: 1;">
-                        <label>Script URL (GAS Web App) <span style="color: red;">*</span></label>
-                        <input type="text" id="n8nScriptUrl" class="n8n-input" 
-                            value="${this.config.scriptUrl}" placeholder="https://script.google.com/macros/s/.../exec">
-                        <div class="n8n-hint"><strong>WAJIB:</strong> Deploy dengan "Access: Anyone"</div>
-                    </div>
-                </div>
-                <div class="n8n-actions">
-                    <button class="n8n-btn n8n-btn-primary" onclick="n8nModule.saveConfigFromUI()">💾 Simpan Config</button>
-                    <button class="n8n-btn n8n-btn-secondary" onclick="n8nModule.testConnection()">🔗 Test Koneksi</button>
-                </div>
-                <div id="n8nTestResult" style="margin-top: 12px;"></div>
-            </div>
+                <button class="n8n-btn n8n-btn-success" onclick="n8nModule.addData()">Simpan</button>
+            `;
+            this.elements.modal.style.display = 'block';
+        },
 
-            <!-- GAS Code Section -->
-            <div class="n8n-gas-section">
-                <h3>📋 Kode Google Apps Script</h3>
-                <button class="n8n-btn n8n-btn-gas" id="n8nBtnShowGas">📋 Copy Kode GAS</button>
-                <div id="n8nGasContainer" style="display: none; margin-top: 16px;">
-                    <div class="n8n-gas-header">
-                        <span>Code.gs</span>
-                        <button class="n8n-btn-small" onclick="n8nModule.copyGasCode()">📋 Copy</button>
-                    </div>
-                    <pre class="n8n-gas-code" id="n8nGasCode"></pre>
-                </div>
-            </div>
+        /**
+         * Add data
+         */
+        async addData() {
+            let nama = document.getElementById('n8nAddNama').value.trim().toUpperCase();
+            let nomor = document.getElementById('n8nAddNomor').value.trim();
+            const formatInput = document.getElementById('n8nAddInput').value.trim();
 
-            <!-- Loading Overlay -->
-            <div class="n8n-loading" id="n8nLoading" style="display: none;">
-                <div class="n8n-spinner"></div>
-                <div class="n8n-loading-text">Memproses...</div>
-            </div>
-        </div>
-        `;
-    },
+            if (formatInput && formatInput.includes(':')) {
+                const parts = formatInput.split(':');
+                nama = parts[0].trim().toUpperCase();
+                nomor = parts[1].trim();
+            }
 
-    /**
-     * Validate configuration
-     */
-    validateConfig() {
-        const errors = [];
+            if (!nama || !nomor) {
+                alert('Nama dan nomor harus diisi!');
+                return;
+            }
 
-        if (!this.config.scriptUrl || this.config.scriptUrl.trim() === '') {
-            errors.push('Script URL GAS belum diisi');
-        }
+            const exists = this.data.find(row => row.NAMA === nama);
+            if (exists) {
+                alert('Nama sudah ada! Gunakan edit untuk mengubah.');
+                return;
+            }
 
-        if (!this.config.sheetId || this.config.sheetId.trim() === '') {
-            errors.push('Sheet ID belum diisi');
-        }
+            this.showStatus('🔄 Menyimpan...', 'info');
 
-        return {
-            valid: errors.length === 0,
-            errors: errors
-        };
-    },
+            try {
+                const url = `${this.config.gasUrl}?action=addData&sheetId=${encodeURIComponent(this.config.sheetId)}&sheetName=${encodeURIComponent(this.config.sheetName)}&nama=${encodeURIComponent(nama)}&nomor=${encodeURIComponent(nomor)}`;
+                const response = await fetch(url);
+                const result = await response.json();
 
-    /**
-     * Get action title based on current mode
-     */
-    getActionTitle() {
-        const titles = {
-            search: '🔍 Cari Data Customer',
-            add: '➕ Tambah Data Baru',
-            edit: '✏️ Edit Nomor Customer',
-            delete: '🗑️ Hapus Data Customer'
-        };
-        return titles[this.currentMode] || 'Cari Data';
-    },
-
-    /**
-     * Get input placeholder
-     */
-    getInputPlaceholder() {
-        const placeholders = {
-            search: 'Ketik nama yang dicari...',
-            add: 'Format: NAMA:NOMOR (contoh: BUDI:08123456789)',
-            edit: 'Format: NAMA:NOMOR_BARU (contoh: BUDI:08987654321)',
-            delete: 'Ketik nama exact yang akan dihapus...'
-        };
-        return placeholders[this.currentMode] || 'Ketik di sini...';
-    },
-
-    /**
-     * Get action button text
-     */
-    getActionButtonText() {
-        const texts = {
-            search: '🔍 Cari',
-            add: '➕ Tambah',
-            edit: '💾 Simpan',
-            delete: '🗑️ Hapus'
-        };
-        return texts[this.currentMode] || 'Proses';
-    },
-
-    /**
-     * Get hint text
-     */
-    getHintText() {
-        const hints = {
-            search: 'Ketik minimal 2 karakter untuk mencari (contoh: "BUDI")',
-            add: 'Format wajib NAMA:NOMOR. Nama akan otomatis UPPERCASE. Contoh: BUDI:08123456789',
-            edit: 'Masukkan nama yang sudah ada dan nomor baru. Contoh: BUDI:08987654321',
-            delete: 'Masukkan nama exact (sama persis) untuk menghapus. Contoh: BUDI'
-        };
-        return hints[this.currentMode] || '';
-    },
-
-    /**
-     * Attach event listeners
-     */
-    attachEventListeners() {
-        // Tab switching
-        document.querySelectorAll('.n8n-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                this.currentMode = e.target.dataset.mode;
-                this.transaksiAktif = null;
-                this.renderPage();
-            });
-        });
-
-        // Enter key on input
-        const input = document.getElementById('n8nInput');
-        if (input) {
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.executeAction();
-                }
-            });
-        }
-
-        // GAS Code toggle
-        const btnShow = document.getElementById('n8nBtnShowGas');
-        const container = document.getElementById('n8nGasContainer');
-        const display = document.getElementById('n8nGasCode');
-
-        if (btnShow && container && display) {
-            btnShow.addEventListener('click', () => {
-                if (container.style.display === 'none') {
-                    display.textContent = this.GAS_CODE;
-                    container.style.display = 'block';
-                    btnShow.textContent = '🔽 Sembunyikan Kode GAS';
+                if (result.success) {
+                    await this.sendTelegramMessage(`✅ *DATA BARU DITAMBAH*\n\nNama: ${nama}\nNomor: ${nomor}\n\n_Oleh: Web POS_`);
+                    this.showStatus('✅ Data berhasil ditambah!', 'success');
+                    this.closeModal();
+                    this.loadData();
                 } else {
-                    container.style.display = 'none';
-                    btnShow.textContent = '📋 Copy Kode GAS';
+                    throw new Error(result.message);
                 }
-            });
-        }
-    },
-
-    /**
-     * Save config from UI inputs
-     */
-    saveConfigFromUI() {
-        const sheetId = document.getElementById('n8nSheetId')?.value?.trim();
-        const sheetName = document.getElementById('n8nSheetName')?.value?.trim();
-        const scriptUrl = document.getElementById('n8nScriptUrl')?.value?.trim();
-
-        this.config.sheetId = sheetId || this.config.sheetId;
-        this.config.sheetName = sheetName || 'Data Base Hifzi Cell';
-        this.config.scriptUrl = scriptUrl;
-
-        this.saveConfig();
-
-        this.showResult('success', '✅ Konfigurasi berhasil disimpan!');
-        setTimeout(() => this.renderPage(), 1000);
-    },
-
-    /**
-     * Test connection to GAS
-     */
-    async testConnection() {
-        const resultDiv = document.getElementById('n8nTestResult');
-
-        if (!this.config.scriptUrl) {
-            resultDiv.innerHTML = '<div style="color: red;">❌ Script URL belum diisi!</div>';
-            return;
-        }
-
-        resultDiv.innerHTML = '<div style="color: blue;">⏳ Testing koneksi...</div>';
-        this.showLoading(true);
-
-        try {
-            const result = await this.apiCall('test');
-
-            if (result.success) {
-                resultDiv.innerHTML = `<div style="color: green;">✅ ${result.message}</div>`;
-                this.showToast('✅ Koneksi ke Google Sheets berhasil!');
-            } else {
-                resultDiv.innerHTML = `<div style="color: red;">❌ ${result.message}</div>`;
+            } catch (error) {
+                this.showStatus('❌ Error: ' + error.message, 'error');
             }
-        } catch (error) {
-            resultDiv.innerHTML = `<div style="color: red;">❌ Error: ${error.message}</div>`;
-        } finally {
-            this.showLoading(false);
-        }
-    },
+        },
 
-    /**
-     * Execute action based on current mode
-     */
-    async executeAction() {
-        const input = document.getElementById('n8nInput')?.value?.trim();
-
-        if (!input) {
-            this.showResult('error', '❌ Input tidak boleh kosong!');
-            return;
-        }
-
-        const validation = this.validateConfig();
-        if (!validation.valid) {
-            this.showResult('error', '❌ Konfigurasi belum lengkap!\n\n' + validation.errors.join('\n'));
-            return;
-        }
-
-        this.showLoading(true);
-
-        try {
-            switch (this.currentMode) {
-                case 'search':
-                    await this.searchData(input);
-                    break;
-                case 'add':
-                    await this.addData(input);
-                    break;
-                case 'edit':
-                    await this.editData(input);
-                    break;
-                case 'delete':
-                    await this.deleteData(input);
-                    break;
-            }
-        } catch (error) {
-            console.error('[n8n] Error:', error);
-            this.showResult('error', '❌ Error: ' + error.message);
-        } finally {
-            this.showLoading(false);
-        }
-    },
-
-    /**
-     * Search data
-     */
-    async searchData(query) {
-        if (query.length < 2) {
-            this.showResult('error', '❌ Ketik minimal 2 karakter!');
-            return;
-        }
-
-        try {
-            const result = await this.apiCall('search', { query: query });
-
-            if (result.success) {
-                this.displaySearchResults(result.data || [], query);
-            } else {
-                this.showResult('error', '❌ ' + (result.message || 'Gagal mencari data'));
-            }
-        } catch (error) {
-            this.showResult('error', '❌ Gagal terhubung ke server. Cek koneksi internet dan Script URL.');
-        }
-    },
-
-    /**
-     * Display search results
-     */
-    displaySearchResults(data, query) {
-        const resultsDiv = document.getElementById('n8nResults');
-
-        if (data.length === 0) {
-            resultsDiv.innerHTML = `
-                <div class="n8n-result-empty">
-                    <div class="n8n-result-empty-icon">🔍</div>
-                    <div class="n8n-result-empty-text">Tidak ada data ditemukan untuk "${this.escapeHtml(query)}"</div>
+        /**
+         * Show edit modal
+         */
+        showEditModal() {
+            this.elements.modalTitle.textContent = '✏️ Edit Data';
+            this.elements.modalBody.innerHTML = `
+                <div class="n8n-form-group">
+                    <label>NAMA (exact match)</label>
+                    <input type="text" id="n8nEditNama" placeholder="BUDI">
                 </div>
-            `;
-            return;
-        }
-
-        let html = `
-            <div class="n8n-result-header">
-                <span>📋 Ditemukan ${data.length} data untuk "${this.escapeHtml(query)}"</span>
-            </div>
-            <div class="n8n-result-list">
-        `;
-
-        data.forEach((item, index) => {
-            const nama = item.NAMA || item.nama || 'N/A';
-            const nomor = item.NOMOR || item.nomor || 'N/A';
-
-            html += `
-                <div class="n8n-result-item">
-                    <div class="n8n-result-number">${index + 1}</div>
-                    <div class="n8n-result-info">
-                        <div class="n8n-result-name">${this.escapeHtml(nama)}</div>
-                        <div class="n8n-result-phone">${this.escapeHtml(nomor)}</div>
-                    </div>
-                    <button class="n8n-result-copy" onclick="n8nModule.copyToClipboard('${this.escapeHtml(nomor)}')">
-                        📋 Copy
-                    </button>
+                <div class="n8n-form-group">
+                    <label>NOMOR BARU</label>
+                    <input type="text" id="n8nEditNomor" placeholder="08987654321">
                 </div>
+                <button class="n8n-btn n8n-btn-warning" onclick="n8nModule.editData()">Update</button>
             `;
-        });
+            this.elements.modal.style.display = 'block';
+        },
 
-        html += '</div>';
-        resultsDiv.innerHTML = html;
-    },
+        /**
+         * Edit row directly
+         */
+        editRow(nama) {
+            const row = this.data.find(r => r.NAMA === nama);
+            if (!row) return;
 
-    /**
-     * Add new data
-     */
-    async addData(input) {
-        const parts = input.split(':');
-        if (parts.length !== 2) {
-            this.showResult('error', '❌ Format salah! Gunakan format NAMA:NOMOR\nContoh: BUDI:08123456789');
-            return;
-        }
-
-        const nama = parts[0].trim();
-        const nomor = parts[1].trim();
-
-        if (!nama || !nomor) {
-            this.showResult('error', '❌ Nama dan nomor tidak boleh kosong!');
-            return;
-        }
-
-        try {
-            const result = await this.apiCall('add', { nama: nama, nomor: nomor });
-
-            if (result.success) {
-                this.showResult('success', 
-                    '✅ Data berhasil ditambahkan!\n\n' +
-                    'Nama: ' + result.data.nama + '\n' +
-                    'Nomor: ' + result.data.nomor
-                );
-                document.getElementById('n8nInput').value = '';
-            } else {
-                this.showResult('error', '❌ ' + (result.message || 'Gagal menambah data'));
-            }
-        } catch (error) {
-            this.showResult('error', '❌ Gagal terhubung ke server.');
-        }
-    },
-
-    /**
-     * Edit data
-     */
-    async editData(input) {
-        const parts = input.split(':');
-        if (parts.length !== 2) {
-            this.showResult('error', '❌ Format salah! Gunakan format NAMA:NOMOR_BARU\nContoh: BUDI:08987654321');
-            return;
-        }
-
-        const nama = parts[0].trim();
-        const nomor = parts[1].trim();
-
-        if (!nama || !nomor) {
-            this.showResult('error', '❌ Nama dan nomor baru tidak boleh kosong!');
-            return;
-        }
-
-        try {
-            const result = await this.apiCall('edit', { nama: nama, nomor: nomor });
-
-            if (result.success) {
-                this.showResult('success', 
-                    '✅ Data berhasil diupdate!\n\n' +
-                    'Nama: ' + result.data.nama + '\n' +
-                    'Nomor Baru: ' + result.data.nomor
-                );
-                document.getElementById('n8nInput').value = '';
-            } else {
-                this.showResult('error', '❌ ' + (result.message || 'Gagal mengupdate data'));
-            }
-        } catch (error) {
-            this.showResult('error', '❌ Gagal terhubung ke server.');
-        }
-    },
-
-    /**
-     * Delete data
-     */
-    async deleteData(nama) {
-        if (!confirm('⚠️ Yakin ingin menghapus data "' + nama.toUpperCase() + '"?\n\nData yang dihapus tidak bisa dikembalikan!')) {
-            return;
-        }
-
-        try {
-            const result = await this.apiCall('delete', { nama: nama });
-
-            if (result.success) {
-                this.showResult('success', 
-                    '✅ Data berhasil dihapus!\n\n' +
-                    'Nama: ' + result.data.nama + '\n' +
-                    'Nomor: ' + result.data.nomor
-                );
-                document.getElementById('n8nInput').value = '';
-            } else {
-                this.showResult('error', '❌ ' + (result.message || 'Gagal menghapus data'));
-            }
-        } catch (error) {
-            this.showResult('error', '❌ Gagal terhubung ke server.');
-        }
-    },
-
-    /**
-     * Show loading state
-     */
-    showLoading(show) {
-        const loading = document.getElementById('n8nLoading');
-        if (loading) {
-            loading.style.display = show ? 'flex' : 'none';
-        }
-    },
-
-    /**
-     * Show result message
-     */
-    showResult(type, message) {
-        const resultsDiv = document.getElementById('n8nResults');
-        if (resultsDiv) {
-            resultsDiv.innerHTML = `
-                <div class="n8n-result-message n8n-result-${type}">
-                    <div class="n8n-result-message-icon">${type === 'success' ? '✅' : '❌'}</div>
-                    <div class="n8n-result-message-text">${message.replace(/\n/g, '<br>')}</div>
+            this.elements.modalTitle.textContent = '✏️ Edit Data';
+            this.elements.modalBody.innerHTML = `
+                <div class="n8n-form-group">
+                    <label>NAMA</label>
+                    <input type="text" id="n8nEditNama" value="${row.NAMA}" readonly>
                 </div>
+                <div class="n8n-form-group">
+                    <label>NOMOR BARU</label>
+                    <input type="text" id="n8nEditNomor" value="${row.NOMOR}">
+                </div>
+                <button class="n8n-btn n8n-btn-warning" onclick="n8nModule.editData()">Update</button>
             `;
+            this.elements.modal.style.display = 'block';
+        },
+
+        /**
+         * Edit data
+         */
+        async editData() {
+            const nama = document.getElementById('n8nEditNama').value.trim().toUpperCase();
+            const nomor = document.getElementById('n8nEditNomor').value.trim();
+
+            if (!nama || !nomor) {
+                alert('Nama dan nomor harus diisi!');
+                return;
+            }
+
+            this.showStatus('🔄 Mengupdate...', 'info');
+
+            try {
+                const url = `${this.config.gasUrl}?action=editData&sheetId=${encodeURIComponent(this.config.sheetId)}&sheetName=${encodeURIComponent(this.config.sheetName)}&nama=${encodeURIComponent(nama)}&nomor=${encodeURIComponent(nomor)}`;
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.success) {
+                    await this.sendTelegramMessage(`✏️ *DATA DIUPDATE*\n\nNama: ${nama}\nNomor Baru: ${nomor}\n\n_Oleh: Web POS_`);
+                    this.showStatus('✅ Data berhasil diupdate!', 'success');
+                    this.closeModal();
+                    this.loadData();
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                this.showStatus('❌ Error: ' + error.message, 'error');
+            }
+        },
+
+        /**
+         * Show delete modal
+         */
+        showDeleteModal() {
+            this.elements.modalTitle.textContent = '🗑️ Hapus Data';
+            this.elements.modalBody.innerHTML = `
+                <div class="n8n-form-group">
+                    <label>NAMA yang akan dihapus (exact match)</label>
+                    <input type="text" id="n8nDeleteNama" placeholder="BUDI">
+                </div>
+                <p class="n8n-warning">⚠️ Data akan dihapus permanen!</p>
+                <button class="n8n-btn n8n-btn-danger" onclick="n8nModule.deleteData()">Hapus Permanen</button>
+            `;
+            this.elements.modal.style.display = 'block';
+        },
+
+        /**
+         * Delete row directly
+         */
+        deleteRow(nama) {
+            if (!confirm(`Yakin hapus data ${nama}?`)) return;
+            const input = document.getElementById('n8nDeleteNama');
+            if (input) input.value = nama;
+            this.deleteData();
+        },
+
+        /**
+         * Delete data
+         */
+        async deleteData() {
+            const namaInput = document.getElementById('n8nDeleteNama');
+            const nama = namaInput ? namaInput.value.trim().toUpperCase() : '';
+
+            if (!nama) {
+                alert('Nama harus diisi!');
+                return;
+            }
+
+            if (!confirm(`Yakin hapus data ${nama}?`)) return;
+
+            this.showStatus('🔄 Menghapus...', 'info');
+
+            try {
+                const url = `${this.config.gasUrl}?action=deleteData&sheetId=${encodeURIComponent(this.config.sheetId)}&sheetName=${encodeURIComponent(this.config.sheetName)}&nama=${encodeURIComponent(nama)}`;
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.success) {
+                    await this.sendTelegramMessage(`🗑️ *DATA DIHAPUS*\n\nNama: ${nama}\n\n_Oleh: Web POS_`);
+                    this.showStatus('✅ Data berhasil dihapus!', 'success');
+                    this.closeModal();
+                    this.loadData();
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                this.showStatus('❌ Error: ' + error.message, 'error');
+            }
+        },
+
+        /**
+         * Close modal
+         */
+        closeModal() {
+            if (this.elements.modal) {
+                this.elements.modal.style.display = 'none';
+            }
+        },
+
+        /**
+         * Show status message
+         */
+        showStatus(message, type = 'info') {
+            if (!this.elements.status) return;
+            this.elements.status.textContent = message;
+            this.elements.status.className = `n8n-status n8n-status-${type}`;
+            setTimeout(() => {
+                this.elements.status.textContent = '';
+            }, 5000);
         }
-    },
+    };
 
-    /**
-     * Copy to clipboard
-     */
-    copyToClipboard(text) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(() => {
-                this.showToast('📋 Nomor disalin: ' + text);
-            }).catch(() => {
-                this.fallbackCopy(text);
-            });
-        } else {
-            this.fallbackCopy(text);
-        }
-    },
+    // EXPOSE KE GLOBAL SCOPE - HURUF KECIL SEMUA
+    window.n8nModule = n8nModule;
 
-    fallbackCopy(text) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-
-        try {
-            document.execCommand('copy');
-            this.showToast('📋 Nomor disalin: ' + text);
-        } catch (err) {
-            this.showToast('❌ Gagal copy');
-        }
-
-        document.body.removeChild(textarea);
-    },
-
-    copyGasCode() {
-        this.copyToClipboard(this.GAS_CODE);
-        this.showToast('✅ Kode GAS berhasil dicopy!');
-    },
-
-    /**
-     * Show toast notification
-     */
-    showToast(message) {
-        if (typeof showToast === 'function') {
-            showToast(message);
-        } else if (typeof utils !== 'undefined' && utils.showToast) {
-            utils.showToast(message);
-        } else {
-            alert(message);
-        }
-    },
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    // Auto-initialize jika DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => n8nModule.init());
+    } else {
+        n8nModule.init();
     }
-};
 
-// Auto-initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => n8nModule.init());
-} else {
-    n8nModule.init();
-}
-
-console.log('[n8n] Data Management Module loaded - v1.0');
+    console.log('[n8nModule] ✅ Module loaded dengan nama HURUF KECIL SEMUA');
+})();
