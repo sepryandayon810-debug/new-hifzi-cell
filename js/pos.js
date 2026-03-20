@@ -7,11 +7,24 @@ const posModule = {
         this.renderHTML();
         this.renderCategories();
         this.renderProducts();
+        
+        // Render Bluetooth Control setelah HTML dirender
+        setTimeout(() => {
+            if (typeof bluetoothModule !== 'undefined') {
+                bluetoothModule.renderBluetoothControl('bluetoothControlPos', {
+                    context: 'pos',
+                    showPrintButton: true
+                });
+            }
+        }, 100);
     },
 
     renderHTML() {
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="posSection">
+                <!-- BLUETOOTH CONTROL PANEL -->
+                <div id="bluetoothControlPos"></div>
+                
                 <!-- Cart Card -->
                 <div class="card" id="cartCard" style="display: none;">
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -687,9 +700,15 @@ const posModule = {
         dataManager.data.settings.currentCash += total;
         dataManager.save();
 
-        // Print if requested
+        // Print if requested - via Bluetooth atau Window Print
         if (shouldPrint) {
-            this.printReceipt(transaction);
+            // Coba print via Bluetooth dulu
+            if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
+                bluetoothModule.printCurrentPos();
+            } else {
+                // Fallback ke window print
+                this.printReceipt(transaction);
+            }
         }
 
         // Reset cart
@@ -702,6 +721,7 @@ const posModule = {
         app.showToast('✅ Pembayaran berhasil! 🎉');
     },
 
+    // Print via Window (fallback)
     printReceipt(transaction) {
         const header = dataManager.data.settings.receiptHeader || {};
 
@@ -769,5 +789,22 @@ const posModule = {
         `);
         w.document.close();
         w.print();
+    },
+
+    // ==========================================
+    // BLUETOOTH PRINT METHODS
+    // ==========================================
+    
+    // Method untuk dipanggil dari bluetoothModule
+    getCurrentCartForPrint() {
+        if (this.cart.length === 0) return null;
+        
+        const total = this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        return {
+            items: [...this.cart],
+            total: total,
+            transactionNumber: 'DRAFT-' + Date.now().toString().slice(-8),
+            date: new Date().toISOString()
+        };
     }
 };
