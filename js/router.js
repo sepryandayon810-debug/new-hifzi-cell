@@ -7,16 +7,16 @@ const router = {
     currentPage: null,
 
     // Menu yang bisa diakses saat kasir TUTUP (tanpa membuka kasir baru)
-    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram', 'n8n', 'pencarian'],
+    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram', 'pencarian'],
 
     // Menu yang butuh kasir BUKA
     requiresKasirOpen: ['pos', 'products', 'cash', 'debt'],
 
     // Definisi akses menu berdasarkan role
     menuAccess: {
-        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n', 'pencarian'],
-        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'n8n', 'pencarian'],
-        'kasir': ['pos', 'products', 'transactions', 'n8n', 'pencarian']
+        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
+        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
+        'kasir': ['pos', 'products', 'transactions', 'pencarian']
     },
 
     // Definisi label menu untuk pesan error
@@ -49,7 +49,6 @@ const router = {
             'telegram': typeof TelegramModule !== 'undefined',
             'cloud': typeof backupModule !== 'undefined',
             'backup': typeof backupModule !== 'undefined',
-            'n8n': typeof n8nModule !== 'undefined',
             'pencarian': typeof n8nModule !== 'undefined'
         };
         return modules[moduleName] || false;
@@ -158,7 +157,6 @@ const router = {
                         TelegramModule.renderPage();
                     }
                     break;
-                case 'n8n':
                 case 'pencarian':
                     // PERBAIKAN: Inisialisasi dan render n8nModule
                     if (typeof n8nModule !== 'undefined') {
@@ -384,7 +382,6 @@ const router = {
             'telegram': 'Pastikan file telegram.js ada di folder js/',
             'cloud': 'Pastikan file backup.js ada di folder js/',
             'backup': 'Pastikan file backup.js ada di folder js/',
-            'n8n': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html',
             'pencarian': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html'
         };
 
@@ -451,7 +448,6 @@ const router = {
             'telegram': '✈️',
             'cloud': '☁️',
             'backup': '💾',
-            'n8n': '🔍',
             'pencarian': '🔍'
         };
 
