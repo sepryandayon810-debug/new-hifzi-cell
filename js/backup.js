@@ -1,10 +1,13 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v2.1)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v2.2)
 // Firebase + Google Sheets + Local
 // Dengan Generate GAS Otomatis dari External URL
 // ============================================
 
 const backupModule = {
+    // State management
+    isInitialized: false,
+    isRendered: false,
     currentProvider: localStorage.getItem('hifzi_provider') || 'local',
     isAutoSyncEnabled: localStorage.getItem('hifzi_auto_sync') === 'true',
     isAutoSaveLocalEnabled: localStorage.getItem('hifzi_auto_save_local') !== 'false',
@@ -12,7 +15,6 @@ const backupModule = {
     lastSyncTime: localStorage.getItem('hifzi_last_sync') || null,
     isOnline: navigator.onLine,
     pendingSync: false,
-    isRendered: false,
     
     // Firebase
     firebaseConfig: JSON.parse(localStorage.getItem('hifzi_firebase_config') || '{}'),
@@ -26,7 +28,7 @@ const backupModule = {
     gasUrl: localStorage.getItem('hifzi_gas_url') || '',
     sheetId: localStorage.getItem('hifzi_sheet_id') || '',
     
-    // External GAS Code URL - Bisa diupdate kapan saja
+    // External GAS Code URL
     gasCodeUrl: localStorage.getItem('hifzi_gas_code_url') || 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js',
     
     // Device
@@ -54,6 +56,12 @@ const backupModule = {
     // ============================================
 
     init() {
+        // Prevent double initialization
+        if (this.isInitialized) {
+            console.log('[Backup] Already initialized, skipping...');
+            return this;
+        }
+
         console.log('[Backup] Initializing... Provider:', this.currentProvider);
         
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
@@ -63,17 +71,10 @@ const backupModule = {
         // Bersihkan sheetId saat init
         this.sheetId = this.cleanSheetId(this.sheetId);
         
-        window.addEventListener('online', () => {
-            this.isOnline = true;
-            this.showToast('🌐 Online');
-            if (this.pendingSync) this.manualUpload();
-        });
+        // Setup online/offline listeners (hanya sekali)
+        this.setupNetworkListeners();
         
-        window.addEventListener('offline', () => {
-            this.isOnline = false;
-            this.showToast('📴 Offline');
-        });
-
+        // Init provider yang aktif
         if (this.currentProvider === 'firebase') {
             this.initFirebase();
         } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
@@ -83,6 +84,31 @@ const backupModule = {
         if (this.isAutoSyncEnabled) {
             this.startAutoSync();
         }
+
+        this.isInitialized = true;
+        console.log('[Backup] Initialization complete');
+        return this;
+    },
+
+    setupNetworkListeners() {
+        // Hapus listener lama jika ada (untuk menghindari duplikat)
+        window.removeEventListener('online', this.handleOnline);
+        window.removeEventListener('offline', this.handleOffline);
+        
+        // Bind this agar konteks benar
+        this.handleOnline = () => {
+            this.isOnline = true;
+            this.showToast('🌐 Online');
+            if (this.pendingSync) this.manualUpload();
+        };
+        
+        this.handleOffline = () => {
+            this.isOnline = false;
+            this.showToast('📴 Offline');
+        };
+        
+        window.addEventListener('online', this.handleOnline);
+        window.addEventListener('offline', this.handleOffline);
     },
 
     // ============================================
@@ -136,7 +162,6 @@ const backupModule = {
     // EXTERNAL GAS CODE LOADER (NEW FEATURE)
     // ============================================
 
-    // Ambil GAS code dari external URL (GitHub/Raw/Supabase/dll)
     async fetchGASCodeFromExternal(forceRefresh = false) {
         const cacheKey = this.KEYS.GAS_CODE_CACHE;
         const versionKey = this.KEYS.GAS_CODE_VERSION;
@@ -206,7 +231,6 @@ const backupModule = {
         }
     },
 
-    // Update URL sumber GAS code
     updateGASCodeUrl(newUrl) {
         if (!newUrl || !newUrl.startsWith('http')) {
             this.showToast('❌ URL tidak valid');
@@ -245,7 +269,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '2.1',
+                version: '2.2',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -417,7 +441,10 @@ const backupModule = {
                     this.currentUser = null;
                 }
                 
-                this.render();
+                // Re-render jika sedang di halaman backup
+                if (this.isRendered && this.currentProvider === 'firebase') {
+                    this.render();
+                }
             });
             
         } catch (err) {
@@ -508,7 +535,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '2.1'
+                version: '2.2'
             }
         };
         
@@ -1306,7 +1333,7 @@ const backupModule = {
             this.checkNewDeviceGAS();
         }
         
-        this.showToast(\`✅ Provider: \${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}\`);
+        this.showToast(`✅ Provider: ${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}`);
         this.render();
     },
 
@@ -1455,11 +1482,19 @@ const backupModule = {
     // ============================================
 
     render() {
+        // Pastikan sudah di-init
+        if (!this.isInitialized) {
+            this.init();
+        }
+
         const container = document.getElementById('mainContent');
         if (!container) {
-            console.error('[Backup] mainContent not found');
+            console.error('[Backup] mainContent not found - will retry in 100ms');
+            setTimeout(() => this.render(), 100);
             return;
         }
+
+        this.isRendered = true;
         
         const isFirebase = this.currentProvider === 'firebase';
         const isGAS = this.currentProvider === 'googlesheet';
@@ -1804,14 +1839,17 @@ const backupModule = {
 // AUTO INIT & EXPOSE
 // ============================================
 
-if (typeof dataManager !== 'undefined') {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            backupModule.init();
-        });
-    } else {
+// Auto-init saat DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
         backupModule.init();
-    }
+    });
+} else {
+    // DOM sudah ready
+    backupModule.init();
 }
 
+// Expose ke window
 window.backupModule = backupModule;
+
+console.log('[Backup] Module loaded v2.2');
