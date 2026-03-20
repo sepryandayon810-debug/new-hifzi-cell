@@ -32,7 +32,6 @@ const router = {
         'telegram': 'Telegram',
         'cloud': 'Cloud',
         'backup': 'Backup',
-        'n8n': 'Pencarian',
         'pencarian': 'Pencarian'
     },
 
