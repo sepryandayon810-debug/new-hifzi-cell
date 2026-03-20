@@ -19,13 +19,31 @@
     touch-action: manipulation;
 }
 
+html {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--blue);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    min-height: 100vh;
     color: var(--dark);
     overflow-x: hidden;
-    padding-bottom: 100px;
+    overflow-y: auto;
     -webkit-font-smoothing: antialiased;
+    position: relative;
+    padding-bottom: 120px; /* Ruang untuk cart bar */
+}
+
+/* Container utama */
+.app-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding-bottom: 80px; /* Extra padding di bawah */
 }
 
 /* Loading Overlay */
@@ -70,11 +88,11 @@ body {
 .header {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
-    padding: 20px;
-    position: sticky;
-    top: 0;
+    padding: 15px;
+    position: relative;
     z-index: 1000;
     box-shadow: var(--shadow);
+    flex-shrink: 0;
 }
 
 .header-top {
@@ -82,6 +100,8 @@ body {
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .header h1 {
@@ -99,6 +119,7 @@ body {
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .sync-status {
@@ -130,6 +151,7 @@ body {
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
+    flex-shrink: 0;
 }
 
 .icon-btn:active {
@@ -143,6 +165,23 @@ body {
     border-radius: 15px;
     padding: 15px;
     backdrop-filter: blur(10px);
+    position: relative;
+    margin-top: 10px;
+}
+
+.cash-card::before {
+    content: "📅 HARI INI";
+    position: absolute;
+    top: -10px;
+    right: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .cash-label {
@@ -154,11 +193,12 @@ body {
 .cash-amount {
     font-size: 28px;
     font-weight: 700;
+    word-break: break-all;
 }
 
 .cash-detail {
     display: flex;
-    gap: 20px;
+    gap: 15px;
     margin-top: 10px;
     font-size: 12px;
     flex-wrap: wrap;
@@ -168,6 +208,49 @@ body {
     display: flex;
     align-items: center;
     gap: 5px;
+}
+
+/* Profit highlight styling */
+.profit-highlight {
+    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
+    margin-left: auto;
+    min-width: 140px;
+    transition: all 0.3s ease;
+}
+
+.profit-highlight:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
+}
+
+.profit-highlight .profit-icon {
+    font-size: 24px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.profit-highlight .profit-label {
+    font-size: 11px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.profit-highlight .profit-value {
+    font-size: 20px;
+    font-weight: 700;
 }
 
 /* Navigation */
@@ -182,6 +265,8 @@ body {
     gap: 5px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    position: relative;
+    z-index: 100;
 }
 
 .nav-tabs::-webkit-scrollbar {
@@ -210,9 +295,15 @@ body {
 }
 
 /* Content */
+.content-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 15px 100px 15px; /* Padding bawah untuk cart bar */
+}
+
 .content-section {
     display: none;
-    padding: 0 15px;
     animation: fadeIn 0.3s;
 }
 
@@ -258,6 +349,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .btn-sm:active {
@@ -408,6 +500,8 @@ body {
     padding: 20px;
     opacity: 0;
     transition: opacity 0.3s;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .modal.active {
@@ -421,10 +515,11 @@ body {
     padding: 25px;
     width: 100%;
     max-width: 400px;
-    max-height: 90vh;
+    max-height: 85vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     animation: slideUp 0.3s;
+    position: relative;
 }
 
 @keyframes slideUp {
@@ -437,6 +532,11 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    padding-bottom: 10px;
 }
 
 .modal-title {
@@ -455,15 +555,20 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .modal-footer {
     display: flex;
     gap: 10px;
     margin-top: 20px;
+    position: sticky;
+    bottom: 0;
+    background: white;
+    padding-top: 10px;
 }
 
-/* Cart Bar */
+/* Cart Bar - Fixed Bottom */
 .cart-bar {
     position: fixed;
     bottom: 0;
@@ -476,10 +581,13 @@ body {
     justify-content: space-between;
     align-items: center;
     z-index: 999;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
 }
 
 .cart-info {
     flex: 1;
+    min-width: 0;
 }
 
 .cart-label {
@@ -491,6 +599,7 @@ body {
     font-size: 24px;
     font-weight: 700;
     color: var(--primary);
+    word-break: break-all;
 }
 
 .btn-checkout {
@@ -502,6 +611,8 @@ body {
     font-weight: 700;
     font-size: 16px;
     cursor: pointer;
+    white-space: nowrap;
+    margin-left: 10px;
 }
 
 .btn-checkout:disabled {
@@ -524,6 +635,8 @@ body {
     transition: all 0.3s;
     z-index: 3000;
     pointer-events: none;
+    max-width: 90%;
+    text-align: center;
 }
 
 .toast.show {
@@ -589,7 +702,7 @@ body {
 
 /* Transaction List */
 .transaction-list {
-    max-height: 400px;
+    max-height: 50vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -610,6 +723,7 @@ body {
 .transaction-info {
     flex: 1;
     min-width: 0;
+    margin-right: 10px;
 }
 
 .transaction-title {
@@ -631,6 +745,7 @@ body {
     font-size: 16px;
     text-align: right;
     min-width: 100px;
+    white-space: nowrap;
 }
 
 .transaction-amount.income {
@@ -719,6 +834,7 @@ body {
     width: 20px;
     height: 20px;
     accent-color: var(--primary);
+    flex-shrink: 0;
 }
 
 .checkbox-group label {
@@ -749,10 +865,12 @@ body {
 
 .kasir-status-icon {
     font-size: 40px;
+    flex-shrink: 0;
 }
 
 .kasir-status-text {
     flex: 1;
+    min-width: 0;
 }
 
 .kasir-status-title {
@@ -808,28 +926,13 @@ body {
     justify-content: space-between;
     padding: 12px 0;
     border-bottom: 1px solid #f0f0f0;
+    flex-wrap: wrap;
+    gap: 5px;
 }
 
 .info-row:last-child {
     border-bottom: none;
 }
-
-/* Responsive */
-@media (max-width: 380px) {
-    .stats-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    
-    .kasir-actions {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* Tambahan untuk main.css */
 
 /* Profit Display */
 .profit-display {
@@ -917,6 +1020,7 @@ body {
     border-radius: 12px;
     margin-bottom: 10px;
     border: 1px solid #e0e0e0;
+    gap: 10px;
 }
 
 .cart-header {
@@ -938,6 +1042,7 @@ body {
     font-size: 16px;
     font-weight: 700;
     transition: all 0.2s;
+    flex-shrink: 0;
 }
 
 .qty-btn:active {
@@ -956,11 +1061,25 @@ body {
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     border: 1px solid #f0f0f0;
     transition: all 0.2s;
+    gap: 10px;
 }
 
 .product-item:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     transform: translateY(-2px);
+}
+
+.product-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.product-name {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Batch Stock Item */
@@ -973,10 +1092,12 @@ body {
     border-radius: 12px;
     margin-bottom: 8px;
     border: 1px solid #e0e0e0;
+    gap: 10px;
 }
 
 .batch-stock-info {
     flex: 1;
+    min-width: 0;
 }
 
 .batch-stock-name {
@@ -994,10 +1115,11 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .batch-stock-input {
-    width: 80px;
+    width: 70px;
     padding: 10px;
     border: 2px solid #e0e0e0;
     border-radius: 8px;
@@ -1051,44 +1173,6 @@ body {
     color: #666;
 }
 
-/* Settings Modal Enhancement */
-.kasir-btn {
-    padding: 20px;
-    border: none;
-    border-radius: 16px;
-    font-weight: 700;
-    font-size: 16px;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-}
-
-.kasir-btn.open {
-    background: linear-gradient(135deg, var(--success) 0%, #00a884 100%);
-    color: white;
-}
-
-.kasir-btn.close {
-    background: linear-gradient(135deg, var(--danger) 0%, #ff6b6b 100%);
-    color: white;
-}
-
-.kasir-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none !important;
-}
-
-.kasir-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
 /* Return Item Styles */
 .return-item-box {
     background: #fff3e0;
@@ -1103,6 +1187,8 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 5px;
 }
 
 .return-item-name {
@@ -1131,8 +1217,50 @@ body {
     font-weight: 700;
 }
 
-/* Responsive */
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.2);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,0.3);
+}
+
+/* Safe Area for iPhone X+ */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    body {
+        padding-bottom: calc(120px + env(safe-area-inset-bottom));
+    }
+    
+    .cart-bar {
+        padding-bottom: calc(15px + env(safe-area-inset-bottom));
+    }
+    
+    .content-wrapper {
+        padding-bottom: calc(100px + env(safe-area-inset-bottom));
+    }
+}
+
+/* Responsive Breakpoints */
 @media (max-width: 380px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
     .kasir-actions {
         grid-template-columns: 1fr;
     }
@@ -1144,18 +1272,60 @@ body {
     .cloud-options {
         grid-template-columns: 1fr;
     }
+    
+    .cash-amount {
+        font-size: 24px;
+    }
+    
+    .cart-total {
+        font-size: 20px;
+    }
+    
+    .btn-checkout {
+        padding: 14px 20px;
+        font-size: 14px;
+    }
+    
+    .header h1 {
+        font-size: 18px;
+    }
+    
+    .profit-highlight {
+        margin-left: 0;
+        margin-top: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .cash-detail {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
 }
 
-/* ============================================
-   HEADER STATS - HARI INI SAJA
-   ============================================ */
-
-/* Transition untuk animasi smooth */
-#currentCash, #headerProfit, #modalAwal, #headerTransactionCount {
-    transition: all 0.3s ease;
+@media (max-width: 320px) {
+    .cash-amount {
+        font-size: 20px;
+    }
+    
+    .cart-total {
+        font-size: 18px;
+    }
+    
+    .nav-tab {
+        min-width: 70px;
+        padding: 10px 5px;
+        font-size: 11px;
+    }
 }
 
-/* Highlight animation saat data berubah */
+/* Animation untuk update */
+.updated {
+    animation: highlightUpdate 0.5s ease;
+    border-radius: 4px;
+    padding: 0 8px;
+}
+
 @keyframes highlightUpdate {
     0% { 
         background-color: rgba(0, 184, 148, 0.3);
@@ -1171,101 +1341,15 @@ body {
     }
 }
 
-.updated {
-    animation: highlightUpdate 0.5s ease;
-    border-radius: 4px;
-    padding: 0 8px;
+/* Prevent text selection */
+.no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
-/* Styling untuk label "Hari Ini" */
-.cash-card {
-    position: relative;
-}
-
-.cash-card::before {
-    content: "📅 HARI INI";
-    position: absolute;
-    top: -10px;
-    right: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-
-/* Profit highlight styling */
-.profit-highlight {
-    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
-    margin-left: auto;
-    min-width: 140px;
-    transition: all 0.3s ease;
-}
-
-.profit-highlight:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
-}
-
-.profit-highlight .profit-icon {
-    font-size: 24px;
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-}
-
-.profit-highlight .profit-label {
-    font-size: 11px;
-    opacity: 0.9;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 2px;
-}
-
-.profit-highlight .profit-value {
-    font-size: 20px;
-    font-weight: 700;
-}
-
-/* Cash amount styling dengan animasi */
-.cash-amount {
-    font-size: 32px;
-    font-weight: 700;
-    color: #2d3748;
-    margin: 10px 0;
-    display: inline-block;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .cash-card::before {
-        font-size: 9px;
-        padding: 3px 8px;
-        right: 10px;
-    }
-    
-    .profit-highlight {
-        margin-left: 0;
-        margin-top: 10px;
-        width: 100%;
-        justify-content: center;
-    }
-    
-    .cash-detail {
-        flex-direction: column;
-        align-items: flex-start !important;
-    }
+/* Touch action optimization */
+button, .nav-tab, .menu-item, .transaction-item, .product-item {
+    touch-action: manipulation;
 }
