@@ -21,9 +21,9 @@ const backupModule = {
     currentUser: null,
     firebaseBackupData: null,
     
-    // Google Sheets - UPDATED WITH SHEET ID
+    // Google Sheets
     gasUrl: localStorage.getItem('hifzi_gas_url') || '',
-    sheetId: localStorage.getItem('hifzi_sheet_id') || '', // NEW: Sheet ID storage
+    sheetId: localStorage.getItem('hifzi_sheet_id') || '',
     
     // Device
     deviceId: localStorage.getItem('hifzi_device_id') || 'device_' + Date.now(),
@@ -33,7 +33,7 @@ const backupModule = {
     KEYS: {
         PROVIDER: 'hifzi_provider',
         GAS_URL: 'hifzi_gas_url',
-        SHEET_ID: 'hifzi_sheet_id', // NEW: Sheet ID key
+        SHEET_ID: 'hifzi_sheet_id',
         AUTO_SYNC: 'hifzi_auto_sync',
         AUTO_SAVE_LOCAL: 'hifzi_auto_save_local',
         LAST_SYNC: 'hifzi_last_sync',
@@ -52,6 +52,9 @@ const backupModule = {
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
         }
+        
+        // Bersihkan sheetId saat init
+        this.sheetId = this.cleanSheetId(this.sheetId);
         
         window.addEventListener('online', () => {
             this.isOnline = true;
@@ -73,6 +76,13 @@ const backupModule = {
         if (this.isAutoSyncEnabled) {
             this.startAutoSync();
         }
+    },
+
+    // NEW: Bersihkan Sheet ID
+    cleanSheetId(sheetId) {
+        if (!sheetId) return '';
+        // Hapus semua spasi, tab, newline
+        return sheetId.toString().replace(/\s/g, '').trim();
     },
 
     // ============================================
@@ -224,7 +234,7 @@ const backupModule = {
     },
 
     // ============================================
-    // FIREBASE (unchanged)
+    // FIREBASE
     // ============================================
 
     initFirebase() {
@@ -625,7 +635,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE SHEETS - UPDATED WITH SHEET ID & TEST CONNECTION
+    // GOOGLE SHEETS
     // ============================================
 
     checkNewDeviceGAS() {
@@ -643,7 +653,6 @@ const backupModule = {
         }
     },
 
-    // NEW: Test Connection Method
     testGASConnection() {
         if (!this.gasUrl) {
             this.showToast('❌ URL GAS belum diisi');
@@ -675,7 +684,7 @@ const backupModule = {
         })
         .then(result => {
             if (result?.success) {
-                this.showToast('✅ Koneksi berhasil! ' + (result.message || 'GAS Ready'));
+                this.showToast('✅ ' + (result.message || 'Koneksi berhasil!'));
                 return result;
             } else {
                 throw new Error(result?.message || 'Test failed');
@@ -701,7 +710,7 @@ const backupModule = {
             data: data,
             deviceId: this.deviceId,
             deviceName: this.deviceName,
-            sheetId: this.sheetId || null, // NEW: Include sheetId if provided
+            sheetId: this.sheetId || null,
             timestamp: new Date().toISOString()
         };
         
@@ -880,7 +889,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE APPS SCRIPT GENERATOR - UPDATED WITH SHEET ID SUPPORT
+    // GOOGLE APPS SCRIPT GENERATOR
     // ============================================
 
     showGASGenerator() {
@@ -900,29 +909,63 @@ const backupModule = {
             padding: 20px;
         `;
         
-        // UPDATED GAS CODE WITH SHEET ID SUPPORT
         const gasCode = `function doGet(e) {
+  console.log('=== doGet called ===');
+  console.log('Parameters:', JSON.stringify(e.parameter));
+  
   const action = e.parameter.action;
   const callback = e.parameter.callback;
+  const dataParam = e.parameter.data;
   const sheetId = e.parameter.sheetId;
   
-  if (action === 'restore') {
-    const data = getData(sheetId);
-    const response = { success: true, data: data };
-    
-    if (callback) {
-      const output = ContentService.createTextOutput(callback + '(' + JSON.stringify(response) + ')');
-      output.setMimeType(ContentService.MimeType.JAVASCRIPT);
-      return output;
+  try {
+    if (dataParam) {
+      console.log('Processing dataParam, length:', dataParam.length);
+      const params = JSON.parse(dataParam);
+      
+      if (params.action === 'sync') {
+        const saveResult = saveData(params.data, sheetId);
+        const response = { 
+          success: true, 
+          message: 'Data saved via JSONP',
+          saved: saveResult 
+        };
+        return jsonpResponse(response, callback);
+      }
     }
     
-    const output = ContentService.createTextOutput(JSON.stringify(response));
-    output.setMimeType(ContentService.MimeType.JSON);
-    return output;
+    if (action === 'restore') {
+      console.log('Action: restore, sheetId:', sheetId);
+      const data = getData(sheetId);
+      const response = { 
+        success: true, 
+        data: data,
+        message: data ? 'Data found' : 'No data'
+      };
+      return jsonpResponse(response, callback);
+    }
+    
+    if (action === 'test') {
+      const testResult = testConnection(sheetId);
+      return jsonpResponse({ 
+        success: true, 
+        message: 'GAS Connected! Spreadsheet: ' + testResult.spreadsheet,
+        details: testResult
+      }, callback);
+    }
+    
+    return jsonpResponse({ 
+      status: 'ok', 
+      message: 'Hifzi Cell GAS Ready'
+    }, callback);
+    
+  } catch (err) {
+    console.error('doGet error:', err);
+    return jsonpResponse({ 
+      success: false, 
+      message: err.toString() 
+    }, callback);
   }
-  
-  return ContentService.createTextOutput(JSON.stringify({ status: 'ok', message: 'Hifzi Cell GAS Ready' }))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doOptions(e) {
@@ -931,127 +974,165 @@ function doOptions(e) {
 }
 
 function doPost(e) {
+  console.log('=== doPost called ===');
+  
   try {
     let params;
+    
     if (e.postData && e.postData.contents) {
       params = JSON.parse(e.postData.contents);
     } else {
-      throw new Error('No post data');
+      throw new Error('No post data received');
     }
     
     const action = params.action;
     const sheetId = params.sheetId;
+    console.log('Action:', action, 'SheetId:', sheetId);
     
-    // NEW: Test connection endpoint
     if (action === 'test') {
-      return ContentService.createTextOutput(JSON.stringify({ 
+      const testResult = testConnection(sheetId);
+      return jsonResponse({ 
         success: true, 
-        message: 'GAS Connected! Sheet: ' + (sheetId ? 'Custom' : 'Default')
-      })).setMimeType(ContentService.MimeType.JSON);
+        message: 'GAS Connected! Spreadsheet: ' + testResult.spreadsheet,
+        details: testResult
+      });
     }
     
     if (action === 'sync') {
-      saveData(params.data, sheetId);
-      return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data saved' }))
-        .setMimeType(ContentService.MimeType.JSON);
+      const saveResult = saveData(params.data, sheetId);
+      return jsonResponse({ 
+        success: true, 
+        message: 'Data saved successfully',
+        saved: saveResult
+      });
     }
     
     if (action === 'reset') {
       clearData(sheetId);
-      return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data cleared' }))
-        .setMimeType(ContentService.MimeType.JSON);
+      return jsonResponse({ 
+        success: true, 
+        message: 'Data cleared' 
+      });
     }
     
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unknown action' }))
-      .setMimeType(ContentService.MimeType.JSON);
-      
+    return jsonResponse({ 
+      success: false, 
+      message: 'Unknown action: ' + action 
+    });
+    
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    console.error('doPost error:', err);
+    return jsonResponse({ 
+      success: false, 
+      message: err.toString() 
+    });
   }
 }
 
-// MODIFIED: Support specific sheet ID
-function saveData(data, specificSheetId) {
-  const ss = getOrCreateSpreadsheet(specificSheetId);
-  const sheet = ss.getSheetByName('Data') || ss.insertSheet('Data');
-  sheet.clear();
-  
-  // Simpan sebagai JSON string di A1
-  sheet.getRange(1, 1).setValue(JSON.stringify(data));
-  sheet.getRange(1, 2).setValue(new Date());
-  
-  // Log
-  logAction('SYNC', data._backupMeta?.deviceId || 'unknown', data._backupMeta?.deviceName || 'unknown', ss.getName());
+function jsonpResponse(data, callback) {
+  const jsonStr = JSON.stringify(data);
+  if (!callback) {
+    return jsonResponse(data);
+  }
+  return ContentService.createTextOutput(callback + '(' + jsonStr + ')')
+    .setMimeType(ContentService.MimeType.JAVASCRIPT);
 }
 
-// MODIFIED: Support specific sheet ID
-function getData(specificSheetId) {
-  const ss = getOrCreateSpreadsheet(specificSheetId);
-  const sheet = ss.getSheetByName('Data');
+function jsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getSpreadsheet(sheetId) {
+  try {
+    if (sheetId) {
+      return SpreadsheetApp.openById(sheetId);
+    }
+    // Fallback: create or use default
+    const props = PropertiesService.getScriptProperties();
+    let id = props.getProperty('DEFAULT_SHEET_ID');
+    if (id) {
+      return SpreadsheetApp.openById(id);
+    }
+    const ss = SpreadsheetApp.create('Hifzi Cell Backup - ' + new Date().toISOString().split('T')[0]);
+    props.setProperty('DEFAULT_SHEET_ID', ss.getId());
+    return ss;
+  } catch (e) {
+    throw new Error('Cannot open spreadsheet: ' + e.message);
+  }
+}
+
+function saveData(data, sheetId) {
+  console.log('=== saveData called ===');
+  const ss = getSpreadsheet(sheetId);
+  
+  let sheet = ss.getSheetByName('BackupData');
+  if (!sheet) {
+    sheet = ss.insertSheet('BackupData');
+  }
+  
+  sheet.clear();
+  const jsonStr = JSON.stringify(data);
+  
+  if (jsonStr.length > 50000) {
+    throw new Error('Data too large: ' + jsonStr.length + ' chars (max 50,000)');
+  }
+  
+  sheet.getRange(1, 1).setValue(jsonStr);
+  sheet.getRange(1, 2).setValue(new Date());
+  
+  const deviceId = data._backupMeta?.deviceId || 'unknown';
+  const deviceName = data._backupMeta?.deviceName || 'unknown';
+  sheet.getRange(1, 3).setValue(deviceId + ' | ' + deviceName);
+  
+  logAction('SYNC', deviceId, deviceName, ss.getName());
+  
+  return { success: true, size: jsonStr.length };
+}
+
+function getData(sheetId) {
+  console.log('=== getData called, sheetId:', sheetId);
+  const ss = getSpreadsheet(sheetId);
+  const sheet = ss.getSheetByName('BackupData');
   
   if (!sheet) return null;
   
   const jsonStr = sheet.getRange(1, 1).getValue();
   if (!jsonStr) return null;
   
-  try {
-    return JSON.parse(jsonStr);
-  } catch (e) {
-    return null;
-  }
+  return JSON.parse(jsonStr);
 }
 
-// MODIFIED: Support specific sheet ID
-function clearData(specificSheetId) {
-  const ss = getOrCreateSpreadsheet(specificSheetId);
-  const sheet = ss.getSheetByName('Data');
+function clearData(sheetId) {
+  const ss = getSpreadsheet(sheetId);
+  const sheet = ss.getSheetByName('BackupData');
   if (sheet) sheet.clear();
-}
-
-// MODIFIED: Support opening specific spreadsheet by ID
-function getOrCreateSpreadsheet(specificSheetId) {
-  // If specific sheet ID provided, try to open it
-  if (specificSheetId) {
-    try {
-      return SpreadsheetApp.openById(specificSheetId);
-    } catch (e) {
-      throw new Error('Invalid Sheet ID: ' + specificSheetId);
-    }
-  }
-  
-  // Otherwise use default from properties
-  const propKey = 'SPREADSHEET_ID';
-  const props = PropertiesService.getScriptProperties();
-  let id = props.getProperty(propKey);
-  
-  if (id) {
-    try {
-      return SpreadsheetApp.openById(id);
-    } catch (e) {
-      // ID invalid, create new
-    }
-  }
-  
-  // Create new spreadsheet
-  const ss = SpreadsheetApp.create('Hifzi Cell Backup - ' + new Date().toISOString().split('T')[0]);
-  props.setProperty(propKey, ss.getId());
-  
-  // Setup log sheet
-  const logSheet = ss.insertSheet('Log');
-  logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name', 'Sheet']);
-  
-  return ss;
-}
-
-function logSheet(ss) {
-  return ss.getSheetByName('Log') || ss.insertSheet('Log');
+  logAction('CLEAR', 'manual', 'manual', ss.getName());
 }
 
 function logAction(action, deviceId, deviceName, sheetName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = logSheet(ss);
-  sheet.appendRow([new Date(), action, deviceId, deviceName, sheetName || 'Default']);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let logSheet = ss.getSheetByName('SyncLog');
+    if (!logSheet) {
+      logSheet = ss.insertSheet('SyncLog');
+      logSheet.appendRow(['Timestamp', 'Action', 'Device ID', 'Device Name', 'Sheet']);
+    }
+    logSheet.appendRow([new Date(), action, deviceId, deviceName, sheetName || 'Default']);
+  } catch (e) {
+    console.error('logAction error:', e);
+  }
+}
+
+function testConnection(sheetId) {
+  const ss = getSpreadsheet(sheetId);
+  return {
+    success: true,
+    spreadsheet: ss.getName(),
+    id: ss.getId(),
+    url: ss.getUrl(),
+    sheets: ss.getSheets().map(s => s.getName())
+  };
 }`;
 
         modal.innerHTML = `
@@ -1202,7 +1283,7 @@ function logAction(action, deviceId, deviceName, sheetName) {
     },
 
     // ============================================
-    // CONFIG & SETTINGS - UPDATED WITH SHEET ID
+    // CONFIG & SETTINGS
     // ============================================
 
     setProvider(provider) {
@@ -1245,13 +1326,22 @@ function logAction(action, deviceId, deviceName, sheetName) {
         this.render();
     },
 
-    // UPDATED: Save both URL and Sheet ID
+    // UPDATED: Save with cleanSheetId
     saveGasUrl() {
         const url = document.getElementById('gasUrlInput')?.value?.trim();
-        const sheetId = document.getElementById('sheetIdInput')?.value?.trim();
+        const sheetIdInput = document.getElementById('sheetIdInput')?.value || '';
+        
+        // Bersihkan Sheet ID: hapus spasi, tab, newline
+        const sheetId = this.cleanSheetId(sheetIdInput);
         
         if (!url || !url.includes('script.google.com')) {
             this.showToast('❌ URL GAS tidak valid');
+            return;
+        }
+        
+        // Validasi Sheet ID jika diisi
+        if (sheetId && sheetId.length < 20) {
+            this.showToast('❌ Sheet ID terlalu pendek atau tidak valid');
             return;
         }
         
@@ -1259,7 +1349,9 @@ function logAction(action, deviceId, deviceName, sheetName) {
         this.sheetId = sheetId;
         localStorage.setItem(this.KEYS.GAS_URL, url);
         localStorage.setItem(this.KEYS.SHEET_ID, sheetId);
-        this.showToast('✅ Konfigurasi GAS disimpan!');
+        
+        const msg = sheetId ? '✅ Konfigurasi GAS disimpan! (Sheet: ' + sheetId.substring(0, 10) + '...)' : '✅ Konfigurasi GAS disimpan! (Default Sheet)';
+        this.showToast(msg);
         
         if (this.currentProvider === 'googlesheet') {
             this.checkNewDeviceGAS();
@@ -1350,7 +1442,7 @@ function logAction(action, deviceId, deviceName, sheetName) {
     },
 
     // ============================================
-    // RENDER UI (MAIN) - UPDATED WITH SHEET ID FIELD
+    // RENDER UI
     // ============================================
 
     render() {
@@ -1457,7 +1549,7 @@ function logAction(action, deviceId, deviceName, sheetName) {
                 <!-- Firebase Section -->
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
 
-                <!-- Google Sheets Section - UPDATED -->
+                <!-- Google Sheets Section -->
                 ${isGAS ? this.renderGASSection() : ''}
 
                 <!-- Manual Sync Section -->
@@ -1559,7 +1651,7 @@ function logAction(action, deviceId, deviceName, sheetName) {
                 <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Konfigurasi Firebase</div>
                     <div style="display: grid; gap: 12px; margin-bottom: 16px;">
-                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_projectId" placeholder="Project ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
@@ -1630,42 +1722,38 @@ function logAction(action, deviceId, deviceName, sheetName) {
         `;
     },
 
-    // UPDATED: Render GAS Section with Sheet ID and Test Connection
     renderGASSection() {
         const hasUrl = this.gasUrl.length > 10;
         const hasSheetId = this.sheetId && this.sheetId.length > 5;
+        const displaySheetId = this.sheetId || '';
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
                 <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets</div>
                 
-                <!-- GAS Generator Button -->
                 <button onclick="backupModule.showGASGenerator()" 
                     style="width: 100%; padding: 12px; background: #f0fff4; color: #22543d; border: 2px dashed #34a853; border-radius: 8px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <span>📋</span> Generate GAS Code
                 </button>
                 
-                <!-- URL Input -->
                 <div style="margin-bottom: 12px;">
                     <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">🔗 GAS Web App URL</label>
                     <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" 
                         style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                 </div>
 
-                <!-- NEW: Sheet ID Input -->
                 <div style="margin-bottom: 16px;">
                     <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">
                         📄 Google Sheet ID (Opsional)
                         <span style="font-weight: normal; color: #718096; font-size: 12px;"> - Kosongkan untuk default</span>
                     </label>
-                    <input type="text" id="sheetIdInput" value="${this.sheetId}" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" 
-                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                    <input type="text" id="sheetIdInput" value="${displaySheetId}" placeholder="1XbwCD2LSfaDCJLQNj-Yg_wccVEOPWdb4xRFj2_m7ylI" 
+                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: monospace;">
                     <div style="font-size: 11px; color: #718096; margin-top: 4px;">
                         Dari URL: https://docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
                     </div>
                 </div>
 
-                <!-- Action Buttons -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <button onclick="backupModule.saveGasUrl()" 
                         style="padding: 14px; background: #34a853; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
@@ -1682,7 +1770,7 @@ function logAction(action, deviceId, deviceName, sheetName) {
                         <div>
                             <div style="font-weight: 600; color: #2d3748;">Auto Sync</div>
                             <div style="font-size: 12px; color: #718096; margin-top: 2px;">
-                                ${hasSheetId ? '📄 Sheet ID: ' + this.sheetId.substring(0, 15) + '...' : '📄 Sheet: Default'}
+                                ${hasSheetId ? '📄 Sheet: ' + this.sheetId.substring(0, 15) + '...' : '📄 Sheet: Default (GAS)'}
                             </div>
                         </div>
                         <div onclick="backupModule.toggleAutoSync()" 
