@@ -1549,7 +1549,7 @@ function testConnection(sheetId) {
                 <!-- Firebase Section -->
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
 
-                <!-- Google Sheets Section -->
+                <!-- Google Sheets Section - UPDATED WITH CLEAR BUTTON -->
                 ${isGAS ? this.renderGASSection() : ''}
 
                 <!-- Manual Sync Section -->
@@ -1651,7 +1651,7 @@ function testConnection(sheetId) {
                 <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #ff6b35;">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Konfigurasi Firebase</div>
                     <div style="display: grid; gap: 12px; margin-bottom: 16px;">
-                        input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                         <input type="text" id="fb_projectId" placeholder="Project ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
@@ -1722,6 +1722,7 @@ function testConnection(sheetId) {
         `;
     },
 
+    // UPDATED: Render GAS Section with Clear Button
     renderGASSection() {
         const hasUrl = this.gasUrl.length > 10;
         const hasSheetId = this.sheetId && this.sheetId.length > 5;
@@ -1747,8 +1748,14 @@ function testConnection(sheetId) {
                         📄 Google Sheet ID (Opsional)
                         <span style="font-weight: normal; color: #718096; font-size: 12px;"> - Kosongkan untuk default</span>
                     </label>
-                    <input type="text" id="sheetIdInput" value="${displaySheetId}" placeholder="1XbwCD2LSfaDCJLQNj-Yg_wccVEOPWdb4xRFj2_m7ylI" 
-                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: monospace;">
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="sheetIdInput" value="${displaySheetId}" placeholder="Kosongkan untuk menggunakan default" 
+                            style="flex: 1; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: monospace;">
+                        <button onclick="document.getElementById('sheetIdInput').value=''" 
+                            style="padding: 12px 16px; background: #fed7d7; color: #c53030; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            ✕ Clear
+                        </button>
+                    </div>
                     <div style="font-size: 11px; color: #718096; margin-top: 4px;">
                         Dari URL: https://docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
                     </div>
