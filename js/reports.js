@@ -2,6 +2,7 @@ const reportsModule = {
     currentRange: 'today',
     salesChart: null,
     isChartVisible: false,
+    isDetailVisible: true, // Tambahkan state untuk detail transaksi
     
     init() {
         this.renderHTML();
@@ -89,24 +90,37 @@ const reportsModule = {
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">Detail Transaksi</span>
-                        <button class="btn-sm btn-primary-sm" onclick="reportsModule.exportCSV()">📥 Export CSV</button>
+                <!-- Detail Transaksi dengan Toggle Collapsible -->
+                <div class="card chart-card">
+                    <div class="chart-header" onclick="reportsModule.toggleDetail()">
+                        <div class="chart-header-left">
+                            <span class="chart-icon">📋</span>
+                            <span class="chart-title-text">Detail Transaksi</span>
+                        </div>
+                        <div class="chart-toggle-wrapper">
+                            <span class="chart-toggle-text" id="detailToggleText">Sembunyikan</span>
+                            <div class="chart-arrow" id="detailArrow" style="transform: rotate(180deg);">▼</div>
+                        </div>
                     </div>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Waktu</th>
-                                    <th>Produk</th>
-                                    <th>Qty</th>
-                                    <th>Total</th>
-                                    <th>Laba</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reportTableBody"></tbody>
-                        </table>
+                    
+                    <div class="chart-content" id="detailContent" style="display: block;">
+                        <div class="card-header" style="margin-bottom: 15px; padding: 0;">
+                            <button class="btn-sm btn-primary-sm" onclick="event.stopPropagation(); reportsModule.exportCSV()">📥 Export CSV</button>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Waktu</th>
+                                        <th>Produk</th>
+                                        <th>Qty</th>
+                                        <th>Total</th>
+                                        <th>Laba</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reportTableBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -133,22 +147,42 @@ const reportsModule = {
         const text = document.getElementById('chartToggleText');
         
         if (this.isChartVisible) {
-            // Buka grafik
             content.style.display = 'block';
-            // Trigger reflow untuk animasi
             void content.offsetHeight;
             content.classList.add('show');
             arrow.style.transform = 'rotate(180deg)';
             text.textContent = 'Sembunyikan';
             
-            // Render chart jika belum ada
             setTimeout(() => {
                 if (!this.salesChart) {
                     this.generateReport();
                 }
             }, 100);
         } else {
-            // Tutup grafik
+            content.classList.remove('show');
+            arrow.style.transform = 'rotate(0deg)';
+            text.textContent = 'Tampilkan';
+            
+            setTimeout(() => {
+                content.style.display = 'none';
+            }, 300);
+        }
+    },
+    
+    // Toggle detail transaksi visibility dengan animasi
+    toggleDetail() {
+        this.isDetailVisible = !this.isDetailVisible;
+        const content = document.getElementById('detailContent');
+        const arrow = document.getElementById('detailArrow');
+        const text = document.getElementById('detailToggleText');
+        
+        if (this.isDetailVisible) {
+            content.style.display = 'block';
+            void content.offsetHeight;
+            content.classList.add('show');
+            arrow.style.transform = 'rotate(180deg)';
+            text.textContent = 'Sembunyikan';
+        } else {
             content.classList.remove('show');
             arrow.style.transform = 'rotate(0deg)';
             text.textContent = 'Tampilkan';
@@ -229,7 +263,6 @@ const reportsModule = {
         document.getElementById('reportSales').textContent = 'Rp ' + utils.formatNumber(totalSales);
         document.getElementById('reportProfit').textContent = 'Rp ' + utils.formatNumber(totalProfit);
         
-        // Update profit card hanya untuk hari ini
         if (this.currentRange === 'today') {
             document.getElementById('todayProfit').textContent = 'Rp ' + utils.formatNumber(totalProfit);
             document.getElementById('transactionCount').textContent = count;
@@ -238,7 +271,6 @@ const reportsModule = {
             document.getElementById('profitMargin').textContent = margin + '%';
         }
         
-        // Render chart hanya jika visible
         if (this.isChartVisible) {
             this.renderChart(transactions, startDate, endDate);
         }
@@ -273,7 +305,6 @@ const reportsModule = {
         
         const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
         
-        // Khusus untuk kemarin, tampilkan per jam
         if (this.currentRange === 'yesterday') {
             for (let i = 0; i < 24; i += 2) {
                 labels.push(`${i}:00`);
