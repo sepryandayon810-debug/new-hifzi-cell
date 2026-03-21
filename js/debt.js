@@ -270,25 +270,6 @@ const debtModule = {
         const paidCount = allDebts.filter(d => d.status === 'paid').length;
         const customerCount = new Set(activeDebts.map(d => d.customerName)).size;
         
-        let totalTransactions = 0;
-        let totalProfit = 0;
-        
-        if (typeof dataManager !== 'undefined' && dataManager.data) {
-            if (dataManager.data.transactions) {
-                totalTransactions = dataManager.data.transactions.length;
-                totalProfit = dataManager.data.transactions.reduce((sum, t) => {
-                    if (t.items && Array.isArray(t.items)) {
-                        const transactionProfit = t.items.reduce((itemSum, item) => {
-                            const profit = (item.price - (item.cost || 0)) * item.qty;
-                            return itemSum + profit;
-                        }, 0);
-                        return sum + transactionProfit;
-                    }
-                    return sum;
-                }, 0);
-            }
-        }
-
         return { 
             totalDebt, 
             totalPaid, 
@@ -296,9 +277,7 @@ const debtModule = {
             activeRemaining,
             overdueCount, 
             paidCount,
-            customerCount,
-            totalTransactions,
-            totalProfit
+            customerCount
         };
     },
 
@@ -350,24 +329,6 @@ const debtModule = {
                             <div class="hifzi-debt-summary-sub-label">Sisa Piutang</div>
                             <div class="hifzi-debt-summary-sub-amount">${this.formatRupiah(summary.totalRemaining)}</div>
                             <div class="hifzi-debt-summary-sub-detail">${summary.overdueCount} overdue</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="hifzi-debt-stats-bar">
-                    <div class="hifzi-debt-stat-item">
-                        <span class="hifzi-debt-stat-icon">📝</span>
-                        <div class="hifzi-debt-stat-info">
-                            <span class="hifzi-debt-stat-label">Total Transaksi</span>
-                            <span class="hifzi-debt-stat-value">${summary.totalTransactions}</span>
-                        </div>
-                    </div>
-                    <div class="hifzi-debt-stat-divider"></div>
-                    <div class="hifzi-debt-stat-item">
-                        <span class="hifzi-debt-stat-icon">📈</span>
-                        <div class="hifzi-debt-stat-info">
-                            <span class="hifzi-debt-stat-label">Total Laba</span>
-                            <span class="hifzi-debt-stat-value hifzi-profit">${this.formatRupiah(summary.totalProfit)}</span>
                         </div>
                     </div>
                 </div>
