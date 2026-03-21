@@ -1,7 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.0)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v3.1)
 // Firebase + Google Sheets + Local
-// FIXED: CORS, Empty Sheet ID, Reset Storage Issues
+// FIXED: Reset LocalStorage, Re-init, Auth Persistence
 // ============================================
 
 const backupModule = {
@@ -30,6 +30,10 @@ const backupModule = {
     deviceId: 'device_' + Date.now(),
     deviceName: navigator.userAgent.split(' ')[0],
     
+    // ✅ TAMBAHAN: Flag untuk tracking state kritis
+    _firebaseAuthStateReady: false,
+    _gasConfigValid: false,
+    
     KEYS: {
         PROVIDER: 'hifzi_provider',
         GAS_URL: 'hifzi_gas_url',
@@ -40,23 +44,32 @@ const backupModule = {
         FIREBASE_CONFIG: 'hifzi_firebase_config',
         DEVICE_ID: 'hifzi_device_id',
         FB_USER: 'hifzi_fb_user',
+        FB_AUTH_EMAIL: 'hifzi_fb_auth_email', // ✅ BARU: Simpan email untuk re-auth
+        FB_AUTH_PASSWORD: 'hifzi_fb_auth_password', // ✅ BARU: Simpan password (encrypted sederhana)
         GAS_CODE_URL: 'hifzi_gas_code_url',
         GAS_CODE_CACHE: 'hifzi_gas_code_cache',
-        GAS_CODE_VERSION: 'hifzi_gas_code_version'
+        GAS_CODE_VERSION: 'hifzi_gas_code_version',
+        BACKUP_SETTINGS: 'hifzi_backup_settings' // ✅ BARU: Simpan semua setting terpisah dari data
     },
 
-    init() {
-        if (this.isInitialized) {
+    // ============================================
+    // INIT & CONFIG MANAGEMENT (FIXED v3.1)
+    // ============================================
+
+    init(forceReinit = false) {
+        if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
+            // ✅ PERBAIKAN: Tetap reload config meski sudah init
+            this.reloadAllConfig();
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.0...');
+        console.log('[Backup] Initializing v3.1...');
         console.log('[Backup] ========================================');
         
-        // ✅ RELOAD SEMUA CONFIG DARI LOCALSTORAGE - PENTING!
-        this.reloadAllConfig();
+        // ✅ PERBAIKAN UTAMA: Load config dari BACKUP_SETTINGS terlebih dahulu
+        this.loadBackupSettings();
         
         // Setup device ID
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
@@ -67,37 +80,44 @@ const backupModule = {
             console.log('[Backup] Existing device ID:', this.deviceId);
         }
         
-        // ✅ BERSIHKAN sheetId dengan validasi ketat
+        // ✅ PERBAIKAN: Bersihkan sheetId dengan validasi ketat
         const originalSheetId = this.sheetId;
         this.sheetId = this.cleanSheetId(this.sheetId);
         
         if (originalSheetId !== this.sheetId) {
             console.log('[Backup] Sheet ID cleaned from "' + originalSheetId + '" to "' + this.sheetId + '"');
-            // Simpan yang sudah dibersihkan
             if (this.sheetId) {
                 localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
+                this.saveBackupSettings(); // ✅ Simpan ke backup settings juga
             }
         }
         
+        // ✅ PERBAIKAN: Validasi GAS config
+        this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+        
         console.log('[Backup] Provider:', this.currentProvider);
         console.log('[Backup] Sheet ID:', this.sheetId ? 'Valid (' + this.sheetId.substring(0, 10) + '...)' : 'EMPTY/NULL');
-        console.log('[Backup] Sheet ID Length:', this.sheetId ? this.sheetId.length : 0);
-        console.log('[Backup] GAS URL:', this.gasUrl ? 'Set (' + this.gasUrl.substring(0, 30) + '...)' : 'Empty');
+        console.log('[Backup] GAS Valid:', this._gasConfigValid);
         console.log('[Backup] Auto Sync:', this.isAutoSyncEnabled);
         
         // Setup network listeners
         this.setupNetworkListeners();
         
-        // Init provider yang aktif
+        // ✅ PERBAIKAN UTAMA: Init provider dengan pengecekan lebih baik
         if (this.currentProvider === 'firebase') {
             console.log('[Backup] Initializing Firebase...');
-            this.initFirebase();
-        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
-            console.log('[Backup] Checking GAS for new device...');
-            this.checkNewDeviceGAS();
+            this.initFirebase(true); // ✅ true = attempt auto-login
+        } else if (this.currentProvider === 'googlesheet') {
+            console.log('[Backup] Checking GAS config...');
+            if (this._gasConfigValid) {
+                this.checkNewDeviceGAS();
+            } else {
+                console.warn('[Backup] GAS config invalid, showing setup needed');
+                this.showToast('⚠️ Konfigurasi Google Sheets tidak lengkap. Silakan setup ulang.');
+            }
         }
 
-        if (this.isAutoSyncEnabled) {
+        if (this.isAutoSyncEnabled && this._gasConfigValid) {
             this.startAutoSync();
         }
 
@@ -105,6 +125,48 @@ const backupModule = {
         console.log('[Backup] Initialization complete');
         console.log('[Backup] ========================================');
         return this;
+    },
+    
+    // ✅ BARU: Simpan semua backup settings terpisah dari data utama
+    saveBackupSettings() {
+        const settings = {
+            provider: this.currentProvider,
+            gasUrl: this.gasUrl,
+            sheetId: this.sheetId,
+            autoSync: this.isAutoSyncEnabled,
+            firebaseConfig: this.firebaseConfig,
+            lastSync: this.lastSyncTime,
+            deviceId: this.deviceId,
+            gasCodeUrl: this.gasCodeUrl,
+            savedAt: new Date().toISOString()
+        };
+        localStorage.setItem(this.KEYS.BACKUP_SETTINGS, JSON.stringify(settings));
+        console.log('[Backup] Settings saved to backup_settings');
+    },
+    
+    // ✅ BARU: Load dari backup settings (persist meski data direset)
+    loadBackupSettings() {
+        try {
+            const saved = localStorage.getItem(this.KEYS.BACKUP_SETTINGS);
+            if (saved) {
+                const settings = JSON.parse(saved);
+                this.currentProvider = settings.provider || 'local';
+                this.gasUrl = settings.gasUrl || '';
+                this.sheetId = settings.sheetId || '';
+                this.isAutoSyncEnabled = settings.autoSync || false;
+                this.firebaseConfig = settings.firebaseConfig || {};
+                this.lastSyncTime = settings.lastSync || null;
+                this.gasCodeUrl = settings.gasCodeUrl || this.gasCodeUrl;
+                if (settings.deviceId) this.deviceId = settings.deviceId;
+                console.log('[Backup] Settings loaded from backup_settings');
+            } else {
+                // Fallback ke keys lama untuk backward compatibility
+                this.reloadAllConfig();
+            }
+        } catch (e) {
+            console.error('[Backup] Error loading backup settings:', e);
+            this.reloadAllConfig();
+        }
     },
     
     reloadAllConfig() {
@@ -116,7 +178,6 @@ const backupModule = {
             this.isAutoSaveLocalEnabled = localStorage.getItem(this.KEYS.AUTO_SAVE_LOCAL) !== 'false';
             this.lastSyncTime = localStorage.getItem(this.KEYS.LAST_SYNC);
             
-            // ✅ PENTING: Selalu baca fresh dari localStorage
             this.gasUrl = localStorage.getItem(this.KEYS.GAS_URL) || '';
             this.sheetId = localStorage.getItem(this.KEYS.SHEET_ID) || '';
             this.gasCodeUrl = localStorage.getItem(this.KEYS.GAS_CODE_URL) || 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js';
@@ -127,11 +188,17 @@ const backupModule = {
             const deviceId = localStorage.getItem(this.KEYS.DEVICE_ID);
             if (deviceId) this.deviceId = deviceId;
             
+            // ✅ PERBAIKAN: Cek saved credentials
+            const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
+            const savedPass = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
+            if (savedEmail && savedPass) {
+                console.log('[Backup] Found saved Firebase credentials for:', savedEmail);
+            }
+            
             console.log('[Backup] Config reloaded successfully');
             
         } catch (e) {
             console.error('[Backup] Error reloading config:', e);
-            // Reset ke default jika error
             this.currentProvider = 'local';
             this.isAutoSyncEnabled = false;
             this.sheetId = '';
@@ -140,11 +207,9 @@ const backupModule = {
     },
 
     setupNetworkListeners() {
-        // Hapus listener lama jika ada
         window.removeEventListener('online', this.handleOnline);
         window.removeEventListener('offline', this.handleOffline);
         
-        // Bind this agar konteks benar
         this.handleOnline = () => {
             console.log('[Backup] Network: Online');
             this.isOnline = true;
@@ -168,17 +233,15 @@ const backupModule = {
     },
 
     // ============================================
-    // SHEET ID VALIDATION (FIXED v3.0)
+    // SHEET ID VALIDATION (FIXED v3.1)
     // ============================================
 
     cleanSheetId(sheetId) {
-        // Handle null atau undefined
         if (sheetId === null || sheetId === undefined) {
             console.log('[Backup] Sheet ID is null/undefined, returning empty');
             return '';
         }
         
-        // Konversi ke string jika bukan string
         if (typeof sheetId !== 'string') {
             try {
                 sheetId = String(sheetId);
@@ -189,21 +252,18 @@ const backupModule = {
             }
         }
         
-        // Hapus semua whitespace, tab, newline, dan karakter non-printable
         let cleaned = sheetId
-            .replace(/\s/g, '')           // Hapus semua whitespace
-            .replace(/[^\x20-\x7E]/g, '') // Hapus karakter non-printable ASCII
+            .replace(/\s/g, '')
+            .replace(/[^\x20-\x7E]/g, '')
             .trim();
         
-        // Cek string "null" atau "undefined" (dari localStorage yang corrupt)
         if (cleaned === 'null' || cleaned === 'undefined' || cleaned === '') {
             console.log('[Backup] Sheet ID is string "null"/"undefined"/empty, returning empty');
             return '';
         }
         
-        // Log panjang untuk debugging
         if (cleaned.length > 0 && cleaned.length !== 44) {
-            console.warn('[Backup] Sheet ID length is', cleaned.length, '(expected 44, Google Sheet ID standard)');
+            console.warn('[Backup] Sheet ID length is', cleaned.length, '(expected 44)');
         }
         
         return cleaned;
@@ -254,7 +314,6 @@ const backupModule = {
         const cacheKey = this.KEYS.GAS_CODE_CACHE;
         const versionKey = this.KEYS.GAS_CODE_VERSION;
         
-        // Cek cache dulu kalau tidak force refresh
         if (!forceRefresh) {
             const cached = localStorage.getItem(cacheKey);
             const cachedVersion = localStorage.getItem(versionKey);
@@ -267,7 +326,6 @@ const backupModule = {
         this.showToast('⬇️ Mengambil GAS code terbaru...');
         
         try {
-            // Tambahkan timestamp untuk bypass cache
             const url = this.gasCodeUrl + (this.gasCodeUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
             
             const response = await fetch(url, {
@@ -284,15 +342,12 @@ const backupModule = {
             
             const code = await response.text();
             
-            // Validasi minimal (harus mengandung doGet atau doPost)
             if (!code.includes('function doGet') && !code.includes('function doPost')) {
                 throw new Error('Code tidak valid: tidak mengandung doGet/doPost');
             }
             
-            // Generate version dari timestamp
             const version = 'v' + Date.now();
             
-            // Simpan ke cache
             localStorage.setItem(cacheKey, code);
             localStorage.setItem(versionKey, version);
             
@@ -302,7 +357,6 @@ const backupModule = {
         } catch (error) {
             console.error('[Backup] Failed to fetch GAS code:', error);
             
-            // Fallback ke cache kalau ada
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
                 this.showToast('⚠️ Menggunakan GAS code dari cache');
@@ -327,8 +381,8 @@ const backupModule = {
         
         this.gasCodeUrl = newUrl;
         localStorage.setItem(this.KEYS.GAS_CODE_URL, newUrl);
+        this.saveBackupSettings(); // ✅ Simpan ke backup settings
         
-        // Clear cache supaya fetch ulang
         localStorage.removeItem(this.KEYS.GAS_CODE_CACHE);
         localStorage.removeItem(this.KEYS.GAS_CODE_VERSION);
         
@@ -359,7 +413,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '3.0',
+                version: '3.1',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -399,8 +453,24 @@ const backupModule = {
     toggleAutoSync() {
         this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
         localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
+        this.saveBackupSettings(); // ✅ Simpan state
         
         if (this.isAutoSyncEnabled) {
+            // ✅ PERBAIKAN: Cek config valid sebelum start
+            if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) {
+                this.showToast('⚠️ Auto-sync gagal: Konfigurasi GAS tidak lengkap');
+                this.isAutoSyncEnabled = false;
+                localStorage.setItem(this.KEYS.AUTO_SYNC, 'false');
+                this.render();
+                return;
+            }
+            if (this.currentProvider === 'firebase' && !this.currentUser) {
+                this.showToast('⚠️ Auto-sync gagal: Belum login Firebase');
+                this.isAutoSyncEnabled = false;
+                localStorage.setItem(this.KEYS.AUTO_SYNC, 'false');
+                this.render();
+                return;
+            }
             this.startAutoSync();
             this.syncToCloud(true);
             this.showToast('🟢 Auto-sync aktif (3 menit)');
@@ -419,10 +489,20 @@ const backupModule = {
             return;
         }
         
+        // ✅ PERBAIKAN: Validasi sebelum start
+        if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) {
+            console.warn('[Backup] Cannot start auto-sync: GAS config invalid');
+            return;
+        }
+        if (this.currentProvider === 'firebase' && !this.currentUser) {
+            console.warn('[Backup] Cannot start auto-sync: Firebase not authenticated');
+            return;
+        }
+        
         this.autoSyncInterval = setInterval(() => {
             console.log('[Backup] Running auto-sync...');
             this.syncToCloud(true);
-        }, 180000); // 3 menit
+        }, 180000);
         
         console.log(`[Backup] Auto-sync started for ${this.currentProvider}`);
     },
@@ -436,6 +516,9 @@ const backupModule = {
     },
 
     shouldSync() {
+        // ✅ PERBAIKAN: Cek config valid
+        if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) return false;
+        if (this.currentProvider === 'firebase' && !this.currentUser) return false;
         return this.currentProvider !== 'local' && this.isAutoSyncEnabled && this.isOnline;
     },
 
@@ -451,7 +534,7 @@ const backupModule = {
         
         if (this.currentProvider === 'firebase' && this.currentUser) {
             return this.uploadToFirebase(data, silent);
-        } else if (this.currentProvider === 'googlesheet' && this.gasUrl) {
+        } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
             return this.uploadToGAS(data, silent);
         }
         
@@ -467,8 +550,18 @@ const backupModule = {
         const data = this.getBackupData();
         
         if (this.currentProvider === 'firebase') {
+            if (!this.currentUser) {
+                this.showToast('❌ Belum login Firebase. Silakan login terlebih dahulu.');
+                // ✅ Tampilkan modal login
+                this.render();
+                return Promise.reject('Not authenticated');
+            }
             return this.uploadToFirebase(data, false);
         } else if (this.currentProvider === 'googlesheet') {
+            if (!this._gasConfigValid) {
+                this.showToast('❌ Konfigurasi Google Sheets tidak lengkap. Periksa URL dan Sheet ID.');
+                return Promise.reject('GAS config invalid');
+            }
             return this.uploadToGAS(data, false);
         } else {
             this.downloadJSON();
@@ -480,8 +573,17 @@ const backupModule = {
         console.log('[Backup] Manual download initiated');
         
         if (this.currentProvider === 'firebase') {
+            if (!this.currentUser) {
+                this.showToast('❌ Belum login Firebase. Silakan login terlebih dahulu.');
+                this.render();
+                return Promise.reject('Not authenticated');
+            }
             return this.downloadFromFirebase(false);
         } else if (this.currentProvider === 'googlesheet') {
+            if (!this._gasConfigValid) {
+                this.showToast('❌ Konfigurasi Google Sheets tidak lengkap. Periksa URL dan Sheet ID.');
+                return Promise.reject('GAS config invalid');
+            }
             return this.downloadFromGAS(false);
         } else {
             this.showToast('💾 Mode Local - Gunakan Import JSON');
@@ -489,13 +591,14 @@ const backupModule = {
         }
     },
 
-        // ============================================
-    // FIREBASE
+    // ============================================
+    // FIREBASE (FIXED v3.1 - Auto Re-auth)
     // ============================================
 
-    initFirebase() {
+    initFirebase(attemptAutoLogin = false) {
         if (typeof firebase === 'undefined') {
             console.error('[Firebase] SDK not loaded');
+            this.showToast('❌ Firebase SDK tidak ditemukan');
             return;
         }
         
@@ -516,7 +619,18 @@ const backupModule = {
             
             console.log('[Firebase] Initialized successfully');
             
+            // ✅ PERBAIKAN: Set persistence ke LOCAL
+            this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+                .then(() => {
+                    console.log('[Firebase] Persistence set to LOCAL');
+                })
+                .catch((err) => {
+                    console.error('[Firebase] Error setting persistence:', err);
+                });
+            
             this.auth.onAuthStateChanged((user) => {
+                this._firebaseAuthStateReady = true;
+                
                 if (user) {
                     console.log('[Firebase] User logged in:', user.email);
                     this.currentUser = user;
@@ -535,9 +649,13 @@ const backupModule = {
                 } else {
                     console.log('[Firebase] User logged out');
                     this.currentUser = null;
+                    
+                    // ✅ PERBAIKAN: Attempt auto-login jika ada credentials tersimpan
+                    if (attemptAutoLogin) {
+                        this.attemptAutoLogin();
+                    }
                 }
                 
-                // Re-render jika sedang di halaman backup
                 if (this.isRendered && this.currentProvider === 'firebase') {
                     this.render();
                 }
@@ -546,6 +664,29 @@ const backupModule = {
         } catch (err) {
             console.error('[Firebase] Init error:', err);
             this.showToast('❌ Error Firebase: ' + err.message);
+        }
+    },
+    
+    // ✅ BARU: Attempt auto-login dengan credentials tersimpan
+    attemptAutoLogin() {
+        const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
+        const savedPass = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
+        
+        if (savedEmail && savedPass && this.auth) {
+            console.log('[Firebase] Attempting auto-login for:', savedEmail);
+            this.auth.signInWithEmailAndPassword(savedEmail, savedPass)
+                .then((cred) => {
+                    console.log('[Firebase] Auto-login successful');
+                    this.showToast('✅ Auto-login berhasil!');
+                })
+                .catch((err) => {
+                    console.error('[Firebase] Auto-login failed:', err.message);
+                    // Clear invalid credentials
+                    localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+                    localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
+                    this.showToast('⚠️ Sesi Firebase berakhir. Silakan login ulang.');
+                    this.render();
+                });
         }
     },
 
@@ -570,6 +711,11 @@ const backupModule = {
         return this.auth.signInWithEmailAndPassword(email, password)
             .then((cred) => {
                 this.currentUser = cred.user;
+                
+                // ✅ PERBAIKAN: Simpan credentials untuk auto-login
+                localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
+                localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
+                
                 this.showToast('✅ Login berhasil!');
                 this.addLoginHistory('firebase', cred.user.email);
                 this.render();
@@ -590,6 +736,11 @@ const backupModule = {
         return this.auth.createUserWithEmailAndPassword(email, password)
             .then((cred) => {
                 this.currentUser = cred.user;
+                
+                // ✅ PERBAIKAN: Simpan credentials
+                localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
+                localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
+                
                 this.showToast('✅ Daftar berhasil!');
                 
                 const data = this.getBackupData();
@@ -610,6 +761,8 @@ const backupModule = {
         return this.auth.signOut().then(() => {
             this.currentUser = null;
             localStorage.removeItem(this.KEYS.FB_USER);
+            localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+            localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
             this.stopAutoSync();
             this.firebaseBackupData = null;
             this.showToast('✅ Logout berhasil');
@@ -631,7 +784,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '3.0'
+                version: '3.1'
             }
         };
         
@@ -639,6 +792,7 @@ const backupModule = {
             .then(() => {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+                this.saveBackupSettings(); // ✅ Simpan lastSync
                 if (!silent) this.showToast('✅ Upload berhasil!');
                 this.updateSyncStatus('Synced');
                 return true;
@@ -673,6 +827,7 @@ const backupModule = {
                     this.saveBackupData(cloudData);
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+                    this.saveBackupSettings();
                     
                     if (!silent) {
                         this.showToast('✅ Download berhasil! Reload...');
@@ -900,8 +1055,8 @@ const backupModule = {
         this.showToast('✅ File Excel berhasil didownload!');
     },
 
-        // ============================================
-    // GOOGLE SHEETS (FIXED v3.0)
+    // ============================================
+    // GOOGLE SHEETS (FIXED v3.1 - Better Validation)
     // ============================================
 
     checkNewDeviceGAS() {
@@ -909,12 +1064,12 @@ const backupModule = {
             ? dataManager.data.products?.length > 0 
             : false;
         
-        if (!hasLocalData && this.gasUrl) {
+        if (!hasLocalData && this.gasUrl && this._gasConfigValid) {
             console.log('[GAS] New device detected, auto-downloading...');
             setTimeout(() => this.downloadFromGAS(true), 1000);
         }
         
-        if (this.isAutoSyncEnabled && this.gasUrl) {
+        if (this.isAutoSyncEnabled && this._gasConfigValid) {
             this.startAutoSync();
         }
     },
@@ -925,7 +1080,6 @@ const backupModule = {
             return Promise.reject('No URL');
         }
 
-        // ✅ CEK Sheet ID sebelum test
         const cleanSheetId = this.cleanSheetId(this.sheetId);
         console.log('[Backup] testGASConnection - Sheet ID:', cleanSheetId || 'EMPTY');
         
@@ -988,7 +1142,6 @@ const backupModule = {
             return Promise.reject('No URL');
         }
         
-        // ✅ Bersihkan sheetId
         const cleanSheetId = this.cleanSheetId(this.sheetId);
         
         if (!cleanSheetId) {
@@ -1035,6 +1188,7 @@ const backupModule = {
             if (result?.success) {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+                this.saveBackupSettings();
                 if (!silent) this.showToast('✅ Upload berhasil!');
                 this.pendingSync = false;
                 return result;
@@ -1075,7 +1229,6 @@ const backupModule = {
             this.showToast('⬇️ Download... (ID: ' + cleanSheetId.substring(0, 8) + '...)');
         }
         
-        // ✅ URL dengan parameter yang benar
         const url = this.gasUrl + 
             '?action=restore' +
             '&sheetId=' + encodeURIComponent(cleanSheetId) +
@@ -1105,6 +1258,7 @@ const backupModule = {
                 this.saveBackupData(result.data);
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+                this.saveBackupSettings();
                 
                 if (!silent) {
                     this.showToast('✅ Download berhasil! Reload...');
@@ -1383,7 +1537,7 @@ function jsonResponse(data, callback) {
 }`;
     },
 
-        // ============================================
+    // ============================================
     // LOCAL FILE BACKUP
     // ============================================
 
@@ -1472,19 +1626,24 @@ function jsonResponse(data, callback) {
     },
 
     // ============================================
-    // CONFIG & SETTINGS
+    // CONFIG & SETTINGS (FIXED v3.1)
     // ============================================
 
     setProvider(provider) {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
+        this.saveBackupSettings(); // ✅ Simpan ke backup settings
         this.stopAutoSync();
         this.firebaseBackupData = null;
         
         if (provider === 'firebase') {
-            this.initFirebase();
+            this.initFirebase(true);
         } else if (provider === 'googlesheet') {
-            this.checkNewDeviceGAS();
+            // ✅ PERBAIKAN: Re-validate GAS config
+            this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+            if (this._gasConfigValid) {
+                this.checkNewDeviceGAS();
+            }
         }
         
         this.showToast(`✅ Provider: ${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}`);
@@ -1509,9 +1668,11 @@ function jsonResponse(data, callback) {
         
         this.firebaseConfig = config;
         localStorage.setItem(this.KEYS.FIREBASE_CONFIG, JSON.stringify(config));
+        this.saveBackupSettings(); // ✅ Simpan ke backup settings
+        
         this.showToast('✅ Config Firebase disimpan!');
         
-        this.initFirebase();
+        this.initFirebase(true);
         this.render();
     },
 
@@ -1524,7 +1685,6 @@ function jsonResponse(data, callback) {
         
         if (!validation.valid) {
             this.showToast('⚠️ ' + validation.message);
-            // Tetap lanjut tapi pakai yang sudah dibersihkan
         }
         
         if (!url || !url.includes('script.google.com')) {
@@ -1539,12 +1699,16 @@ function jsonResponse(data, callback) {
         localStorage.setItem(this.KEYS.GAS_URL, url);
         localStorage.setItem(this.KEYS.SHEET_ID, sheetId);
         
+        // ✅ PERBAIKAN: Update flag dan simpan ke backup settings
+        this._gasConfigValid = url && sheetId && sheetId.length === 44;
+        this.saveBackupSettings();
+        
         const msg = sheetId ? 
             '✅ GAS disimpan! (Sheet: ' + sheetId.substring(0, 10) + '...)' : 
             '✅ GAS disimpan! (Tapi Sheet ID kosong - akan error!)';
         this.showToast(msg);
         
-        if (this.currentProvider === 'googlesheet') {
+        if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
             this.checkNewDeviceGAS();
         }
         
@@ -1552,18 +1716,26 @@ function jsonResponse(data, callback) {
     },
 
     // ============================================
-    // RESET & DANGER ZONE
+    // RESET & DANGER ZONE (FIXED v3.1)
     // ============================================
 
     resetLocal() {
         if (!confirm('⚠️ Hapus SEMUA data lokal?')) return;
         if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') return;
         
+        // ✅ PERBAIKAN: Simpan backup settings sebelum reset
+        this.saveBackupSettings();
+        
         const telegramBackup = (typeof dataManager !== 'undefined' && dataManager.data) 
             ? dataManager.data.telegram 
             : {};
         
         localStorage.removeItem('hifzi_data');
+        
+        // ✅ PERBAIKAN: Restore backup settings setelah reset
+        setTimeout(() => {
+            this.loadBackupSettings();
+        }, 100);
         
         if (telegramBackup && typeof dataManager !== 'undefined' && dataManager.data) {
             dataManager.data.telegram = telegramBackup;
@@ -1653,14 +1825,18 @@ function jsonResponse(data, callback) {
         }
     },
 
-        // ============================================
-    // RENDER UI
+    // ============================================
+    // RENDER UI (FIXED v3.1 - Better State Display)
     // ============================================
 
     render() {
-        // Pastikan sudah di-init
+        // ✅ PERBAIKAN: Selalu re-init untuk memastikan state terbaru
         if (!this.isInitialized) {
             this.init();
+        } else {
+            this.reloadAllConfig();
+            // Re-validate GAS config
+            this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         }
 
         const container = document.getElementById('mainContent');
@@ -1677,6 +1853,7 @@ function jsonResponse(data, callback) {
         const isLocal = this.currentProvider === 'local';
         const isFBConfigured = !!this.firebaseConfig.apiKey;
         const isFBLoggedIn = !!this.currentUser;
+        const isGASConfigured = this._gasConfigValid;
 
         const data = (typeof dataManager !== 'undefined') ? dataManager.data : {};
         const stats = {
@@ -1704,6 +1881,8 @@ function jsonResponse(data, callback) {
                             <div style="font-size: 13px; margin-top: 8px; opacity: 0.9;">
                                 ${this.isOnline ? '🟢 Online' : '🔴 Offline'} 
                                 ${this.isAutoSyncEnabled ? '• Auto-sync ON' : '• Auto-sync OFF'}
+                                ${isGAS && !isGASConfigured ? '• ⚠️ Config Invalid' : ''}
+                                ${isFirebase && !isFBLoggedIn ? '• ⚠️ Not Logged In' : ''}
                             </div>
                         </div>
                         <div style="text-align: right;">
@@ -1761,27 +1940,45 @@ function jsonResponse(data, callback) {
                             style="padding: 16px; border: 2px solid ${isFirebase ? '#ff6b35' : '#e2e8f0'}; border-radius: 12px; background: ${isFirebase ? '#fff5f0' : 'white'}; cursor: pointer; transition: all 0.2s;">
                             <div style="font-size: 32px; margin-bottom: 8px;">🔥</div>
                             <div style="font-weight: 600; color: #2d3748;">Firebase</div>
-                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Real-time sync</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">
+                                ${isFBLoggedIn ? '✅ Connected' : isFBConfigured ? '⚠️ Login Required' : 'Real-time sync'}
+                            </div>
                         </button>
                         <button onclick="backupModule.setProvider('googlesheet')" 
                             style="padding: 16px; border: 2px solid ${isGAS ? '#34a853' : '#e2e8f0'}; border-radius: 12px; background: ${isGAS ? '#f0fff4' : 'white'}; cursor: pointer; transition: all 0.2s;">
                             <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
                             <div style="font-weight: 600; color: #2d3748;">Google Sheets</div>
-                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Via GAS (Auto-Update)</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">
+                                ${isGASConfigured ? '✅ Configured' : isGAS ? '⚠️ Setup Required' : 'Via GAS (Auto-Update)'}
+                            </div>
                         </button>
                     </div>
                 </div>
 
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
 
-                ${isGAS ? this.renderGASSection() : ''}
+                ${isGAS ? this.renderGASSection(isGASConfigured) : ''}
 
                 <!-- Manual Sync Section -->
-                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #667eea;">
+                <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#fc8181' : '#667eea'};">
                     <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔄 Sinkronisasi Manual</div>
+                    
+                    ${(isFirebase && !isFBLoggedIn) ? `
+                        <div style="background: #fff5f5; border-left: 4px solid #f56565; padding: 12px; margin-bottom: 16px; border-radius: 6px; font-size: 13px; color: #c53030;">
+                            <strong>⚠️ Belum Login:</strong> Silakan login ke Firebase terlebih dahulu untuk upload/download.
+                        </div>
+                    ` : ''}
+                    
+                    ${(isGAS && !isGASConfigured) ? `
+                        <div style="background: #fff5f5; border-left: 4px solid #f56565; padding: 12px; margin-bottom: 16px; border-radius: 6px; font-size: 13px; color: #c53030;">
+                            <strong>⚠️ Konfigurasi Tidak Lengkap:</strong> Masukkan URL GAS dan Sheet ID yang valid (44 karakter).
+                        </div>
+                    ` : ''}
+                    
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                         <button onclick="backupModule.manualUpload()" 
-                            style="padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            style="padding: 16px; background: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}; color: white; border: none; border-radius: 10px; cursor: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'}; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '0.6' : '1'};"
+                            ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}>
                             <span style="font-size: 20px;">⬆️</span>
                             <div>
                                 <div>Upload ke Cloud</div>
@@ -1789,7 +1986,8 @@ function jsonResponse(data, callback) {
                             </div>
                         </button>
                         <button onclick="backupModule.manualDownload()" 
-                            style="padding: 16px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            style="padding: 16px; background: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)'}; color: white; border: none; border-radius: 10px; cursor: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'}; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '0.6' : '1'};"
+                            ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}>
                             <span style="font-size: 20px;">⬇️</span>
                             <div>
                                 <div>Download dari Cloud</div>
@@ -1946,7 +2144,7 @@ function jsonResponse(data, callback) {
         `;
     },
 
-    renderGASSection() {
+    renderGASSection(isConfigured) {
         const hasUrl = this.gasUrl.length > 10;
         const validation = this.validateSheetId(this.sheetId);
         const hasSheetId = validation.valid;
@@ -1954,7 +2152,7 @@ function jsonResponse(data, callback) {
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
-                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v3.0)</div>
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v3.1)</div>
                 
                 <button onclick="backupModule.showGASGenerator()" 
                     style="width: 100%; padding: 14px; background: linear-gradient(135deg, #34a853 0%, #0f9d58 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(52,168,83,0.3);">
@@ -1964,7 +2162,8 @@ function jsonResponse(data, callback) {
                 <div style="margin-bottom: 12px;">
                     <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">🔗 GAS Web App URL</label>
                     <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" 
-                        style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        style="width: 100%; padding: 12px; border: 1px solid ${hasUrl ? '#48bb78' : '#e2e8f0'}; border-radius: 8px; font-size: 14px;">
+                    ${hasUrl ? '<div style="font-size: 11px; color: #48bb78; margin-top: 4px;">✓ URL tersimpan</div>' : ''}
                 </div>
 
                 <div style="margin-bottom: 16px;">
@@ -1991,7 +2190,7 @@ function jsonResponse(data, callback) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <button onclick="backupModule.saveGasUrl()" 
                         style="padding: 14px; background: #34a853; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
-                        💾 Simpan
+                        💾 Simpan Konfigurasi
                     </button>
                     <button onclick="backupModule.testGASConnection()" 
                         style="padding: 14px; background: #4299e1; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;"
@@ -2000,10 +2199,10 @@ function jsonResponse(data, callback) {
                     </button>
                 </div>
                 
-                ${hasUrl && hasSheetId ? `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f0fff4; border-radius: 10px;">
+                ${isConfigured ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f0fff4; border-radius: 10px; border: 1px solid #9ae6b4;">
                         <div>
-                            <div style="font-weight: 600; color: #2d3748;">Auto Sync</div>
+                            <div style="font-weight: 600; color: #2d3748;">✅ Auto Sync Ready</div>
                             <div style="font-size: 12px; color: #718096; margin-top: 2px;">
                                 📄 Sheet: ${this.sheetId.substring(0, 20)}...
                             </div>
@@ -2013,7 +2212,12 @@ function jsonResponse(data, callback) {
                             <div style="width: 24px; height: 24px; background: white; border-radius: 50%; position: absolute; top: 2px; ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'}; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>
                         </div>
                     </div>
-                ` : ''}
+                ` : `
+                    <div style="background: #fff5f5; border: 1px solid #feb2b2; border-radius: 10px; padding: 16px; text-align: center;">
+                        <div style="font-size: 13px; color: #c53030; font-weight: 600;">⚠️ Konfigurasi Belum Lengkap</div>
+                        <div style="font-size: 12px; color: #718096; margin-top: 4px;">Upload/Download tidak tersedia sampai URL dan Sheet ID valid.</div>
+                    </div>
+                `}
             </div>
         `;
     }
@@ -2037,5 +2241,5 @@ if (document.readyState === 'loading') {
 window.backupModule = backupModule;
 
 console.log('[Backup] ========================================');
-console.log('[Backup] Module loaded v3.0 - FINAL CORS & Sheet ID Fix');
+console.log('[Backup] Module loaded v3.1 - RESET & RE-AUTH FIX');
 console.log('[Backup] ========================================');
