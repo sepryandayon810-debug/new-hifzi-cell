@@ -1,6 +1,7 @@
 const productsModule = {
     currentView: 'list',
     batchStockData: {},
+    expandedCard: false,  // State untuk toggle card
 
     init() {
         this.renderHTML();
@@ -35,22 +36,125 @@ const productsModule = {
                 </div>
 
                 <!-- Products List -->
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">📦 Daftar Produk</span>
-                        <span style="font-size: 12px; color: #666;" id="productCount">0 produk</span>
+                <div class="card" id="productsCard">
+                    <div class="card-header" style="cursor: pointer; user-select: none;" onclick="productsModule.toggleCard()">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="card-title">📦 Daftar Produk</span>
+                            <span style="font-size: 12px; color: #666;" id="productCount">0 produk</span>
+                        </div>
+                        <button class="arrow-toggle-btn" id="arrowToggleBtn" title="Lihat Produk" onclick="event.stopPropagation(); productsModule.toggleCard()">
+                            <span class="arrow-icon" id="arrowIcon">▼</span>
+                        </button>
                     </div>
 
-                    <div class="search-bar">
-                        <input type="text" placeholder="Cari produk..." id="searchProduct" 
-                               onkeyup="productsModule.searchProducts()">
-                        <button onclick="productsModule.searchProducts()">🔍</button>
-                    </div>
+                    <div class="card-content" id="cardContent" style="display: none;">
+                        <div class="search-bar">
+                            <input type="text" placeholder="Cari produk..." id="searchProduct" 
+                                   onkeyup="productsModule.searchProducts()">
+                            <button onclick="productsModule.searchProducts()">🔍</button>
+                        </div>
 
-                    <div id="productsList"></div>
+                        <div id="productsList"></div>
+                    </div>
                 </div>
             </div>
         `;
+        
+        // Tambahkan style untuk tombol panah
+        this.addArrowStyles();
+    },
+
+    addArrowStyles() {
+        // Cek jika style sudah ada
+        if (document.getElementById('arrow-toggle-styles')) return;
+        
+        const style = document.createElement('style');
+        style.id = 'arrow-toggle-styles';
+        style.textContent = `
+            .arrow-toggle-btn {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border: none;
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            }
+            
+            .arrow-toggle-btn:hover {
+                transform: scale(1.1);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            }
+            
+            .arrow-toggle-btn:active {
+                transform: scale(0.95);
+            }
+            
+            .arrow-icon {
+                color: white;
+                font-size: 14px;
+                transition: transform 0.3s ease;
+                display: inline-block;
+            }
+            
+            .arrow-icon.rotated {
+                transform: rotate(180deg);
+            }
+            
+            .card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 15px 20px;
+                background: white;
+                border-radius: 12px;
+                transition: background 0.2s ease;
+            }
+            
+            .card-header:hover {
+                background: #f8f9fa;
+            }
+            
+            .card-content {
+                animation: slideDown 0.3s ease;
+            }
+            
+            @keyframes slideDown {
+                from {
+                    opacity: 0;
+                    transform: translateY(-10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            
+            .card-content.hidden {
+                display: none !important;
+            }
+        `;
+        document.head.appendChild(style);
+    },
+
+    toggleCard() {
+        this.expandedCard = !this.expandedCard;
+        const content = document.getElementById('cardContent');
+        const arrowIcon = document.getElementById('arrowIcon');
+        
+        if (this.expandedCard) {
+            content.style.display = 'block';
+            arrowIcon.classList.add('rotated');
+            arrowIcon.innerHTML = '▲';
+        } else {
+            content.style.display = 'none';
+            arrowIcon.classList.remove('rotated');
+            arrowIcon.innerHTML = '▼';
+        }
     },
 
     renderProducts() {
