@@ -1,6 +1,7 @@
 const transactionsModule = {
     currentFilter: 'all',
     currentTransaction: null,
+    isListVisible: true, // State untuk visibility daftar transaksi
     
     init() {
         this.renderHTML();
@@ -46,10 +47,16 @@ const transactionsModule = {
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">Daftar Transaksi</span>
-                        <span style="font-size: 12px; color: #666;" id="transCount">0 transaksi</span>
+                <div class="card" id="transactionListCard">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="card-title">Daftar Transaksi</span>
+                            <span style="font-size: 12px; color: #666;" id="transCount">0 transaksi</span>
+                        </div>
+                        <button class="toggle-btn" onclick="transactionsModule.toggleList()" 
+                                id="toggleListBtn" title="Sembunyikan/Tampilkan Daftar">
+                            <span class="arrow-icon">▼</span>
+                        </button>
                     </div>
                     <div class="transaction-list" id="transactionList"></div>
                 </div>
@@ -80,9 +87,115 @@ const transactionsModule = {
                 .filter-btn.active:hover {
                     opacity: 0.9;
                 }
+                
+                /* Tombol Toggle */
+                .toggle-btn {
+                    background: linear-gradient(135deg, var(--primary, #667eea) 0%, var(--primary-dark, #764ba2) 100%);
+                    color: white;
+                    border: none;
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+                }
+                .toggle-btn:hover {
+                    transform: scale(1.1);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                }
+                .toggle-btn:active {
+                    transform: scale(0.95);
+                }
+                
+                /* Animasi panah */
+                .arrow-icon {
+                    font-size: 14px;
+                    transition: transform 0.3s ease;
+                    display: inline-block;
+                }
+                .arrow-icon.collapsed {
+                    transform: rotate(-90deg);
+                }
+                
+                /* Animasi untuk list */
+                #transactionList {
+                    transition: all 0.3s ease;
+                    overflow: hidden;
+                    max-height: 2000px;
+                    opacity: 1;
+                }
+                #transactionList.collapsed {
+                    max-height: 0;
+                    opacity: 0;
+                    margin: 0;
+                    padding: 0;
+                }
+                
+                /* Style untuk card saat collapsed */
+                #transactionListCard.collapsed {
+                    padding-bottom: 0;
+                }
+                #transactionListCard.collapsed .transaction-list {
+                    display: none;
+                }
             </style>
         `;
         document.getElementById('mainContent').innerHTML = html;
+    },
+    
+    // Method baru untuk toggle visibility
+    toggleList() {
+        this.isListVisible = !this.isListVisible;
+        
+        const listElement = document.getElementById('transactionList');
+        const btnElement = document.getElementById('toggleListBtn');
+        const arrowElement = btnElement.querySelector('.arrow-icon');
+        const cardElement = document.getElementById('transactionListCard');
+        
+        if (this.isListVisible) {
+            // Tampilkan list
+            listElement.classList.remove('collapsed');
+            arrowElement.classList.remove('collapsed');
+            cardElement.classList.remove('collapsed');
+            btnElement.title = 'Sembunyikan Daftar';
+        } else {
+            // Sembunyikan list
+            listElement.classList.add('collapsed');
+            arrowElement.classList.add('collapsed');
+            cardElement.classList.add('collapsed');
+            btnElement.title = 'Tampilkan Daftar';
+        }
+        
+        // Simpan preference ke localStorage (opsional)
+        localStorage.setItem('transactionListVisible', this.isListVisible);
+    },
+    
+    // Method untuk restore state dari localStorage
+    restoreToggleState() {
+        const savedState = localStorage.getItem('transactionListVisible');
+        if (savedState !== null) {
+            this.isListVisible = savedState === 'true';
+            if (!this.isListVisible) {
+                // Apply collapsed state setelah render
+                setTimeout(() => {
+                    const listElement = document.getElementById('transactionList');
+                    const btnElement = document.getElementById('toggleListBtn');
+                    const arrowElement = btnElement?.querySelector('.arrow-icon');
+                    const cardElement = document.getElementById('transactionListCard');
+                    
+                    if (listElement && arrowElement && cardElement) {
+                        listElement.classList.add('collapsed');
+                        arrowElement.classList.add('collapsed');
+                        cardElement.classList.add('collapsed');
+                        btnElement.title = 'Tampilkan Daftar';
+                    }
+                }, 100);
+            }
+        }
     },
     
     setFilter(filter, btnElement) {
@@ -206,6 +319,9 @@ const transactionsModule = {
                 </div>
             `;
         }).join('');
+        
+        // Restore toggle state setelah render
+        this.restoreToggleState();
     },
     
     viewDetail(transactionId) {
