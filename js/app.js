@@ -293,6 +293,7 @@ const app = {
         location.reload();
     },
 
+    // ✅ PERBAIKAN: UpdateHeader - Ambil langsung dari settings, jangan hitung ulang
     updateHeader() {
         if (!this.data) return;
         
@@ -302,6 +303,11 @@ const app = {
         if (headerStoreName) headerStoreName.textContent = this.data.settings.storeName || 'HIFZI CELL';
         if (headerStoreAddress) headerStoreAddress.textContent = this.data.settings.address || 'Alamat Belum Diatur';
         
+        // ✅ AMBIL LANGSUNG DARI SETTINGS - Jangan hitung ulang!
+        const currentCash = parseInt(this.data.settings?.currentCash) || 0;
+        const modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
+        
+        // Hitung laba hari ini (dari transaksi)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
@@ -312,55 +318,9 @@ const app = {
             return tDate.getTime() === today.getTime();
         });
         
-        const todayCashTrans = (this.data.cashTransactions || []).filter(t => {
-            const tDate = new Date(t.date);
-            tDate.setHours(0, 0, 0, 0);
-            return tDate.getTime() === today.getTime();
-        });
-        
-        let todayCashIn = 0;
-        
-        todayTransactions.forEach(t => {
-            if (t.paymentMethod === 'cash') {
-                todayCashIn += parseInt(t.total) || 0;
-            }
-        });
-        
-        todayCashTrans.forEach(t => {
-            if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
-                todayCashIn += parseInt(t.amount) || 0;
-            }
-        });
-        
-        let todayCashOut = 0;
-        todayCashTrans.forEach(t => {
-            if (t.type === 'out') {
-                todayCashOut += parseInt(t.amount) || 0;
-            }
-        });
-        
-        let todayModalAwal = 0;
-        const kasirOpenDate = this.data.kasir?.date ? new Date(this.data.kasir.date) : null;
-        
-        if (kasirOpenDate) {
-            const kasirDate = new Date(kasirOpenDate);
-            kasirDate.setHours(0, 0, 0, 0);
-            
-            if (kasirDate.getTime() === today.getTime()) {
-                todayModalAwal = parseInt(this.data.settings.modalAwal) || 0;
-            }
-        }
-        
-        if (todayModalAwal === 0) {
-            const modalTrans = todayCashTrans.find(t => t.type === 'modal_in');
-            if (modalTrans) {
-                todayModalAwal = parseInt(modalTrans.amount) || 0;
-            }
-        }
-        
-        const todayNetCash = todayModalAwal + todayCashIn - todayCashOut;
         const todayProfit = todayTransactions.reduce((sum, t) => sum + (parseInt(t.profit) || 0), 0);
         
+        // Update DOM
         const currentCashEl = document.getElementById('currentCash');
         const modalAwalEl = document.getElementById('modalAwal');
         const headerProfitEl = document.getElementById('headerProfit');
@@ -376,8 +336,9 @@ const app = {
             }
         };
         
-        updateWithHighlight(currentCashEl, todayNetCash, 'Rp ');
-        updateWithHighlight(modalAwalEl, todayModalAwal, 'Rp ');
+        // ✅ TAMPILKAN LANGSUNG - Tanpa hitung ulang!
+        updateWithHighlight(currentCashEl, currentCash, 'Rp ');
+        updateWithHighlight(modalAwalEl, modalAwal, 'Rp ');
         updateWithHighlight(headerProfitEl, todayProfit, 'Rp ');
         updateWithHighlight(transCountEl, todayTransactions.length, '');
         
