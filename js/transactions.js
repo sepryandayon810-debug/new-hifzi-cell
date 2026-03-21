@@ -4,8 +4,29 @@ const transactionsModule = {
     isListVisible: true, // State untuk visibility daftar transaksi
     
     init() {
+        // Restore state SEBELUM render
+        const savedState = localStorage.getItem('transactionListVisible');
+        this.isListVisible = savedState !== null ? savedState === 'true' : true;
+        
         this.renderHTML();
         this.renderList();
+        
+        // Apply collapsed state ke DOM jika perlu
+        if (!this.isListVisible) {
+            setTimeout(() => {
+                const listElement = document.getElementById('transactionList');
+                const btnElement = document.getElementById('toggleListBtn');
+                const arrowElement = btnElement?.querySelector('.arrow-icon');
+                const cardElement = document.getElementById('transactionListCard');
+                
+                if (listElement && arrowElement && cardElement) {
+                    listElement.classList.add('collapsed');
+                    arrowElement.classList.add('collapsed');
+                    cardElement.classList.add('collapsed');
+                    btnElement.title = 'Tampilkan Daftar';
+                }
+            }, 50);
+        }
         
         // Render Bluetooth Control setelah HTML dirender
         setTimeout(() => {
@@ -319,9 +340,6 @@ const transactionsModule = {
                 </div>
             `;
         }).join('');
-        
-        // Restore toggle state setelah render
-        this.restoreToggleState();
     },
     
     viewDetail(transactionId) {
