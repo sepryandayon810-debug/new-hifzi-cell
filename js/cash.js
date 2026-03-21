@@ -8,7 +8,181 @@ const cashModule = {
         showHistory: false
     },
     
+    // ========== PROVIDERS CONFIGURATION (TOP UP & TARIK TUNAI) ==========
+    providers: {
+        ewallet: [
+            { value: 'dana', label: 'DANA', icon: '💜' },
+            { value: 'gopay', label: 'GoPay', icon: '💚' },
+            { value: 'ovo', label: 'OVO', icon: '💙' },
+            { value: 'shopeepay', label: 'ShopeePay', icon: '🧡' },
+            { value: 'linkaja', label: 'LinkAja', icon: '❤️' },
+            { value: 'jenius', label: 'Jenius', icon: '🦈' },
+            { value: 'seabank', label: 'SeaBank', icon: '🐋' },
+            { value: 'blu', label: 'Blu by BCA', icon: '🔷' },
+            { value: 'jago', label: 'Bank Jago', icon: '🐆' }
+        ],
+        bank: [
+            { value: 'bni', label: 'BNI', icon: '🏦' },
+            { value: 'bri', label: 'BRI', icon: '🏛️' },
+            { value: 'bca', label: 'BCA', icon: '🏢' },
+            { value: 'mandiri', label: 'Mandiri', icon: '🏛️' },
+            { value: 'btn', label: 'BTN', icon: '🏠' },
+            { value: 'bsi', label: 'BSI', icon: '🕌' },
+            { value: 'cimb', label: 'CIMB Niaga', icon: '🏪' },
+            { value: 'danamon', label: 'Danamon', icon: '🏛️' },
+            { value: 'permata', label: 'PermataBank', icon: '💎' },
+            { value: 'panin', label: 'Panin Bank', icon: '🏦' },
+            { value: 'maybank', label: 'Maybank', icon: '🌟' },
+            { value: 'mega', label: 'Bank Mega', icon: '🔴' }
+        ],
+        custom: [] // akan diisi dari localStorage
+    },
+    
+    // Load custom providers dari localStorage
+    loadCustomProviders() {
+        const saved = localStorage.getItem('hifzi_custom_providers');
+        if (saved) {
+            this.providers.custom = JSON.parse(saved);
+        }
+    },
+    
+    // Save custom providers ke localStorage
+    saveCustomProviders() {
+        localStorage.setItem('hifzi_custom_providers', JSON.stringify(this.providers.custom));
+    },
+    
+    // Add custom provider
+    addCustomProvider(modalType) {
+        const name = prompt('Nama Provider (contoh: Flip, KoinWorks, dsb):');
+        if (!name || name.trim() === '') return;
+        
+        const icon = prompt('Icon/Emoji (contoh: 🔄, 💰, atau biarkan kosong):') || '💳';
+        const value = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        
+        if (value === '') {
+            app.showToast('Nama tidak valid!');
+            return;
+        }
+        
+        // Cek duplikat
+        const allProviders = [...this.providers.ewallet, ...this.providers.bank, ...this.providers.custom];
+        const exists = allProviders.some(p => p.value === value);
+        
+        if (exists) {
+            app.showToast('Provider sudah ada!');
+            return;
+        }
+        
+        this.providers.custom.push({ value, label: name, icon });
+        this.saveCustomProviders();
+        
+        // Refresh modal jika sedang terbuka
+        if (modalType === 'topup') {
+            this.closeModal('topUpModal');
+            this.openTopUp();
+        } else if (modalType === 'tarik') {
+            this.closeModal('tarikTunaiModal');
+            this.openTarikTunai();
+        }
+        
+        app.showToast(`✅ ${name} ditambahkan!`);
+    },
+    
+    // Delete custom provider
+    deleteCustomProvider(value) {
+        const provider = this.providers.custom.find(p => p.value === value);
+        if (!provider) return;
+        
+        if (!confirm(`Hapus ${provider.label} dari daftar?`)) return;
+        
+        this.providers.custom = this.providers.custom.filter(p => p.value !== value);
+        this.saveCustomProviders();
+        
+        // Refresh modal manage jika terbuka
+        const manageModal = document.getElementById('manageProvidersModal');
+        if (manageModal) {
+            this.closeModal('manageProvidersModal');
+            if (this.providers.custom.length > 0) {
+                this.manageCustomProviders();
+            }
+        }
+        
+        app.showToast(`${provider.label} dihapus!`);
+    },
+    
+    // Manage custom providers (delete interface)
+    manageCustomProviders() {
+        this.loadCustomProviders();
+        
+        if (this.providers.custom.length === 0) {
+            app.showToast('Belum ada provider custom!');
+            return;
+        }
+        
+        let listHtml = this.providers.custom.map(p => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 8px;">
+                <span style="font-size: 15px;">${p.icon} ${p.label}</span>
+                <button onclick="cashModule.deleteCustomProvider('${p.value}')" style="padding: 6px 12px; background: #ffebee; border: 1px solid #f44336; border-radius: 6px; color: #c62828; font-size: 12px; cursor: pointer;">
+                    🗑️ Hapus
+                </button>
+            </div>
+        `).join('');
+        
+        document.body.insertAdjacentHTML('beforeend', `
+            <div class="modal active" id="manageProvidersModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100;">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="modal-title" style="font-size: 18px; font-weight: 700; color: #333;">✏️ Kelola Provider Custom</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('manageProvidersModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999;">×</button>
+                    </div>
+                    <div style="padding: 20px;">
+                        <div style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 8px; font-size: 13px; color: #1565c0;">
+                            ℹ️ Provider bawaan (E-Wallet & Bank) tidak dapat dihapus. Hanya provider custom yang bisa dikelola.
+                        </div>
+                        ${listHtml}
+                        <button onclick="cashModule.closeModal('manageProvidersModal')" style="width: 100%; margin-top: 16px; padding: 12px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `);
+    },
+    
+    // Generate HTML options untuk select
+    generateProviderOptions() {
+        this.loadCustomProviders();
+        
+        let html = '';
+        
+        // E-Wallet group
+        html += '<optgroup label="📱 E-Wallet / Digital">';
+        this.providers.ewallet.forEach(p => {
+            html += `<option value="${p.value}">${p.icon} ${p.label}</option>`;
+        });
+        html += '</optgroup>';
+        
+        // Bank group
+        html += '<optgroup label="🏦 Transfer Bank">';
+        this.providers.bank.forEach(p => {
+            html += `<option value="${p.value}">${p.icon} ${p.label}</option>`;
+        });
+        html += '</optgroup>';
+        
+        // Custom providers group (jika ada)
+        if (this.providers.custom.length > 0) {
+            html += '<optgroup label="⭐ Provider Custom">';
+            this.providers.custom.forEach(p => {
+                html += `<option value="${p.value}">${p.icon} ${p.label}</option>`;
+            });
+            html += '</optgroup>';
+        }
+        
+        return html;
+    },
+
     init() {
+        this.loadCustomProviders(); // Load custom providers saat init
         this.ensureCashInitialized();
         this.checkDayChange();
         this.renderHTML();
@@ -1048,12 +1222,15 @@ const cashModule = {
         this.renderTransactions();
     },
     
+    // ========== MODIFIED: TOP UP WITH FULL PROVIDERS ==========
     openTopUp() {
+        this.loadCustomProviders();
+        
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="topUpModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
                     <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">💜 Top Up</span>
+                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">💜 Top Up / Transfer</span>
                         <button class="close-btn" onclick="cashModule.closeModal('topUpModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
@@ -1064,12 +1241,21 @@ const cashModule = {
                         </div>
 
                         <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Jenis</label>
-                            <select id="topUpType" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white;">
-                                <option value="dana">DANA</option>
-                                <option value="gopay">GoPay</option>
-                                <option value="ovo">OVO</option>
-                                <option value="shopeepay">ShopeePay</option>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <label style="font-weight: 600; color: #555; font-size: 14px;">Jenis / Provider</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="cashModule.addCustomProvider('topup')" style="padding: 6px 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 6px; color: #2e7d32; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#4caf50'; this.style.color='white';" onmouseout="this.style.background='#e8f5e9'; this.style.color='#2e7d32';">
+                                        ➕ Tambah
+                                    </button>
+                                    ${this.providers.custom.length > 0 ? `
+                                    <button onclick="cashModule.manageCustomProviders()" style="padding: 6px 12px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#ff9800'; this.style.color='white';" onmouseout="this.style.background='#fff3e0'; this.style.color='#e65100';">
+                                        ✏️ Kelola
+                                    </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <select id="topUpType" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white; cursor: pointer;">
+                                ${this.generateProviderOptions()}
                             </select>
                         </div>
 
@@ -1125,6 +1311,17 @@ const cashModule = {
             return;
         }
         
+        // Cari label provider
+        let providerLabel = type.toUpperCase();
+        let providerIcon = '💳';
+        
+        const allProviders = [...this.providers.ewallet, ...this.providers.bank, ...this.providers.custom];
+        const provider = allProviders.find(p => p.value === type);
+        if (provider) {
+            providerLabel = provider.label;
+            providerIcon = provider.icon;
+        }
+        
         const total = nominal + admin;
         
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
@@ -1136,8 +1333,13 @@ const cashModule = {
             type: 'topup',
             amount: total,
             category: 'topup_' + type,
-            note: `Top Up ${type.toUpperCase()}`,
-            details: { nominal, adminFee: admin }
+            note: `${providerIcon} Top Up ${providerLabel}`,
+            details: { 
+                nominal, 
+                adminFee: admin,
+                provider: type,
+                providerLabel: providerLabel
+            }
         });
         
         if (admin > 0) {
@@ -1145,7 +1347,7 @@ const cashModule = {
                 id: Date.now() + 1,
                 date: new Date().toISOString(),
                 items: [{
-                    name: `Admin Fee Top Up ${type.toUpperCase()}`,
+                    name: `Admin Fee Top Up ${providerLabel}`,
                     price: admin,
                     cost: 0,
                     qty: 1
@@ -1163,22 +1365,44 @@ const cashModule = {
         this.closeModal('topUpModal');
         this.renderHTML();
         this.renderTransactions();
-        app.showToast(`Top up berhasil! Kas +Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
+        app.showToast(`${providerIcon} Top up ${providerLabel} berhasil! Kas +Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
     },
     
+    // ========== MODIFIED: TARIK TUNAI WITH FULL PROVIDERS ==========
     openTarikTunai() {
+        this.loadCustomProviders();
+        
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="tarikTunaiModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
                     <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
                         <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">🏧 Tarik Tunai</span>
                         <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
                     <div style="padding: 24px;">
-                        <div style="background: #e1f5fe; border-left: 4px solid #2196f3; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
                             <div style="font-weight: 600; color: #1565c0; margin-bottom: 4px; font-size: 14px;">💰 Admin Fee = Laba!</div>
                             <div style="color: #666; font-size: 13px; line-height: 1.5;">Nominal = Uang diberikan ke customer<br>Admin fee = Keuntungan konter</div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <label style="font-weight: 600; color: #555; font-size: 14px;">Provider / Tujuan</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="cashModule.addCustomProvider('tarik')" style="padding: 6px 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 6px; color: #2e7d32; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#4caf50'; this.style.color='white';" onmouseout="this.style.background='#e8f5e9'; this.style.color='#2e7d32';">
+                                        ➕ Tambah
+                                    </button>
+                                    ${this.providers.custom.length > 0 ? `
+                                    <button onclick="cashModule.manageCustomProviders()" style="padding: 6px 12px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#ff9800'; this.style.color='white';" onmouseout="this.style.background='#fff3e0'; this.style.color='#e65100';">
+                                        ✏️ Kelola
+                                    </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <select id="tarikType" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white; cursor: pointer;">
+                                ${this.generateProviderOptions()}
+                            </select>
                         </div>
 
                         <div class="form-group" style="margin-bottom: 16px;">
@@ -1191,7 +1415,7 @@ const cashModule = {
                             <input type="number" id="tarikAdmin" placeholder="2500" oninput="cashModule.calcTarik()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
                         </div>
                         
-                        <div style="background: #e1f5fe; padding: 16px; border-radius: 10px; margin-bottom: 24px;">
+                        <div style="background: #e3f2fd; padding: 16px; border-radius: 10px; margin-bottom: 24px;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px;">
                                 <span>Total Keluar dari Kas:</span>
                                 <span id="tarikTotal" style="font-weight: 700; color: #f44336;">Rp 0</span>
@@ -1226,6 +1450,7 @@ const cashModule = {
     saveTarikTunai() {
         const nominal = parseInt(document.getElementById('tarikNominal').value) || 0;
         const admin = parseInt(document.getElementById('tarikAdmin').value) || 0;
+        const type = document.getElementById('tarikType').value;
         const total = nominal + admin;
         
         if (nominal <= 0) {
@@ -1240,6 +1465,17 @@ const cashModule = {
             return;
         }
         
+        // Cari label provider
+        let providerLabel = type.toUpperCase();
+        let providerIcon = '💳';
+        
+        const allProviders = [...this.providers.ewallet, ...this.providers.bank, ...this.providers.custom];
+        const provider = allProviders.find(p => p.value === type);
+        if (provider) {
+            providerLabel = provider.label;
+            providerIcon = provider.icon;
+        }
+        
         dataManager.data.settings.currentCash = currentCash - total;
         
         dataManager.data.cashTransactions.push({
@@ -1248,8 +1484,13 @@ const cashModule = {
             type: 'out',
             amount: total,
             category: 'tarik_tunai',
-            note: 'Tarik Tunai',
-            details: { nominal, adminFee: admin }
+            note: `${providerIcon} Tarik Tunai ${providerLabel}`,
+            details: { 
+                nominal, 
+                adminFee: admin,
+                provider: type,
+                providerLabel: providerLabel
+            }
         });
         
         if (admin > 0) {
@@ -1257,7 +1498,7 @@ const cashModule = {
                 id: Date.now() + 1,
                 date: new Date().toISOString(),
                 items: [{
-                    name: 'Admin Fee Tarik Tunai',
+                    name: `Admin Fee Tarik Tunai ${providerLabel}`,
                     price: admin,
                     cost: 0,
                     qty: 1
@@ -1275,7 +1516,7 @@ const cashModule = {
         this.closeModal('tarikTunaiModal');
         this.renderHTML();
         this.renderTransactions();
-        app.showToast(`Tarik tunai berhasil! Kas -Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
+        app.showToast(`${providerIcon} Tarik tunai ${providerLabel} berhasil! Kas -Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
     },
     
     openHistory() {
