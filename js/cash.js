@@ -5,7 +5,7 @@ const cashModule = {
         startDate: null,
         endDate: null,
         preset: 'today',
-        showHistory: false  // ✅ Tambahan: state untuk toggle riwayat
+        showHistory: false
     },
     
     init() {
@@ -16,19 +16,16 @@ const cashModule = {
         this.renderTransactions();
     },
 
-    // ✅ PERBAIKAN: Proteksi setelah reset
     ensureCashInitialized() {
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
             let currentCash = dataManager.data.settings.currentCash;
             let modalAwal = dataManager.data.settings.modalAwal;
             
-            // ✅ Inisialisasi modalAwal jika undefined/null
             if (typeof modalAwal !== 'number' || isNaN(modalAwal)) {
                 console.log('[Cash] Initializing modalAwal from invalid value:', modalAwal);
                 dataManager.data.settings.modalAwal = 0;
             }
             
-            // ✅ Inisialisasi currentCash
             if (typeof currentCash !== 'number' || isNaN(currentCash)) {
                 console.log('[Cash] Initializing currentCash from invalid value:', currentCash);
                 currentCash = 0;
@@ -38,7 +35,6 @@ const cashModule = {
         }
     },
 
-    // ✅ PERBAIKAN: checkDayChange tidak boleh menghapus transaksi lama
     checkDayChange() {
         const lastActiveDate = localStorage.getItem('hifzi_last_active_date');
         const today = new Date().toDateString();
@@ -46,7 +42,7 @@ const cashModule = {
         if (!lastActiveDate) {
             console.log('[Cash] First time or after reset detected');
             localStorage.setItem('hifzi_last_active_date', today);
-            return; // Biarkan user input modal manual
+            return;
         }
         
         if (lastActiveDate !== today) {
@@ -58,25 +54,20 @@ const cashModule = {
                 const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
                 const kasKemarin = parseInt(dataManager.data.settings?.currentCash) || 0;
                 
-                // ✅ SIMPAN closing hari sebelumnya (jangan hapus transaksi!)
                 this.saveDayClosing(lastActiveDate);
                 
-                // ✅ Tanya user mau carry over kas atau reset
                 if (modalAwal > 0 || kasKemarin > 0) {
                     const carryOver = confirm(`🌅 Selamat datang di hari baru!\n\nKas kemarin: Rp ${utils.formatNumber(kasKemarin)}\n\nGunakan kas kemarin sebagai modal hari ini?`);
                     
                     if (carryOver) {
-                        // ✅ Gunakan kas kemarin sebagai modal, tapi jangan tambah transaksi modal_in baru
                         dataManager.data.settings.modalAwal = kasKemarin;
                         dataManager.data.settings.currentCash = kasKemarin;
                         app.showToast(`✅ Kas kemarin (Rp ${utils.formatNumber(kasKemarin)}) menjadi modal hari ini`);
                     } else {
-                        // Reset ke 0, user input manual nanti
                         const newModal = parseInt(prompt('Masukkan Modal Awal hari ini:', '0')) || 0;
                         dataManager.data.settings.modalAwal = newModal;
                         dataManager.data.settings.currentCash = newModal;
                         
-                        // ✅ Hanya catat modal_in jika user explicitly input modal baru
                         if (newModal > 0) {
                             dataManager.data.cashTransactions.push({
                                 id: Date.now(),
@@ -89,7 +80,6 @@ const cashModule = {
                         }
                     }
                 } else {
-                    // Kas 0, biarkan user input manual
                     const newModal = parseInt(prompt('Masukkan Modal Awal hari ini:', '0')) || 0;
                     dataManager.data.settings.modalAwal = newModal;
                     dataManager.data.settings.currentCash = newModal;
@@ -118,7 +108,6 @@ const cashModule = {
             dataManager.data.dailyClosing = [];
         }
         
-        // Hitung laba hanya dari admin fee (bukan modal)
         const transactions = dataManager.data.cashTransactions || [];
         const yesterday = new Date(dateStr);
         yesterday.setHours(0,0,0,0);
@@ -140,7 +129,7 @@ const cashModule = {
             date: dateStr,
             closingCash: dataManager.data.settings.currentCash,
             modalAwal: dataManager.data.settings.modalAwal,
-            laba: labaKemarin, // ✅ Simpan laba juga
+            laba: labaKemarin,
             timestamp: new Date().toISOString()
         };
         
@@ -153,26 +142,21 @@ const cashModule = {
         dataManager.save();
     },
 
-    // ✅ PERBAIKAN UTAMA: Recalculate hanya untuk transaksi operasional (bukan modal)
     calculateCashFromTransactions() {
         let cash = 0;
         
         if (typeof dataManager !== 'undefined' && dataManager.data) {
-            // ✅ Hanya hitung transaksi kas operasional (bukan modal_in!)
-            if (dataManager.data.cashTransactions && Array.array(dataManager.data.cashTransactions)) {
+            if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
                 dataManager.data.cashTransactions.forEach(t => {
                     const amount = parseInt(t.amount) || 0;
-                    // ✅ SKIP modal_in karena itu bukan operasional
                     if (t.type === 'in' || t.type === 'topup') {
                         cash += amount;
                     } else if (t.type === 'out') {
                         cash -= amount;
                     }
-                    // ❌ Jangan proses modal_in di sini!
                 });
             }
             
-            // Transaksi penjualan cash
             if (dataManager.data.transactions && Array.isArray(dataManager.data.transactions)) {
                 dataManager.data.transactions.forEach(t => {
                     if (t.status !== 'deleted' && t.status !== 'voided') {
@@ -187,23 +171,21 @@ const cashModule = {
         return cash;
     },
 
-    // ✅ FUNGSI BARU: Hitung kas aktual dengan modal
     calculateActualCash() {
         let cash = 0;
-        let modalAmount = 0;
+        
+        const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        cash += modalAwal;
         
         if (typeof dataManager !== 'undefined' && dataManager.data) {
-            // Hitung modal terakhir (hanya sekali)
             if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
-                const modalTransactions = dataManager.data.cashTransactions.filter(t => t.type === 'modal_in');
-                if (modalTransactions.length > 0) {
-                    // Ambil modal terakhir sebagai base
-                    modalAmount = modalTransactions[modalTransactions.length - 1].amount;
-                }
-                
-                // Hitung operasional
                 dataManager.data.cashTransactions.forEach(t => {
                     const amount = parseInt(t.amount) || 0;
+                    
+                    if (t.type === 'modal_in') {
+                        return;
+                    }
+                    
                     if (t.type === 'in' || t.type === 'topup') {
                         cash += amount;
                     } else if (t.type === 'out') {
@@ -212,7 +194,6 @@ const cashModule = {
                 });
             }
             
-            // Transaksi penjualan
             if (dataManager.data.transactions && Array.isArray(dataManager.data.transactions)) {
                 dataManager.data.transactions.forEach(t => {
                     if (t.status !== 'deleted' && t.status !== 'voided' && t.paymentMethod === 'cash') {
@@ -222,7 +203,7 @@ const cashModule = {
             }
         }
         
-        return modalAmount + cash; // Modal + operasional
+        return cash;
     },
     
     renderHTML() {
@@ -233,15 +214,14 @@ const cashModule = {
         const dateRangeText = this.getDateRangeText(startDate, endDate);
         
         const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-        const calculatedCash = this.calculateActualCash(); // ✅ Gunakan yang baru
+        const calculatedCash = this.calculateActualCash();
         const selisih = currentCash - calculatedCash;
         
-        const needsRepair = Math.abs(selisih) > 100; // ✅ Toleransi 100 untuk rounding
+        const needsRepair = Math.abs(selisih) > 100;
         
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 
-                <!-- Filter Periode -->
                 <div style="background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
                      box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -271,7 +251,6 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- Warning jika data tidak konsisten -->
                 ${needsRepair ? `
                 <div style="background: #fff3e0; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
                      box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #ff9800; display: flex; justify-content: space-between; align-items: center;">
@@ -289,7 +268,6 @@ const cashModule = {
                 </div>
                 ` : ''}
 
-                <!-- LABA CARD - Hanya dari Admin Fee -->
                 <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; 
                      box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid ${periodStats.laba >= 0 ? '#4caf50' : '#f44336'};">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -322,7 +300,6 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- Stat Cards -->
                 <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
                     <div style="background: white; border-radius: 10px; padding: 16px; 
                          box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
@@ -353,7 +330,6 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- Card Modal Awal -->
                 ${periodStats.modalMasuk > 0 ? `
                 <div style="background: white; border-radius: 10px; padding: 16px; margin-bottom: 20px;
                      box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px; border-left: 4px solid #ffc107;">
@@ -373,7 +349,6 @@ const cashModule = {
                 </div>
                 ` : ''}
 
-                <!-- Manajemen Kas -->
                 <div class="card" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <span class="card-title" style="font-size: 18px; font-weight: 600; color: #333;">Manajemen Kas</span>
@@ -419,7 +394,6 @@ const cashModule = {
                     </div>
                 </div>
 
-                <!-- ✅ Riwayat Transaksi dengan Tombol Panah Bawah -->
                 <div class="card" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; cursor: pointer;" onclick="cashModule.toggleHistory()">
                         <div style="display: flex; align-items: center; gap: 12px;">
@@ -434,13 +408,10 @@ const cashModule = {
                         </div>
                     </div>
                     
-                    <!-- ✅ Container yang bisa collapse/expand -->
                     <div id="cashTransactionList" style="min-height: ${this.filterState.showHistory ? '200px' : '0px'}; overflow: hidden; transition: all 0.3s ease; ${this.filterState.showHistory ? '' : 'max-height: 0;'}">
-                        <!-- Content will be inserted here -->
                     </div>
                     
                     <div id="filterSummary" style="padding: 16px; background: #f8f9fa; border-radius: 8px; margin-top: 16px; font-size: 14px; border: 1px solid #e0e0e0;">
-                        <!-- Summary will be inserted here -->
                     </div>
                 </div>
             </div>
@@ -461,30 +432,26 @@ const cashModule = {
         }
     },
     
-    // ✅ FUNGSI BARU: Toggle riwayat expand/collapse
     toggleHistory() {
         this.filterState.showHistory = !this.filterState.showHistory;
         this.renderHTML();
         this.renderTransactions();
     },
 
-    // ✅ PERBAIKAN: Laba hanya dari admin fee
     calculatePeriodStats(startDate, endDate) {
         const transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
             return tDate >= startDate && tDate <= endDate;
         });
         
-        // Kas masuk operasional (bukan modal)
         const kasMasuk = transactions
-            .filter(t => t.type === 'in' || t.type === 'topup') // ❌ Hapus modal_in dari sini
+            .filter(t => t.type === 'in' || t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
         const kasKeluar = transactions
             .filter(t => t.type === 'out')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        // ✅ LABA hanya dari admin fee!
         const labaTopUp = transactions
             .filter(t => t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
@@ -495,7 +462,6 @@ const cashModule = {
         
         const laba = labaTopUp + labaTarikTunai;
         
-        // Modal terpisah (tidak masuk laba)
         const modalMasuk = transactions
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -618,7 +584,6 @@ const cashModule = {
         const container = document.getElementById('cashTransactionList');
         if (!container) return;
         
-        // ✅ Jika tidak showHistory, kosongkan saja
         if (!this.filterState.showHistory) {
             container.innerHTML = '';
             container.style.maxHeight = '0px';
@@ -634,7 +599,6 @@ const cashModule = {
             return tDate >= startDate && tDate <= endDate;
         }).sort((a, b) => new Date(b.date) - new Date(a.date));
         
-        // ✅ Hitung hanya operasional (tanpa modal)
         const totalKasMasuk = transactions
             .filter(t => t.type === 'in' || t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -643,7 +607,6 @@ const cashModule = {
             .filter(t => t.type === 'out')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
-        // ✅ Laba dari admin fee
         const totalLabaTopUp = transactions
             .filter(t => t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
@@ -654,7 +617,6 @@ const cashModule = {
         
         const totalLaba = totalLabaTopUp + totalLabaTarikTunai;
         
-        // Modal terpisah
         const totalModal = transactions
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -704,7 +666,6 @@ const cashModule = {
         Object.keys(grouped).forEach(dateKey => {
             const dayTrans = grouped[dateKey];
             
-            // ✅ Hitung laba hari ini (hanya admin fee)
             const dayLaba = dayTrans.reduce((sum, t) => {
                 if (t.type === 'topup' || t.category === 'tarik_tunai') {
                     return sum + (parseInt(t.details?.adminFee) || 0);
@@ -712,10 +673,9 @@ const cashModule = {
                 return sum;
             }, 0);
             
-            // ✅ Hitung kas net (tanpa modal)
             const dayKasNet = dayTrans.reduce((sum, t) => {
                 const amt = parseInt(t.amount) || 0;
-                if (t.type === 'modal_in') return sum; // Skip modal
+                if (t.type === 'modal_in') return sum;
                 if (t.type === 'in' || t.type === 'topup') {
                     return sum + amt;
                 } else if (t.type === 'out') {
@@ -860,14 +820,13 @@ const cashModule = {
         
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
-        // ✅ Sesuaikan kas berdasarkan tipe
         if (t.type === 'in' || t.type === 'topup') {
             currentCash -= parseInt(t.amount) || 0;
         } else if (t.type === 'out') {
             currentCash += parseInt(t.amount) || 0;
         } else if (t.type === 'modal_in') {
-            // ✅ Jika hapus modal, kurangi dari kas juga
             currentCash -= parseInt(t.amount) || 0;
+            dataManager.data.settings.modalAwal = (dataManager.data.settings.modalAwal || 0) - parseInt(t.amount) || 0;
         }
         
         dataManager.data.settings.currentCash = currentCash;
@@ -876,7 +835,6 @@ const cashModule = {
             tr => tr.id !== transactionId && tr.id !== transactionId.toString()
         );
         
-        // Hapus juga transaksi laba terkait jika ada
         if (t.details && t.details.adminFee > 0) {
             dataManager.data.transactions = dataManager.data.transactions.filter(tr => {
                 if (tr.type === 'topup_fee' || tr.type === 'tarik_tunai_fee') {
@@ -982,7 +940,6 @@ const cashModule = {
     },
     
     openModalAwal() {
-        // Cek apakah sudah ada modal hari ini
         const today = new Date();
         today.setHours(0,0,0,0);
         
@@ -1049,7 +1006,6 @@ const cashModule = {
             return;
         }
         
-        // Cek apakah ini modal pertama hari ini atau tambahan
         const today = new Date();
         today.setHours(0,0,0,0);
         
@@ -1063,18 +1019,15 @@ const cashModule = {
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
         if (existingModal) {
-            // Tambahan modal
-            dataManager.data.settings.currentCash = currentCash + amount;
             dataManager.data.settings.modalAwal = (dataManager.data.settings.modalAwal || 0) + amount;
+            dataManager.data.settings.currentCash = currentCash + amount;
             app.showToast(`✅ Tambahan modal Rp ${utils.formatNumber(amount)}. Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
         } else {
-            // Modal awal
-            dataManager.data.settings.currentCash = amount;
             dataManager.data.settings.modalAwal = amount;
-            app.showToast(`✅ Modal awal Rp ${utils.formatNumber(amount)} tersimpan! Kas diatur ke Rp ${utils.formatNumber(amount)}`);
+            dataManager.data.settings.currentCash = amount;
+            app.showToast(`✅ Modal awal Rp ${utils.formatNumber(amount)}. Kas diatur ke Rp ${utils.formatNumber(amount)}`);
         }
         
-        // Catat transaksi modal (untuk history)
         dataManager.data.cashTransactions.push({
             id: Date.now(),
             date: new Date().toISOString(),
@@ -1183,7 +1136,6 @@ const cashModule = {
             details: { nominal, adminFee: admin }
         });
         
-        // Catat laba terpisah
         if (admin > 0) {
             dataManager.data.transactions.push({
                 id: Date.now() + 1,
@@ -1207,7 +1159,7 @@ const cashModule = {
         this.closeModal('topUpModal');
         this.renderHTML();
         this.renderTransactions();
-        app.showToast(`Top up berhasil! Laba: Rp ${utils.formatNumber(admin)}`);
+        app.showToast(`Top up berhasil! Kas +Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
     },
     
     openTarikTunai() {
@@ -1296,7 +1248,6 @@ const cashModule = {
             details: { nominal, adminFee: admin }
         });
         
-        // Catat laba terpisah
         if (admin > 0) {
             dataManager.data.transactions.push({
                 id: Date.now() + 1,
@@ -1320,7 +1271,7 @@ const cashModule = {
         this.closeModal('tarikTunaiModal');
         this.renderHTML();
         this.renderTransactions();
-        app.showToast(`Tarik tunai berhasil! Laba: Rp ${utils.formatNumber(admin)}`);
+        app.showToast(`Tarik tunai berhasil! Kas -Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
     },
     
     openHistory() {
@@ -1340,19 +1291,18 @@ const cashModule = {
         }
     },
 
-    // ✅ PERBAIKAN UTAMA: Recalculate yang benar
     recalculateCash() {
-        if (!confirm('🔄 Recalculate Kas?\n\nIni akan menghitung ulang kas berdasarkan:\n- Modal Awal\n- Transaksi Operasional (masuk/keluar)\n- Penjualan Cash\n\nLanjutkan?')) {
+        if (!confirm('🔄 Recalculate Kas?\n\nIni akan menghitung ulang kas berdasarkan:\n- Modal Awal: Rp ' + utils.formatNumber(dataManager.data.settings?.modalAwal || 0) + '\n- Transaksi Operasional\n- Penjualan Cash\n\nLanjutkan?')) {
             return;
         }
 
-        // ✅ Hitung ulang dengan benar: Modal + Operasional
         const newCash = this.calculateActualCash();
         dataManager.data.settings.currentCash = newCash;
         dataManager.save();
         
         app.updateHeader();
         this.renderHTML();
+        this.renderTransactions();
         
         app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(newCash)}`);
     }
