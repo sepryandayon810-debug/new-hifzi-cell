@@ -1,7 +1,8 @@
 // ============================================
-// N8N DATA MANAGEMENT MODULE - AUTO GAS GENERATOR
+// N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
 // ============================================
-// Fitur: Auto-generate GAS code, One-click deploy guide, Better error handling
+// Integrasi: Telegram Bot → Google Apps Script → Google Sheets
+// Fitur: Cari, Tambah, Edit, Hapus data via Telegram
 
 (function() {
     'use strict';
@@ -11,21 +12,30 @@
             data: [],
             filteredData: [],
             selectedRow: null,
-            gasUrl: localStorage.getItem('n8n_gas_url') || '',
-            sheetId: localStorage.getItem('n8n_sheet_id') || '',
-            sheetName: localStorage.getItem('n8n_sheet_name') || 'Data Base Hifzi Cell',
-            botToken: localStorage.getItem('n8n_bot_token') || '',
-            chatId: localStorage.getItem('n8n_chat_id') || '',
+            config: {
+                botToken: localStorage.getItem('n8n_bot_token') || '',
+                chatId: localStorage.getItem('n8n_chat_id') || '',
+                sheetId: localStorage.getItem('n8n_sheet_id') || '',
+                sheetName: localStorage.getItem('n8n_sheet_name') || 'Data Base Hifzi Cell',
+                gasUrl: localStorage.getItem('n8n_gas_url') || ''
+            },
             configVisible: false,
-            gasCode: localStorage.getItem('n8n_gas_code') || '',
-            isLoading: false
+            isLoading: false,
+            lastMessageId: null
         },
 
         init() {
-            console.log('[n8nModule] ✅ Auto-GAS Generator Version Loaded');
+            console.log('[n8nModule] ✅ Telegram Bridge Version Loaded');
             this.loadConfig();
+            this.bindMethods();
+            
+            // Check if running from file protocol
+            if (window.location.protocol === 'file:') {
+                console.warn('[n8nModule] Running from file:// - CORS restrictions apply');
+            }
+        },
 
-            // Bind all methods
+        bindMethods() {
             this.handleSearch = this.handleSearch.bind(this);
             this.handleAdd = this.handleAdd.bind(this);
             this.handleEdit = this.handleEdit.bind(this);
@@ -33,14 +43,11 @@
             this.toggleConfig = this.toggleConfig.bind(this);
             this.saveConfig = this.saveConfig.bind(this);
             this.testConnection = this.testConnection.bind(this);
-            this.generateGAS = this.generateGAS.bind(this);
-            this.copyGASCode = this.copyGASCode.bind(this);
-            this.saveGASCode = this.saveGASCode.bind(this);
-            this.loadGASCode = this.loadGASCode.bind(this);
-            this.getChatId = this.getChatId.bind(this);
+            this.sendTelegramMessage = this.sendTelegramMessage.bind(this);
+            this.getTelegramUpdates = this.getTelegramUpdates.bind(this);
+            this.processTelegramCommand = this.processTelegramCommand.bind(this);
             this.selectRow = this.selectRow.bind(this);
             this.renderTable = this.renderTable.bind(this);
-            this.openGASDeployPage = this.openGASDeployPage.bind(this);
         },
 
         loadConfig() {
@@ -48,7 +55,7 @@
             if (saved) {
                 try {
                     const config = JSON.parse(saved);
-                    Object.assign(this.state, config);
+                    this.state.config = { ...this.state.config, ...config };
                 } catch(e) {
                     console.error('[n8nModule] Error loading config:', e);
                 }
@@ -56,26 +63,446 @@
         },
 
         saveConfig() {
-            const config = {
-                gasUrl: this.state.gasUrl,
-                sheetId: this.state.sheetId,
-                sheetName: this.state.sheetName,
-                botToken: this.state.botToken,
-                chatId: this.state.chatId,
-                gasCode: this.state.gasCode
+            const inputs = {
+                botToken: document.getElementById('botToken')?.value.trim() || '',
+                chatId: document.getElementById('chatId')?.value.trim() || '',
+                sheetId: document.getElementById('sheetId')?.value.trim() || '',
+                sheetName: document.getElementById('sheetName')?.value.trim() || 'Data Base Hifzi Cell',
+                gasUrl: document.getElementById('gasUrl')?.value.trim() || ''
             };
-            localStorage.setItem('n8n_config', JSON.stringify(config));
 
-            // Backup individual keys
-            localStorage.setItem('n8n_gas_url', this.state.gasUrl);
-            localStorage.setItem('n8n_sheet_id', this.state.sheetId);
-            localStorage.setItem('n8n_sheet_name', this.state.sheetName);
-            localStorage.setItem('n8n_bot_token', this.state.botToken);
-            localStorage.setItem('n8n_chat_id', this.state.chatId);
-            localStorage.setItem('n8n_gas_code', this.state.gasCode);
+            this.state.config = inputs;
+
+            // Save to localStorage
+            localStorage.setItem('n8n_config', JSON.stringify(inputs));
+            localStorage.setItem('n8n_bot_token', inputs.botToken);
+            localStorage.setItem('n8n_chat_id', inputs.chatId);
+            localStorage.setItem('n8n_sheet_id', inputs.sheetId);
+            localStorage.setItem('n8n_sheet_name', inputs.sheetName);
+            localStorage.setItem('n8n_gas_url', inputs.gasUrl);
 
             this.showNotification('✅ Konfigurasi tersimpan!', 'success');
+            
+            // Auto test connection
+            if (inputs.botToken) {
+                this.getChatId();
+            }
         },
+
+        // ============================================
+        // TELEGRAM INTEGRATION
+        // ============================================
+
+        async sendTelegramMessage(text, options = {}) {
+            const { botToken, chatId } = this.state.config;
+            
+            if (!botToken || !chatId) {
+                this.showNotification('⚠️ Bot Token dan Chat ID harus diisi!', 'warning');
+                return null;
+            }
+
+            try {
+                const proxyUrl = 'https://api.allorigins.win/get?url=';
+                const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+                const payload = {
+                    chat_id: chatId,
+                    text: text,
+                    parse_mode: 'Markdown',
+                    ...options
+                };
+
+                // For file:// protocol, use proxy
+                let response;
+                if (window.location.protocol === 'file:') {
+                    const encodedUrl = encodeURIComponent(`${apiUrl}?${new URLSearchParams(payload).toString()}`);
+                    response = await fetch(`${proxyUrl}${encodedUrl}`);
+                    const data = await response.json();
+                    return JSON.parse(data.contents);
+                } else {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    return await response.json();
+                }
+            } catch (error) {
+                console.error('[Telegram] Send message error:', error);
+                return null;
+            }
+        },
+
+        async getTelegramUpdates() {
+            const { botToken } = this.state.config;
+            
+            if (!botToken) {
+                this.showNotification('⚠️ Bot Token belum diisi!', 'warning');
+                return;
+            }
+
+            this.setStatus('🟡', 'Mengambil updates dari Telegram...');
+
+            try {
+                const proxyUrl = 'https://api.allorigins.win/get?url=';
+                const apiUrl = `https://api.telegram.org/bot${botToken}/getUpdates?limit=10`;
+                
+                let response;
+                if (window.location.protocol === 'file:') {
+                    const encodedUrl = encodeURIComponent(apiUrl);
+                    response = await fetch(`${proxyUrl}${encodedUrl}`);
+                    const data = await response.json();
+                    return JSON.parse(data.contents);
+                } else {
+                    response = await fetch(apiUrl);
+                    return await response.json();
+                }
+            } catch (error) {
+                console.error('[Telegram] Get updates error:', error);
+                this.setStatus('🔴', 'Error koneksi Telegram');
+                return null;
+            }
+        },
+
+        async getChatId() {
+            const { botToken } = this.state.config;
+            
+            if (!botToken) return;
+
+            this.setStatus('🟡', 'Mendeteksi Chat ID...');
+
+            try {
+                const result = await this.getTelegramUpdates();
+                
+                if (result && result.ok && result.result.length > 0) {
+                    // Get latest message
+                    const latest = result.result[result.result.length - 1];
+                    const chatId = latest.message?.chat?.id || latest.callback_query?.message?.chat?.id;
+                    
+                    if (chatId) {
+                        this.state.config.chatId = chatId;
+                        document.getElementById('chatId').value = chatId;
+                        this.saveConfig();
+                        this.showNotification(`✅ Chat ID terdeteksi: ${chatId}`, 'success');
+                        this.setStatus('🟢', 'Terhubung ke Telegram');
+                        return chatId;
+                    }
+                }
+                
+                this.showNotification('ℹ️ Kirim pesan ke bot dulu, lalu test lagi', 'info');
+                this.setStatus('🟡', 'Menunggu pesan dari bot');
+                
+            } catch (error) {
+                console.error('[Telegram] Get Chat ID error:', error);
+                this.showNotification('❌ Gagal mendeteksi Chat ID', 'error');
+                this.setStatus('🔴', 'Error');
+            }
+        },
+
+        processTelegramCommand(message) {
+            const text = message.text || '';
+            const parts = text.trim().split(/\s+/);
+            const cmd = parts[0].toLowerCase();
+            const args = parts.slice(1).join(' ');
+
+            return { cmd, args, message };
+        },
+
+        // ============================================
+        // CRUD OPERATIONS VIA TELEGRAM
+        // ============================================
+
+        async handleSearch() {
+            const keyword = document.getElementById('searchInput')?.value.toLowerCase().trim() || '';
+            
+            // Kirim notifikasi ke Telegram
+            await this.sendTelegramMessage(
+                `🔍 *PENCARIAN DATA*\n\n` +
+                `Keyword: ${keyword || 'Semua data'}\n` +
+                `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
+                `⏳ Mengambil data dari Google Sheets...`
+            );
+
+            const result = await this.makeRequest('getData');
+            
+            if (!result) {
+                await this.sendTelegramMessage('❌ Gagal mengambil data dari Google Sheets');
+                return;
+            }
+
+            if (!result.success) {
+                await this.sendTelegramMessage(`❌ Error: ${result.error || 'Unknown error'}`);
+                return;
+            }
+
+            this.state.data = result.data || [];
+
+            // Filter data
+            if (keyword) {
+                this.state.filteredData = this.state.data.filter(item => 
+                    (item.nama && item.nama.toLowerCase().includes(keyword)) || 
+                    (item.nomor && item.nomor.toLowerCase().includes(keyword))
+                );
+            } else {
+                this.state.filteredData = this.state.data;
+            }
+
+            this.renderTable();
+
+            // Kirim hasil ke Telegram
+            const count = this.state.filteredData.length;
+            let message = `✅ *PENCARIAN SELESAI*\n\n`;
+            message += `Ditemukan: *${count} data*\n`;
+            message += `Keyword: *${keyword || '-' }*\n\n`;
+            
+            if (count > 0) {
+                message += `*Hasil (5 teratas):*\n`;
+                this.state.filteredData.slice(0, 5).forEach((item, idx) => {
+                    message `${idx + 1}. ${item.nama || 'N/A'} - ${item.nomor || 'N/A'}\n`;
+                });
+                
+                if (count > 5) {
+                    message += `\n...dan ${count - 5} data lainnya`;
+                }
+            } else {
+                message += `❌ Tidak ada data yang cocok`;
+            }
+
+            await this.sendTelegramMessage(message);
+            this.showNotification(`✅ ${count} data ditemukan`, 'success');
+        },
+
+        async handleAdd() {
+            // Buka modal untuk input data
+            document.getElementById('modalTitle').textContent = 'Tambah Data (via Telegram)';
+            document.getElementById('editId').value = '';
+            document.getElementById('inputNama').value = '';
+            document.getElementById('inputNomor').value = '';
+            
+            // Tambahkan info Telegram
+            const telegramInfo = document.getElementById('telegramInfo');
+            if (telegramInfo) {
+                telegramInfo.innerHTML = `
+                    <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+                        <strong>💡 Info:</strong> Data akan disimpan ke Google Sheets dan notifikasi dikirim ke Telegram.
+                    </div>
+                `;
+            }
+            
+            this.openModal('dataModal');
+        },
+
+        async handleEdit() {
+            if (!this.state.selectedRow) {
+                this.showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
+                return;
+            }
+
+            const item = this.state.filteredData.find(d => d.row == this.state.selectedRow);
+            if (!item) {
+                this.showNotification('❌ Data tidak ditemukan', 'error');
+                return;
+            }
+
+            document.getElementById('modalTitle').textContent = 'Edit Data (via Telegram)';
+            document.getElementById('editId').value = item.row;
+            document.getElementById('inputNama').value = item.nama || '';
+            document.getElementById('inputNomor').value = item.nomor || '';
+            
+            this.openModal('dataModal');
+        },
+
+        async handleDelete() {
+            if (!this.state.selectedRow) {
+                this.showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
+                return;
+            }
+
+            const item = this.state.filteredData.find(d => d.row == this.state.selectedRow);
+            if (!item) {
+                this.showNotification('❌ Data tidak ditemukan', 'error');
+                return;
+            }
+
+            // Konfirmasi via Telegram
+            const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\n` +
+                `Nama: *${item.nama || 'N/A'}*\n` +
+                `Nomor: *${item.nomor || 'N/A'}*\n\n` +
+                `Apakah Anda yakin ingin menghapus data ini?\n` +
+                `Balas dengan YA untuk konfirmasi atau BATAL untuk membatalkan.`;
+
+            await this.sendTelegramMessage(confirmMsg, {
+                reply_markup: JSON.stringify({
+                    inline_keyboard: [[
+                        { text: '✅ YA, Hapus', callback_data: `delete_${item.row}` },
+                        { text: '❌ Batal', callback_data: 'cancel_delete' }
+                    ]]
+                })
+            });
+
+            document.getElementById('deleteInfo').textContent = `${item.nama || 'N/A'} - ${item.nomor || 'N/A'}`;
+            this.openModal('deleteModal');
+        },
+
+        async saveData() {
+            const row = document.getElementById('editId').value;
+            const nama = document.getElementById('inputNama').value.trim();
+            const nomor = document.getElementById('inputNomor').value.trim();
+
+            if (!nama || !nomor) {
+                this.showNotification('⚠️ Nama dan Nomor wajib diisi!', 'warning');
+                return;
+            }
+
+            const action = row ? 'editData' : 'addData';
+            const params = { nama, nomor };
+            if (row) params.row = row;
+
+            // Kirim notifikasi ke Telegram
+            await this.sendTelegramMessage(
+                `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\n` +
+                `Nama: *${nama}*\n` +
+                `Nomor: *${nomor}*\n\n` +
+                `⏳ Menyimpan ke Google Sheets...`
+            );
+
+            const result = await this.makeRequest(action, params);
+            
+            if (result && result.success) {
+                this.closeModal();
+                
+                // Notifikasi sukses ke Telegram
+                await this.sendTelegramMessage(
+                    `✅ *BERHASIL*\n\n` +
+                    `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!\n\n` +
+                    `Nama: *${nama}*\n` +
+                    `Nomor: *${nomor}*\n` +
+                    `${row ? `Row: ${row}` : `Row baru: ${result.row}`}\n\n` +
+                    `Waktu: ${new Date().toLocaleString('id-ID')}`
+                );
+
+                this.handleSearch();
+                this.showNotification(result.message || '✅ Data tersimpan', 'success');
+            } else if (result) {
+                await this.sendTelegramMessage(`❌ Gagal menyimpan: ${result.error || 'Unknown error'}`);
+                this.showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
+            }
+        },
+
+        async confirmDelete() {
+            const row = this.state.selectedRow;
+            
+            const result = await this.makeRequest('deleteData', { row });
+            
+            if (result && result.success) {
+                // Notifikasi ke Telegram
+                await this.sendTelegramMessage(
+                    `🗑️ *DATA DIHAPUS*\n\n` +
+                    `Row: ${row}\n` +
+                    `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
+                    `Data berhasil dihapus dari Google Sheets.`
+                );
+
+                this.closeModal();
+                this.state.selectedRow = null;
+                this.updateButtonStates();
+                this.handleSearch();
+                this.showNotification(result.message || '✅ Data dihapus', 'success');
+            } else if (result) {
+                await this.sendTelegramMessage(`❌ Gagal menghapus: ${result.error || 'Unknown error'}`);
+                this.showNotification('❌ ' + (result.error || 'Gagal menghapus'), 'error');
+            }
+        },
+
+        // ============================================
+        // API CALLS TO GOOGLE APPS SCRIPT
+        // ============================================
+
+        async makeRequest(action, params = {}) {
+            const { gasUrl, sheetId } = this.state.config;
+            
+            if (!gasUrl || !sheetId) {
+                this.showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
+                return null;
+            }
+
+            const url = new URL(gasUrl);
+            url.searchParams.append('action', action);
+            url.searchParams.append('sheetId', sheetId);
+
+            for (let key in params) {
+                if (params[key] !== undefined && params[key] !== null) {
+                    url.searchParams.append(key, params[key]);
+                }
+            }
+
+            console.log('[n8nModule] Request:', url.toString());
+
+            try {
+                this.setStatus('🟡', 'Loading...');
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                let response;
+                
+                // Handle file:// protocol with proxy
+                if (window.location.protocol === 'file:') {
+                    const proxyUrl = 'https://api.allorigins.win/get?url=';
+                    const encodedUrl = encodeURIComponent(url.toString());
+                    response = await fetch(`${proxyUrl}${encodedUrl}`, {
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    
+                    const proxyData = await response.json();
+                    return JSON.parse(proxyData.contents);
+                } else {
+                    response = await fetch(url.toString(), {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+
+                    return await response.json();
+                }
+                
+            } catch (error) {
+                console.error('[n8nModule] Error:', error);
+                this.setStatus('🔴', 'Error');
+
+                let errorMsg = error.message;
+                let solution = '';
+
+                if (error.name === 'AbortError') {
+                    errorMsg = 'Request timeout (30s)';
+                    solution = 'Cek koneksi internet atau coba lagi';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMsg = 'CORS Error / GAS tidak accessible';
+                    solution = 'Pastikan: 1) GAS sudah deploy sebagai Web App, 2) Access: ANYONE, 3) URL benar';
+                } else if (error.message.includes('404')) {
+                    errorMsg = 'GAS URL tidak ditemukan (404)';
+                    solution = 'Cek URL GAS atau deploy ulang';
+                }
+
+                this.showNotification(`❌ ${errorMsg}. ${solution}`, 'error', 6000);
+                return null;
+            }
+        },
+
+        // ============================================
+        // UI RENDERING
+        // ============================================
 
         renderPage() {
             console.log('[n8nModule] Rendering page...');
@@ -87,33 +514,52 @@
 
             mainContent.innerHTML = this.getHTML();
             this.attachEventListeners();
-
-            // Set form values
-            document.getElementById('sheetId').value = this.state.sheetId;
-            document.getElementById('sheetName').value = this.state.sheetName;
-            document.getElementById('gasUrl').value = this.state.gasUrl;
-            document.getElementById('botToken').value = this.state.botToken;
-            document.getElementById('chatId').value = this.state.chatId;
-
-            // Load saved GAS code
-            if (this.state.gasCode) {
-                document.getElementById('gasCodeEditor').value = this.state.gasCode;
-            } else {
-                // Auto-generate if empty
+            this.setFormValues();
+            
+            // Auto generate GAS code if empty
+            if (!this.state.config.gasUrl) {
                 this.generateGAS();
             }
-
-            if (this.state.botToken && !this.state.chatId) {
+            
+            // Auto get chat ID if token exists but chat ID empty
+            if (this.state.config.botToken && !this.state.config.chatId) {
                 this.getChatId();
             }
+        },
+
+        setFormValues() {
+            document.getElementById('sheetId').value = this.state.config.sheetId;
+            document.getElementById('sheetName').value = this.state.config.sheetName;
+            document.getElementById('gasUrl').value = this.state.config.gasUrl;
+            document.getElementById('botToken').value = this.state.config.botToken;
+            document.getElementById('chatId').value = this.state.config.chatId;
         },
 
         getHTML() {
             return `
                 <div class="n8n-container">
                     <div class="n8n-header">
-                        <h2>🔍 Pencarian Data N8N</h2>
-                        <p>Kelola data nama dan nomor dari Google Sheets</p>
+                        <h2>🔍 N8N Data Management</h2>
+                        <p>Kelola data via Telegram Bridge → Google Sheets</p>
+                    </div>
+
+                    <!-- TELEGRAM STATUS CARD -->
+                    <div class="n8n-telegram-status" style="background: linear-gradient(135deg, #0088cc 0%, #005580 100%); color: white; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">
+                                    📱 Status Telegram
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.9;" id="telegramStatusText">
+                                    ${this.state.config.botToken ? '⏳ Menunggu koneksi...' : '⚠️ Belum dikonfigurasi'}
+                                </div>
+                            </div>
+                            <button onclick="n8nModule.testTelegramConnection()" 
+                                    style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); 
+                                           color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                🔄 Test Koneksi
+                            </button>
+                        </div>
                     </div>
 
                     <!-- CRUD BUTTONS -->
@@ -121,7 +567,7 @@
                         <div class="n8n-action-bar">
                             <button class="n8n-btn n8n-btn-primary" id="btnSearch">
                                 <span class="icon">🔍</span>
-                                <span>Cari Data</span>
+                                <span>Cari Data (Telegram)</span>
                             </button>
                             <button class="n8n-btn n8n-btn-success" id="btnAdd">
                                 <span class="icon">➕</span>
@@ -162,7 +608,7 @@
                                         <td colspan="4" class="n8n-empty-message">
                                             <div class="empty-state">
                                                 <span class="empty-icon">📭</span>
-                                                <p>Belum ada data. Klik "Cari Data" untuk memuat data.</p>
+                                                <p>Belum ada data. Klik "Cari Data" untuk memuat data dari Google Sheets.</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -175,18 +621,82 @@
                     <div class="n8n-config-toggle">
                         <button class="n8n-btn n8n-btn-ghost" id="btnToggleConfig">
                             <span class="icon">⚙️</span>
-                            <span>Konfigurasi & GAS Setup</span>
+                            <span>Konfigurasi Telegram & GAS</span>
                             <span class="toggle-arrow" id="configArrow">▼</span>
                         </button>
                     </div>
 
                     <!-- CONFIGURATION SECTION -->
                     <div class="n8n-config-section" id="configSection" style="display: none;">
-
-                        <!-- STEP 1: GAS CODE -->
+                        
+                        <!-- TELEGRAM CONFIG -->
                         <div class="n8n-config-card">
                             <div class="step-header">
                                 <span class="step-number">1</span>
+                                <h3>📱 Konfigurasi Telegram Bot</h3>
+                            </div>
+                            
+                            <div class="n8n-form-group">
+                                <label>Bot Token <span class="required">*</span></label>
+                                <input type="password" id="botToken" class="n8n-input" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz">
+                                <small>Dapatkan dari @BotFather di Telegram</small>
+                            </div>
+
+                            <div class="n8n-form-group">
+                                <label>Chat ID (Auto-detect)</label>
+                                <input type="text" id="chatId" class="n8n-input" placeholder="Kirim pesan ke bot, lalu klik Test Koneksi" readonly>
+                                <small>ID chat akan terdeteksi otomatis saat test koneksi</small>
+                            </div>
+
+                            <div class="n8n-config-actions">
+                                <button class="n8n-btn n8n-btn-secondary" id="btnTestTelegram">
+                                    <span class="icon">📱</span>
+                                    <span>Test & Dapatkan Chat ID</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- GOOGLE SHEETS CONFIG -->
+                        <div class="n8n-config-card">
+                            <div class="step-header">
+                                <span class="step-number">2</span>
+                                <h3>⚙️ Pengaturan Google Sheets</h3>
+                            </div>
+
+                            <div class="n8n-form-group">
+                                <label>Google Sheet ID <span class="required">*</span></label>
+                                <input type="text" id="sheetId" class="n8n-input" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE">
+                                <small>ID dari URL spreadsheet (copy dari browser)</small>
+                            </div>
+
+                            <div class="n8n-form-group">
+                                <label>Sheet Name</label>
+                                <input type="text" id="sheetName" class="n8n-input" placeholder="Data Base Hifzi Cell">
+                                <small>Nama tab/sheet di spreadsheet (auto-create kalau tidak ada)</small>
+                            </div>
+
+                            <div class="n8n-form-group">
+                                <label>GAS Web App URL <span class="required">*</span></label>
+                                <input type="text" id="gasUrl" class="n8n-input" placeholder="https://script.google.com/macros/s/XXXX/exec">
+                                <small>URL dari deployment Web App Google Apps Script</small>
+                            </div>
+
+                            <div class="n8n-config-actions">
+                                <button class="n8n-btn n8n-btn-secondary" id="btnTestGAS">
+                                    <span class="icon">🔗</span>
+                                    <span>Test Koneksi GAS</span>
+                                </button>
+                                <button class="n8n-btn n8n-btn-primary" id="btnSaveConfig">
+                                    <span class="icon">💾</span>
+                                    <span>Simpan Semua Konfigurasi</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- GAS CODE GENERATOR -->
+                        <div class="n8n-config-card">
+                            <div class="step-header">
+                                <span class="step-number">3</span>
                                 <h3>📜 Generate Kode GAS (Otomatis)</h3>
                             </div>
                             <p class="step-desc">Kode di bawah ini sudah sesuai dengan konfigurasi Anda. Copy dan deploy ke Google Apps Script.</p>
@@ -213,60 +723,10 @@
                             </div>
                         </div>
 
-                        <!-- STEP 2: CONNECTION SETTINGS -->
+                        <!-- DEPLOY GUIDE -->
                         <div class="n8n-config-card">
                             <div class="step-header">
-                                <span class="step-number">2</span>
-                                <h3>⚙️ Pengaturan Koneksi</h3>
-                            </div>
-
-                            <div class="n8n-form-group">
-                                <label>Google Sheet ID <span class="required">*</span></label>
-                                <input type="text" id="sheetId" class="n8n-input" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE">
-                                <small>ID dari URL spreadsheet (copy dari browser)</small>
-                            </div>
-
-                            <div class="n8n-form-group">
-                                <label>Sheet Name</label>
-                                <input type="text" id="sheetName" class="n8n-input" placeholder="Data Base Hifzi Cell">
-                                <small>Nama tab/sheet di spreadsheet (auto-create kalau tidak ada)</small>
-                            </div>
-
-                            <div class="n8n-form-group">
-                                <label>GAS Web App URL <span class="required">*</span></label>
-                                <input type="text" id="gasUrl" class="n8n-input" placeholder="https://script.google.com/macros/s/XXXX/exec">
-                                <small>URL dari deployment Web App (lihat langkah 3)</small>
-                            </div>
-
-                            <div class="n8n-divider"></div>
-
-                            <div class="n8n-form-group">
-                                <label>Telegram Bot Token (Opsional)</label>
-                                <input type="password" id="botToken" class="n8n-input" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz">
-                                <small>Dari @BotFather - Chat ID akan auto-detect</small>
-                            </div>
-
-                            <div class="n8n-form-group">
-                                <label>Telegram Chat ID (Auto-detect)</label>
-                                <input type="text" id="chatId" class="n8n-input" placeholder="Klik Test Koneksi untuk mendapatkan Chat ID" readonly>
-                            </div>
-
-                            <div class="n8n-config-actions">
-                                <button class="n8n-btn n8n-btn-secondary" id="btnTest">
-                                    <span class="icon">🔌</span>
-                                    <span>Test Koneksi</span>
-                                </button>
-                                <button class="n8n-btn n8n-btn-primary" id="btnSaveConfig">
-                                    <span class="icon">💾</span>
-                                    <span>Simpan Konfigurasi</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- STEP 3: DEPLOY GUIDE -->
-                        <div class="n8n-config-card">
-                            <div class="step-header">
-                                <span class="step-number">3</span>
+                                <span class="step-number">4</span>
                                 <h3>🚀 Cara Deploy GAS (Wajib)</h3>
                             </div>
 
@@ -340,6 +800,7 @@
                             <button class="n8n-modal-close" id="btnCloseModal">&times;</button>
                         </div>
                         <div class="n8n-modal-body">
+                            <div id="telegramInfo"></div>
                             <input type="hidden" id="editId">
                             <div class="n8n-form-group">
                                 <label>Nama <span class="required">*</span></label>
@@ -352,7 +813,7 @@
                         </div>
                         <div class="n8n-modal-footer">
                             <button class="n8n-btn n8n-btn-ghost" id="btnCancel">Batal</button>
-                            <button class="n8n-btn n8n-btn-primary" id="btnSave">Simpan</button>
+                            <button class="n8n-btn n8n-btn-primary" id="btnSave">Simpan & Notifikasi Telegram</button>
                         </div>
                     </div>
 
@@ -363,6 +824,9 @@
                         <div class="n8n-modal-body">
                             <p>Apakah Anda yakin ingin menghapus data ini?</p>
                             <p class="delete-info" id="deleteInfo" style="background: rgba(214, 48, 49, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px; font-weight: 600; color: #d63031;"></p>
+                            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                                💡 Notifikasi konfirmasi juga telah dikirim ke Telegram.
+                            </p>
                         </div>
                         <div class="n8n-modal-footer">
                             <button class="n8n-btn n8n-btn-ghost" id="btnCancelDelete">Batal</button>
@@ -385,20 +849,14 @@
 
             // Config
             document.getElementById('btnToggleConfig')?.addEventListener('click', this.toggleConfig);
-            document.getElementById('btnSaveConfig')?.addEventListener('click', () => {
-                this.state.sheetId = document.getElementById('sheetId').value.trim();
-                this.state.sheetName = document.getElementById('sheetName').value.trim() || 'Data Base Hifzi Cell';
-                this.state.gasUrl = document.getElementById('gasUrl').value.trim();
-                this.state.botToken = document.getElementById('botToken').value.trim();
-                this.state.chatId = document.getElementById('chatId').value.trim();
-                this.saveConfig();
-            });
-            document.getElementById('btnTest')?.addEventListener('click', this.testConnection);
+            document.getElementById('btnSaveConfig')?.addEventListener('click', this.saveConfig);
+            document.getElementById('btnTestTelegram')?.addEventListener('click', () => this.getChatId());
+            document.getElementById('btnTestGAS')?.addEventListener('click', this.testConnection);
 
             // GAS
-            document.getElementById('btnGenerateGAS')?.addEventListener('click', this.generateGAS);
-            document.getElementById('btnCopyGAS')?.addEventListener('click', this.copyGASCode);
-            document.getElementById('btnOpenGAS')?.addEventListener('click', this.openGASDeployPage);
+            document.getElementById('btnGenerateGAS')?.addEventListener('click', () => this.generateGAS());
+            document.getElementById('btnCopyGAS')?.addEventListener('click', () => this.copyGASCode());
+            document.getElementById('btnOpenGAS')?.addEventListener('click', () => window.open('https://script.google.com', '_blank'));
 
             // Modal
             document.getElementById('btnCloseModal')?.addEventListener('click', this.closeModal);
@@ -429,13 +887,14 @@
         },
 
         // ============================================
-        // AUTO GAS GENERATOR
+        // GAS CODE GENERATOR
         // ============================================
+
         generateGAS() {
-            const sheetName = document.getElementById('sheetName')?.value?.trim() || this.state.sheetName || 'Data Base Hifzi Cell';
+            const sheetName = this.state.config.sheetName || 'Data Base Hifzi Cell';
 
             const gasCode = `// ============================================
-// GOOGLE APPS SCRIPT - N8N Data Module
+// GOOGLE APPS SCRIPT - N8N Telegram Bridge
 // Auto-generated: ${new Date().toLocaleString()}
 // ============================================
 
@@ -604,28 +1063,28 @@ function jsonResponse(data, headers) {
   return output;
 }`;
 
-            document.getElementById('gasCodeEditor').value = gasCode;
-            this.state.gasCode = gasCode;
-            this.saveConfig();
-
-            this.showNotification('✅ Kode GAS generated & tersimpan otomatis!', 'success');
+            const editor = document.getElementById('gasCodeEditor');
+            if (editor) {
+                editor.value = gasCode;
+            }
+            
+            this.showNotification('✅ Kode GAS generated!', 'success');
         },
 
         copyGASCode() {
             const textarea = document.getElementById('gasCodeEditor');
-            if (!textarea.value.trim()) {
+            if (!textarea || !textarea.value.trim()) {
                 this.showNotification('⚠️ Tidak ada kode untuk di-copy', 'warning');
                 return;
             }
 
             textarea.select();
-            textarea.setSelectionRange(0, 99999); // For mobile
+            textarea.setSelectionRange(0, 99999);
 
             try {
                 navigator.clipboard.writeText(textarea.value).then(() => {
                     this.showNotification('✅ Kode GAS copied to clipboard!', 'success');
                 }).catch(() => {
-                    // Fallback
                     document.execCommand('copy');
                     this.showNotification('✅ Kode GAS copied!', 'success');
                 });
@@ -635,227 +1094,9 @@ function jsonResponse(data, headers) {
             }
         },
 
-        saveGASCode() {
-            const code = document.getElementById('gasCodeEditor').value;
-            if (!code.trim()) {
-                this.showNotification('⚠️ Generate kode dulu', 'warning');
-                return;
-            }
-            this.state.gasCode = code;
-            this.saveConfig();
-        },
-
-        loadGASCode() {
-            if (this.state.gasCode) {
-                document.getElementById('gasCodeEditor').value = this.state.gasCode;
-                this.showNotification('✅ Kode GAS dimuat!', 'success');
-            }
-        },
-
-        openGASDeployPage() {
-            window.open('https://script.google.com', '_blank');
-        },
-
-        async getChatId() {
-            if (!this.state.botToken) return;
-
-            try {
-                const response = await fetch(`https://api.telegram.org/bot${this.state.botToken}/getUpdates`);
-                const data = await response.json();
-
-                if (data.ok && data.result.length > 0) {
-                    const chatId = data.result[data.result.length - 1].message.chat.id;
-                    this.state.chatId = chatId;
-                    document.getElementById('chatId').value = chatId;
-                    this.saveConfig();
-                    this.showNotification(`✅ Chat ID: ${chatId}`, 'success');
-                } else {
-                    document.getElementById('chatId').placeholder = 'Kirim pesan ke bot dulu, lalu test lagi';
-                }
-            } catch (error) {
-                console.error('Error getting chat ID:', error);
-            }
-        },
-
         // ============================================
-        // API CALLS - WITH BETTER ERROR HANDLING
+        // TABLE RENDERING
         // ============================================
-        async makeRequest(action, params = {}) {
-            if (!this.state.gasUrl || !this.state.sheetId) {
-                this.showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
-                return null;
-            }
-
-            const url = new URL(this.state.gasUrl);
-            url.searchParams.append('action', action);
-            url.searchParams.append('sheetId', this.state.sheetId);
-
-            for (let key in params) {
-                if (params[key] !== undefined && params[key] !== null) {
-                    url.searchParams.append(key, params[key]);
-                }
-            }
-
-            console.log('[n8nModule] Request:', url.toString());
-
-            try {
-                this.setStatus('🟡', 'Loading...');
-
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-                const response = await fetch(url.toString(), {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    },
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeoutId);
-
-                console.log('[n8nModule] Response status:', response.status);
-
-                if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
-                }
-
-                const data = await response.json();
-                console.log('[n8nModule] Response:', data);
-
-                this.setStatus('🟢', 'Siap');
-                return data;
-            } catch (error) {
-                console.error('[n8nModule] Error:', error);
-                this.setStatus('🔴', 'Error');
-
-                let errorMsg = error.message;
-                let solution = '';
-
-                if (error.name === 'AbortError') {
-                    errorMsg = 'Request timeout (30s)';
-                    solution = 'Cek koneksi internet atau coba lagi';
-                } else if (error.message.includes('Failed to fetch')) {
-                    errorMsg = 'CORS Error / GAS tidak accessible';
-                    solution = 'Pastikan: 1) GAS sudah deploy sebagai Web App, 2) Access: ANYONE, 3) URL benar';
-                } else if (error.message.includes('404')) {
-                    errorMsg = 'GAS URL tidak ditemukan (404)';
-                    solution = 'Cek URL GAS atau deploy ulang';
-                }
-
-                this.showNotification(`❌ ${errorMsg}. ${solution}`, 'error', 6000);
-                return null;
-            }
-        },
-
-        // ============================================
-        // CRUD OPERATIONS
-        // ============================================
-        async handleSearch() {
-            const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
-
-            const result = await this.makeRequest('getData');
-            if (!result) return;
-
-            if (!result.success) {
-                this.showNotification('❌ Error: ' + (result.error || 'Unknown'), 'error');
-                return;
-            }
-
-            this.state.data = result.data || [];
-
-            if (keyword) {
-                this.state.filteredData = this.state.data.filter(item => 
-                    (item.nama && item.nama.toLowerCase().includes(keyword)) || 
-                    (item.nomor && item.nomor.toLowerCase().includes(keyword))
-                );
-            } else {
-                this.state.filteredData = this.state.data;
-            }
-
-            this.renderTable();
-            this.showNotification(`✅ ${this.state.filteredData.length} data ditemukan`, 'success');
-        },
-
-        handleAdd() {
-            document.getElementById('modalTitle').textContent = 'Tambah Data';
-            document.getElementById('editId').value = '';
-            document.getElementById('inputNama').value = '';
-            document.getElementById('inputNomor').value = '';
-            this.openModal('dataModal');
-        },
-
-        handleEdit() {
-            if (!this.state.selectedRow) {
-                this.showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
-                return;
-            }
-
-            const item = this.state.filteredData.find(d => d.row == this.state.selectedRow);
-            if (!item) {
-                this.showNotification('❌ Data tidak ditemukan', 'error');
-                return;
-            }
-
-            document.getElementById('modalTitle').textContent = 'Edit Data';
-            document.getElementById('editId').value = item.row;
-            document.getElementById('inputNama').value = item.nama || '';
-            document.getElementById('inputNomor').value = item.nomor || '';
-            this.openModal('dataModal');
-        },
-
-        handleDelete() {
-            if (!this.state.selectedRow) {
-                this.showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
-                return;
-            }
-
-            const item = this.state.filteredData.find(d => d.row == this.state.selectedRow);
-            if (!item) {
-                this.showNotification('❌ Data tidak ditemukan', 'error');
-                return;
-            }
-
-            document.getElementById('deleteInfo').textContent = `${item.nama || 'N/A'} - ${item.nomor || 'N/A'}`;
-            this.openModal('deleteModal');
-        },
-
-        async saveData() {
-            const row = document.getElementById('editId').value;
-            const nama = document.getElementById('inputNama').value.trim();
-            const nomor = document.getElementById('inputNomor').value.trim();
-
-            if (!nama || !nomor) {
-                this.showNotification('⚠️ Nama dan Nomor wajib diisi!', 'warning');
-                return;
-            }
-
-            const action = row ? 'editData' : 'addData';
-            const params = { nama, nomor };
-            if (row) params.row = row;
-
-            const result = await this.makeRequest(action, params);
-            if (result && result.success) {
-                this.closeModal();
-                this.handleSearch();
-                this.showNotification(result.message || '✅ Data tersimpan', 'success');
-            } else if (result) {
-                this.showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
-            }
-        },
-
-        async confirmDelete() {
-            const result = await this.makeRequest('deleteData', { row: this.state.selectedRow });
-            if (result && result.success) {
-                this.closeModal();
-                this.state.selectedRow = null;
-                this.updateButtonStates();
-                this.handleSearch();
-                this.showNotification(result.message || '✅ Data dihapus', 'success');
-            } else if (result) {
-                this.showNotification('❌ ' + (result.error || 'Gagal menghapus'), 'error');
-            }
-        },
 
         renderTable() {
             const tbody = document.getElementById('tableBody');
@@ -922,30 +1163,44 @@ function jsonResponse(data, headers) {
 
         updateButtonStates() {
             const hasSelection = this.state.selectedRow !== null;
-            document.getElementById('btnEdit').disabled = !hasSelection;
-            document.getElementById('btnDelete').disabled = !hasSelection;
+            const btnEdit = document.getElementById('btnEdit');
+            const btnDelete = document.getElementById('btnDelete');
+            
+            if (btnEdit) btnEdit.disabled = !hasSelection;
+            if (btnDelete) btnDelete.disabled = !hasSelection;
         },
 
-        async testConnection() {
-            this.state.sheetId = document.getElementById('sheetId').value.trim();
-            this.state.sheetName = document.getElementById('sheetName').value.trim() || 'Data Base Hifzi Cell';
-            this.state.gasUrl = document.getElementById('gasUrl').value.trim();
-            this.state.botToken = document.getElementById('botToken').value.trim();
+        // ============================================
+        // TEST CONNECTIONS
+        // ============================================
 
-            if (!this.state.sheetId || !this.state.gasUrl) {
+        async testConnection() {
+            const { sheetId, sheetName, gasUrl } = this.state.config;
+            
+            if (!sheetId || !gasUrl) {
                 this.showNotification('⚠️ Sheet ID dan GAS URL wajib diisi!', 'warning');
                 return;
             }
 
+            this.setStatus('🟡', 'Testing GAS connection...');
+            
             const result = await this.makeRequest('test');
+            
             if (result && result.success) {
                 this.showNotification(`✅ ${result.message} | Sheets: ${(result.sheets || []).join(', ')}`, 'success');
-
-                if (this.state.botToken && !this.state.chatId) {
-                    this.getChatId();
-                }
+                this.setStatus('🟢', 'Terhubung ke GAS');
+            } else {
+                this.setStatus('🔴', 'GAS Error');
             }
         },
+
+        async testTelegramConnection() {
+            await this.getChatId();
+        },
+
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
 
         openModal(modalId) {
             document.getElementById('modalOverlay').style.display = 'flex';
@@ -967,8 +1222,19 @@ function jsonResponse(data, headers) {
         setStatus(badge, text) {
             const badgeEl = document.getElementById('statusBadge');
             const textEl = document.querySelector('.status-text');
+            const telegramStatus = document.getElementById('telegramStatusText');
+            
             if (badgeEl) badgeEl.textContent = badge;
             if (textEl) textEl.textContent = text;
+            
+            // Update telegram status card
+            if (telegramStatus) {
+                let statusMsg = text;
+                if (badge === '🟢') statusMsg = '✅ Terhubung';
+                if (badge === '🔴') statusMsg = '❌ Error koneksi';
+                if (badge === '🟡') statusMsg = '⏳ ' + text;
+                telegramStatus.textContent = statusMsg;
+            }
         },
 
         showNotification(message, type = 'info', duration = 4000) {
@@ -984,5 +1250,6 @@ function jsonResponse(data, headers) {
         }
     };
 
+    // Expose to global scope
     window.n8nModule = n8nModule;
 })();
