@@ -1,3 +1,7 @@
+// ============================================
+// CASH MODULE - Hifzi Cell POS
+// ============================================
+
 const cashModule = {
     currentDeleteTransaction: null,
     
@@ -49,17 +53,15 @@ const cashModule = {
 
     ensureCashInitialized() {
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
-            let currentCash = dataManager.data.settings.currentCash;
-            let modalAwal = dataManager.data.settings.modalAwal;
-            
-            if (typeof modalAwal !== 'number' || isNaN(modalAwal)) {
+            // Inisialisasi currentCash jika belum ada
+            if (typeof dataManager.data.settings.currentCash !== 'number' || isNaN(dataManager.data.settings.currentCash)) {
+                dataManager.data.settings.currentCash = 0;
+            }
+            // Inisialisasi modalAwal jika belum ada
+            if (typeof dataManager.data.settings.modalAwal !== 'number' || isNaN(dataManager.data.settings.modalAwal)) {
                 dataManager.data.settings.modalAwal = 0;
             }
-            
-            if (typeof currentCash !== 'number' || isNaN(currentCash)) {
-                dataManager.data.settings.currentCash = 0;
-                dataManager.save();
-            }
+            dataManager.save();
         }
     },
 
@@ -70,6 +72,12 @@ const cashModule = {
         if (!lastActiveDate) {
             localStorage.setItem('hifzi_last_active_date', today);
             return;
+        }
+        
+        // Jika hari berganti, tampilkan notifikasi untuk setup shift baru
+        if (lastActiveDate !== today) {
+            // Tidak auto reset, biarkan user memilih
+            console.log('Hari baru terdeteksi, menunggu user setup shift');
         }
     },
 
@@ -213,11 +221,17 @@ const cashModule = {
         const periodStats = this.calculatePeriodStats(startDate, endDate);
         const dateRangeText = this.getDateRangeText(startDate, endDate);
         
+        // ✅ PERBAIKAN: Hitung kas aktual yang benar
         const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+        const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
         const calculatedCash = this.calculateActualCash();
-        const selisih = currentCash - calculatedCash;
+        const todayCashSales = this.getTodayCashSales();
+        const todayNonCashSales = this.getTodayNonCashSales();
         
+        // Deteksi selisih
+        const selisih = currentCash - calculatedCash;
         const needsRepair = Math.abs(selisih) > 100;
+        
         const lastActiveDate = localStorage.getItem('hifzi_last_active_date');
         const today = new Date().toDateString();
         const isNewDay = lastActiveDate && lastActiveDate !== today;
@@ -239,6 +253,73 @@ const cashModule = {
                         </div>
                         <button onclick="cashModule.showResetOptions()" style="padding: 10px 20px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
                             ⚙️ Atur Shift Baru
+                        </button>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- ✅ PERBAIKAN: Info Kas di Tangan yang Detail -->
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 24px; margin-bottom: 20px; 
+                     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">
+                                💰 Kas di Tangan (Aktual)
+                            </div>
+                            <div style="font-size: 36px; font-weight: 700; margin-bottom: 8px;">
+                                Rp ${utils.formatNumber(currentCash)}
+                            </div>
+                            <div style="font-size: 13px; opacity: 0.8; display: flex; gap: 16px; flex-wrap: wrap;">
+                                <span>📦 Modal: Rp ${utils.formatNumber(modalAwal)}</span>
+                                <span>💵 Penjualan Cash: Rp ${utils.formatNumber(todayCashSales)}</span>
+                                <span>📱 Non-Cash: Rp ${utils.formatNumber(todayNonCashSales)}</span>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="background: rgba(255,255,255,0.2); border-radius: 12px; padding: 12px 20px; backdrop-filter: blur(10px);">
+                                <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Status</div>
+                                <div style="font-size: 16px; font-weight: 600; ${currentCash < 0 ? 'color: #ffebee;' : ''}">
+                                    ${currentCash < 0 ? '⚠️ MINUS' : '✅ Normal'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Breakdown Detail -->
+                    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 11px; opacity: 0.8;">Kas Masuk (Manual)</div>
+                            <div style="font-size: 16px; font-weight: 600;">Rp ${utils.formatNumber(periodStats.manualKasMasuk)}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 11px; opacity: 0.8;">Kas Keluar</div>
+                            <div style="font-size: 16px; font-weight: 600;">Rp ${utils.formatNumber(periodStats.kasKeluar)}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 11px; opacity: 0.8;">Top Up Masuk</div>
+                            <div style="font-size: 16px; font-weight: 600;">Rp ${utils.formatNumber(periodStats.topUpMasuk)}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
+                            <div style="font-size: 11px; opacity: 0.8;">Laba Admin</div>
+                            <div style="font-size: 16px; font-weight: 600; color: #a5d6a7;">Rp ${utils.formatNumber(periodStats.laba)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                ${needsRepair ? `
+                <div style="background: #fff3e0; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
+                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #ff9800;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <div style="font-size: 14px; font-weight: 600; color: #e65100; margin-bottom: 4px;">
+                                ⚠️ Data Kas Tidak Konsisten
+                            </div>
+                            <div style="font-size: 12px; color: #666;">
+                                Kas Tercatat: Rp ${utils.formatNumber(currentCash)} vs Hitungan: Rp ${utils.formatNumber(calculatedCash)} (Selisih: Rp ${utils.formatNumber(selisih)})
+                            </div>
+                        </div>
+                        <button onclick="cashModule.recalculateCash()" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
+                            🔄 Recalculate
                         </button>
                     </div>
                 </div>
@@ -273,23 +354,6 @@ const cashModule = {
                     </div>
                 </div>
 
-                ${needsRepair ? `
-                <div style="background: #fff3e0; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #ff9800; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-size: 14px; font-weight: 600; color: #e65100; margin-bottom: 4px;">
-                            ⚠️ Data Kas Tidak Konsisten
-                        </div>
-                        <div style="font-size: 12px; color: #666;">
-                            Kas Tercatat: Rp ${utils.formatNumber(currentCash)} vs Hitungan: Rp ${utils.formatNumber(calculatedCash)} (Selisih: Rp ${utils.formatNumber(selisih)})
-                        </div>
-                    </div>
-                    <button onclick="cashModule.recalculateCash()" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
-                        🔄 Recalculate
-                    </button>
-                </div>
-                ` : ''}
-
                 <div style="background: #e3f2fd; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
                      box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #2196f3;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -298,7 +362,7 @@ const cashModule = {
                                 🔄 Reset Kas & Modal
                             </div>
                             <div style="font-size: 12px; color: #666;">
-                                Kas: Rp ${utils.formatNumber(currentCash)} | Modal: Rp ${utils.formatNumber(parseInt(dataManager.data.settings?.modalAwal) || 0)}
+                                Kas: Rp ${utils.formatNumber(currentCash)} | Modal: Rp ${utils.formatNumber(modalAwal)}
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px;">
@@ -320,7 +384,7 @@ const cashModule = {
                                 Rp ${utils.formatNumber(periodStats.laba)}
                             </div>
                             <div style="font-size: 12px; color: #999; margin-top: 4px;">
-                                Hanya dari Admin Fee (bukan modal)
+                                Dari Admin Fee Top Up & Tarik Tunai
                             </div>
                         </div>
                         <div style="width: 56px; height: 56px; background: ${periodStats.laba >= 0 ? '#e8f5e9' : '#ffebee'}; 
@@ -340,55 +404,6 @@ const cashModule = {
                         </div>
                     </div>
                 </div>
-
-                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
-                    <div style="background: white; border-radius: 10px; padding: 16px; 
-                         box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
-                        <div style="width: 40px; height: 40px; background: #e8f5e9; 
-                             border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💵</div>
-                        <div>
-                            <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Kas Masuk
-                            </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #2e7d32;">
-                                Rp ${utils.formatNumber(periodStats.kasMasuk)}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="background: white; border-radius: 10px; padding: 16px; 
-                         box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px;">
-                        <div style="width: 40px; height: 40px; background: #ffebee; 
-                             border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💸</div>
-                        <div>
-                            <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Kas Keluar
-                            </div>
-                            <div style="font-size: 18px; font-weight: 700; color: #c62828;">
-                                Rp ${utils.formatNumber(periodStats.kasKeluar)}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                ${periodStats.modalMasuk > 0 ? `
-                <div style="background: white; border-radius: 10px; padding: 16px; margin-bottom: 20px;
-                     box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px; border-left: 4px solid #ffc107;">
-                    <div style="width: 40px; height: 40px; background: #fff8e1; 
-                         border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;">💰</div>
-                    <div style="flex: 1;">
-                        <div style="font-size: 11px; color: #666; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">
-                            Modal Awal
-                        </div>
-                        <div style="font-size: 18px; font-weight: 700; color: #f57f17;">
-                            Rp ${utils.formatNumber(periodStats.modalMasuk)}
-                        </div>
-                    </div>
-                    <div style="font-size: 11px; color: #999; font-style: italic;">
-                        *tidak masuk laba & tidak double hitung
-                    </div>
-                </div>
-                ` : ''}
 
                 <div class="card" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -473,10 +488,93 @@ const cashModule = {
         }
     },
 
+    // ========== POS INTEGRATION - TAMBAHAN BARU ==========
+    
+    /**
+     * ✅ FUNGSI BARU: Dipanggil dari posModule saat transaksi berhasil
+     * Menambah currentCash otomatis untuk pembayaran cash
+     */
+    addPosTransaction(transaction) {
+        if (!transaction) return;
+        
+        const paymentMethod = transaction.paymentMethod || 'cash';
+        const total = parseInt(transaction.total) || 0;
+        
+        // Hanya tambah ke kas jika pembayaran cash
+        if (paymentMethod === 'cash' && total > 0) {
+            let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+            dataManager.data.settings.currentCash = currentCash + total;
+            
+            // Simpan juga sebagai transaksi kas dengan tipe khusus
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: transaction.date || new Date().toISOString(),
+                type: 'pos_sale',
+                amount: total,
+                category: 'penjualan_pos',
+                note: `Penjualan POS - ${transaction.id || 'TRX'}`,
+                source: 'pos_sale',
+                transactionId: transaction.id,
+                paymentMethod: 'cash'
+            });
+            
+            dataManager.save();
+            app.updateHeader();
+            
+            console.log(`✅ Kas bertambah Rp ${utils.formatNumber(total)} dari penjualan POS`);
+        }
+    },
+
+    /**
+     * ✅ FUNGSI BARU: Dipanggil saat transaksi POS dihapus/void
+     */
+    removePosTransaction(transaction) {
+        if (!transaction || transaction.paymentMethod !== 'cash') return;
+        
+        const total = parseInt(transaction.total) || 0;
+        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
+        
+        // Kurangi kas
+        dataManager.data.settings.currentCash = currentCash - total;
+        
+        // Hapus dari cashTransactions
+        dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(t => 
+            !(t.source === 'pos_sale' && t.transactionId === transaction.id)
+        );
+        
+        // Tambah transaksi pembatalan
+        dataManager.data.cashTransactions.push({
+            id: Date.now(),
+            date: new Date().toISOString(),
+            type: 'pos_void',
+            amount: total,
+            category: 'pembatalan_pos',
+            note: `Pembatalan POS - ${transaction.id || 'TRX'}`,
+            source: 'pos_void',
+            transactionId: transaction.id
+        });
+        
+        dataManager.save();
+        app.updateHeader();
+        
+        console.log(`✅ Kas berkurang Rp ${utils.formatNumber(total)} karena pembatalan POS`);
+    },
+
+    /**
+     * ✅ FUNGSI BARU: Update transaksi POS yang diedit
+     */
+    updatePosTransaction(oldTransaction, newTransaction) {
+        // Hapus yang lama
+        this.removePosTransaction(oldTransaction);
+        // Tambah yang baru
+        this.addPosTransaction(newTransaction);
+    },
+
     // ========== RESET OPTIONS ==========
     showResetOptions() {
         const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
         const currentModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        const todayCashSales = this.getTodayCashSales();
         
         document.body.insertAdjacentHTML('beforeend', `
             <div class="modal active" id="resetOptionsModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000;">
@@ -490,7 +588,9 @@ const cashModule = {
                         <div style="background: #f5f5f5; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
                             <div style="font-size: 13px; color: #666; margin-bottom: 8px;">Kas Saat Ini</div>
                             <div style="font-size: 24px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(currentCash)}</div>
-                            <div style="font-size: 12px; color: #999; margin-top: 4px;">Modal: Rp ${utils.formatNumber(currentModal)}</div>
+                            <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                                Modal: Rp ${utils.formatNumber(currentModal)} | Penjualan Cash Hari Ini: Rp ${utils.formatNumber(todayCashSales)}
+                            </div>
                         </div>
 
                         <div style="display: grid; gap: 12px;">
@@ -563,7 +663,7 @@ const cashModule = {
     },
 
     resetToZero() {
-        if (!confirm('⚠️ Yakin reset Kas dan Modal ke Rp 0?\n\nKas saat ini akan dihapus dari perhitungan hari ini.')) {
+        if (!confirm('⚠️ Yakin reset Kas dan Modal ke Rp 0?\n\nSemua transaksi hari ini akan tetap tersimpan tapi kas diatur ke 0.')) {
             return;
         }
 
@@ -664,14 +764,25 @@ const cashModule = {
             return tDate >= startDate && tDate <= endDate;
         });
         
-        const kasMasuk = transactions
-            .filter(t => (t.type === 'in' || t.type === 'topup') && t.type !== 'modal_in')
+        // Kas masuk manual (bukan dari POS, bukan modal)
+        const manualKasMasuk = transactions
+            .filter(t => t.type === 'in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
+        // Top up masuk
+        const topUpMasuk = transactions
+            .filter(t => t.type === 'topup')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
+        // Kas keluar
         const kasKeluar = transactions
             .filter(t => t.type === 'out')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
+        // Total kas masuk (untuk tampilan)
+        const kasMasuk = manualKasMasuk + topUpMasuk;
+        
+        // Laba dari admin fee
         const labaTopUp = transactions
             .filter(t => t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
@@ -682,12 +793,15 @@ const cashModule = {
         
         const laba = labaTopUp + labaTarikTunai;
         
+        // Modal masuk
         const modalMasuk = transactions
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
         return {
             kasMasuk,
+            manualKasMasuk,
+            topUpMasuk,
             kasKeluar,
             laba,
             labaTopUp,
@@ -832,6 +946,7 @@ const cashModule = {
             return tDate >= startDate && tDate <= endDate;
         }).sort((a, b) => new Date(b.date) - new Date(a.date));
         
+        // Hitung summary
         const totalKasMasuk = transactions
             .filter(t => (t.type === 'in' || t.type === 'topup') && t.type !== 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -854,6 +969,10 @@ const cashModule = {
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
         
+        const totalPosSales = transactions
+            .filter(t => t.type === 'pos_sale')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
         const summaryEl = document.getElementById('filterSummary');
         if (summaryEl) {
             const periodLabel = this.getFilterLabel();
@@ -870,12 +989,10 @@ const cashModule = {
                     <div style="text-align: right;">
                         <div style="color: #2e7d32; font-weight: 600; font-size: 15px;">⬇️ Kas Masuk: Rp ${utils.formatNumber(totalKasMasuk)}</div>
                         <div style="color: #c62828; font-weight: 600; font-size: 15px; margin: 4px 0;">⬆️ Kas Keluar: Rp ${utils.formatNumber(totalKasKeluar)}</div>
-                        ${totalModal > 0 ? `<div style="color: #f57f17; font-weight: 600; font-size: 14px; margin: 4px 0;">💰 Modal: Rp ${utils.formatNumber(totalModal)} <span style="font-size: 11px; color: #999;">(tidak masuk hitungan)</span></div>` : ''}
+                        ${totalModal > 0 ? `<div style="color: #f57f17; font-weight: 600; font-size: 14px; margin: 4px 0;">💰 Modal: Rp ${utils.formatNumber(totalModal)}</div>` : ''}
+                        ${totalPosSales > 0 ? `<div style="color: #2196f3; font-weight: 600; font-size: 14px; margin: 4px 0;">🛒 Penjualan POS: Rp ${utils.formatNumber(totalPosSales)}</div>` : ''}
                         <div style="font-weight: 700; font-size: 16px; color: #6a1b9a; padding-top: 8px; border-top: 2px solid #e0e0e0; margin-top: 8px;">
                             💰 Laba Bersih: Rp ${utils.formatNumber(totalLaba)}
-                            <div style="font-size: 11px; color: #999; font-weight: normal; margin-top: 2px;">
-                                (Top Up: Rp ${utils.formatNumber(totalLabaTopUp)} + Tarik Tunai: Rp ${utils.formatNumber(totalLabaTarikTunai)})
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -909,9 +1026,9 @@ const cashModule = {
             const dayKasNet = dayTrans.reduce((sum, t) => {
                 const amt = parseInt(t.amount) || 0;
                 if (t.type === 'modal_in') return sum;
-                if (t.type === 'in' || t.type === 'topup') {
+                if (t.type === 'in' || t.type === 'topup' || t.type === 'pos_sale') {
                     return sum + amt;
-                } else if (t.type === 'out') {
+                } else if (t.type === 'out' || t.type === 'pos_void') {
                     return sum - amt;
                 }
                 return sum;
@@ -930,13 +1047,14 @@ const cashModule = {
             `;
             
             dayTrans.forEach(t => {
-                const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup';
+                const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup' || t.type === 'pos_sale';
                 const prefix = isIncome ? '+' : '-';
                 const amountColor = isIncome ? '#2e7d32' : '#c62828';
                 
                 let typeLabel = '';
                 let labaBadge = '';
                 let modalBadge = '';
+                let posBadge = '';
                 
                 if (t.type === 'modal_in') {
                     typeLabel = ' (Modal)';
@@ -953,9 +1071,18 @@ const cashModule = {
                     if (adminFee > 0) {
                         labaBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
                     }
+                } else if (t.type === 'pos_sale') {
+                    typeLabel = ' (POS)';
+                    posBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">AUTO</span>`;
+                } else if (t.type === 'pos_void') {
+                    typeLabel = ' (Batal POS)';
+                    posBadge = `<span style="background: #ffebee; color: #c62828; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">VOID</span>`;
                 }
                 
                 const timeStr = new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                
+                // Untuk POS transaction, jangan tampilkan tombol hapus
+                const showDelete = t.type !== 'pos_sale' && t.type !== 'pos_void';
                 
                 html += `
                     <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='transparent'">
@@ -964,6 +1091,7 @@ const cashModule = {
                                 ${t.note || t.category}${typeLabel}
                                 ${labaBadge}
                                 ${modalBadge}
+                                ${posBadge}
                             </div>
                             <div class="transaction-meta" style="font-size: 12px; color: #999;">${timeStr}</div>
                         </div>
@@ -971,6 +1099,7 @@ const cashModule = {
                             <div class="transaction-amount" style="font-weight: 700; font-size: 16px; color: ${amountColor};">
                                 ${prefix} Rp ${utils.formatNumber(t.amount)}
                             </div>
+                            ${showDelete ? `
                             <button class="btn-delete-cash" data-transaction-id="${t.id}" 
                                     style="width: 36px; height: 36px; border-radius: 50%; background: #ffebee; 
                                            border: 2px solid #f44336; color: #f44336; font-size: 16px; cursor: pointer; 
@@ -979,6 +1108,7 @@ const cashModule = {
                                     onmouseover="this.style.background='#f44336'; this.style.color='white';"
                                     onmouseout="this.style.background='#ffebee'; this.style.color='#f44336';"
                                     title="Hapus transaksi">🗑️</button>
+                            ` : '<span style="font-size: 12px; color: #999; font-style: italic;">Auto</span>'}
                         </div>
                     </div>
                 `;
@@ -1030,6 +1160,12 @@ const cashModule = {
         
         if (!t) {
             app.showToast('Transaksi tidak ditemukan!');
+            return;
+        }
+        
+        // Jangan hapus transaksi POS dari sini
+        if (t.source === 'pos_sale') {
+            app.showToast('Transaksi POS hanya bisa dihapus dari menu Transaksi!');
             return;
         }
         
@@ -1143,10 +1279,11 @@ const cashModule = {
         
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
-        if (type === 'out' && amount > currentCash) {
-            app.showToast('Kas tidak mencukupi!');
-            return;
-        }
+        // ✅ PERBAIKAN: Kas bisa minus, hapus pengecekan ini
+        // if (type === 'out' && amount > currentCash) {
+        //     app.showToast('Kas tidak mencukupi!');
+        //     return;
+        // }
         
         dataManager.data.cashTransactions.push({
             id: Date.now(),
@@ -1256,8 +1393,8 @@ const cashModule = {
             app.showToast(`✅ Tambahan modal Rp ${utils.formatNumber(amount)}. Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
         } else {
             dataManager.data.settings.modalAwal = amount;
-            dataManager.data.settings.currentCash = amount;
-            app.showToast(`✅ Modal awal Rp ${utils.formatNumber(amount)}. Kas diatur ke Rp ${utils.formatNumber(amount)}`);
+            dataManager.data.settings.currentCash = currentCash + amount; // Tambah ke kas existing, tidak overwrite
+            app.showToast(`✅ Modal awal Rp ${utils.formatNumber(amount)}. Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
         }
         
         dataManager.data.cashTransactions.push({
@@ -1511,9 +1648,11 @@ const cashModule = {
         
         let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
         
+        // ✅ PERBAIKAN: Kas bisa minus, hanya warning saja
         if (total > currentCash) {
-            app.showToast('Kas tidak mencukupi!');
-            return;
+            if (!confirm(`⚠️ Kas akan minus!\n\nKas saat ini: Rp ${utils.formatNumber(currentCash)}\nTotal keluar: Rp ${utils.formatNumber(total)}\n\nSisa kas: Rp ${utils.formatNumber(currentCash - total)}\n\nLanjutkan?`)) {
+                return;
+            }
         }
         
         let providerLabel = type.toUpperCase();
@@ -1577,45 +1716,48 @@ const cashModule = {
     },
 
     // ========== UTILITIES ==========
-    // ✅ PERBAIKAN: calculateActualCash - Hanya hitung dari transaksi kas manual
-    // Penjualan POS sudah otomatis masuk ke currentCash via posModule
+    
+    /**
+     * ✅ PERBAIKAN: Hitung kas aktual dari semua sumber
+     * Termasuk modal, transaksi manual, top up, dan penjualan POS
+     */
     calculateActualCash() {
         let cash = 0;
         
+        // 1. Modal Awal
         const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
         cash += modalAwal;
         
-        if (typeof dataManager !== 'undefined' && dataManager.data) {
-            if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
-                dataManager.data.cashTransactions.forEach(t => {
-                    const amount = parseInt(t.amount) || 0;
-                    
-                    // Skip modal_in karena sudah dihitung di modalAwal
-                    if (t.type === 'modal_in') return;
-                    
-                    // Skip transaksi dari POS (sudah masuk ke currentCash secara otomatis)
-                    if (t.source === 'pos_sale') return;
-                    
-                    if (t.type === 'in' || t.type === 'topup') {
-                        cash += amount;
-                    } else if (t.type === 'out') {
-                        cash -= amount;
-                    }
-                });
-            }
+        // 2. Transaksi Kas Manual
+        if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
+            dataManager.data.cashTransactions.forEach(t => {
+                const amount = parseInt(t.amount) || 0;
+                
+                // Skip modal_in karena sudah dihitung di modalAwal
+                if (t.type === 'modal_in') return;
+                
+                if (t.type === 'in' || t.type === 'topup' || t.type === 'pos_sale') {
+                    cash += amount;
+                } else if (t.type === 'out' || t.type === 'pos_void') {
+                    cash -= amount;
+                }
+            });
         }
         
         return cash;
     },
 
-    // ✅ PERBAIKAN: recalculateCash - Sinkronkan dengan benar
+    /**
+     * ✅ PERBAIKAN: Recalculate yang lebih akurat
+     */
     recalculateCash() {
         const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
         const calculatedCash = this.calculateActualCash();
         const selisih = currentCash - calculatedCash;
 
-        // Hitung penjualan cash hari ini
+        // Hitung penjualan hari ini
         const todayCashSales = this.getTodayCashSales();
+        const todayNonCashSales = this.getTodayNonCashSales();
 
         if (!confirm(`🔄 Recalculate Kas?
 
@@ -1624,34 +1766,47 @@ Hitungan Ulang: Rp ${utils.formatNumber(calculatedCash)}
 Selisih: Rp ${utils.formatNumber(selisih)}
 
 Penjualan Cash hari ini: Rp ${utils.formatNumber(todayCashSales)}
+Penjualan Non-Cash hari ini: Rp ${utils.formatNumber(todayNonCashSales)}
 
 Lanjutkan sinkronisasi?`)) {
             return;
         }
 
-        // Jika ada selisih, sesuaikan currentCash ke calculatedCash
-        // Tapi pertahankan penjualan cash yang sudah tercatat
-        if (Math.abs(selisih) > 0) {
-            dataManager.data.settings.currentCash = calculatedCash + todayCashSales;
-            dataManager.save();
-            
-            app.updateHeader();
-            this.renderHTML();
-            this.renderTransactions();
-            
-            app.showToast(`✅ Kas tersinkron: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
-        } else {
-            app.showToast('✅ Kas sudah sinkron!');
-        }
+        // Sinkronkan currentCash dengan calculatedCash
+        dataManager.data.settings.currentCash = calculatedCash;
+        dataManager.save();
+        
+        app.updateHeader();
+        this.renderHTML();
+        this.renderTransactions();
+        
+        app.showToast(`✅ Kas tersinkron: Rp ${utils.formatNumber(calculatedCash)}`);
     },
 
-    // ✅ TAMBAHAN: Helper untuk lihat penjualan cash hari ini
+    /**
+     * ✅ HELPER: Hitung penjualan cash hari ini
+     */
     getTodayCashSales() {
         const today = new Date().toDateString();
         return (dataManager.data.transactions || [])
             .filter(t => {
                 if (t.status === 'deleted' || t.status === 'voided') return false;
                 if (t.paymentMethod !== 'cash') return false;
+                const tDate = new Date(t.date).toDateString();
+                return tDate === today;
+            })
+            .reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
+    },
+
+    /**
+     * ✅ HELPER: Hitung penjualan non-cash hari ini
+     */
+    getTodayNonCashSales() {
+        const today = new Date().toDateString();
+        return (dataManager.data.transactions || [])
+            .filter(t => {
+                if (t.status === 'deleted' || t.status === 'voided') return false;
+                if (t.paymentMethod === 'cash') return false;
                 const tDate = new Date(t.date).toDateString();
                 return tDate === today;
             })
