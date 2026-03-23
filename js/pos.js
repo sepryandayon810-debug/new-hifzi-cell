@@ -660,6 +660,7 @@ const posModule = {
         }
     },
 
+    // ✅ PERBAIKAN UTAMA: Process Payment - Hanya tambah kas untuk CASH
     processPayment() {
         const total = this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
         const received = parseInt(document.getElementById('cashReceived').value) || 0;
@@ -696,8 +697,27 @@ const posModule = {
             }
         });
 
-        // Update cash
-        dataManager.data.settings.currentCash += total;
+        // ✅ PERBAIKAN: Hanya tambah kas untuk pembayaran CASH
+        if (method === 'cash') {
+            // Tambah ke currentCash
+            dataManager.data.settings.currentCash += total;
+            
+            // Simpan juga ke cashTransactions untuk tracking & recalculate
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: transaction.date,
+                type: 'pos_sale',
+                amount: total,
+                category: 'penjualan_pos',
+                note: `Penjualan POS - ${transaction.transactionNumber}`,
+                source: 'pos_sale',
+                transactionId: transaction.id,
+                paymentMethod: 'cash'
+            });
+        }
+        // ❌ Non-cash (debit/qris/transfer) TIDAK menambah kas fisik!
+        // Uang masuk ke rekening digital, bukan kasir
+
         dataManager.save();
 
         // Print if requested - via Bluetooth atau Window Print
