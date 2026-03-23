@@ -1,8 +1,7 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
 // ============================================
-// Integrasi: Telegram Bot → Google Apps Script → Google Sheets
-// Fitur: Cari, Tambah, Edit, Hapus data via Telegram
+// FIX CORS: Multi-proxy support untuk file:// protocol
 
 (function() {
     'use strict';
@@ -21,33 +20,56 @@
             },
             configVisible: false,
             isLoading: false,
-            lastMessageId: null
+            proxyMode: false
+        },
+
+        // ============================================
+        // CORS PROXY CONFIGURATION
+        // ============================================
+        
+        PROXY_LIST: [
+            'https://api.allorigins.win/get?url=',
+            'https://api.codetabs.com/v1/proxy?quest=',
+            'https://thingproxy.freeboard.io/fetch/',
+            'https://corsproxy.io/?'
+        ],
+
+        currentProxyIndex: 0,
+
+        getProxyUrl() {
+            return this.PROXY_LIST[this.currentProxyIndex];
+        },
+
+        rotateProxy() {
+            this.currentProxyIndex = (this.currentProxyIndex + 1) % this.PROXY_LIST.length;
+            console.log(`[n8nModule] Rotating to proxy: ${this.getProxyUrl()}`);
+        },
+
+        isFileProtocol() {
+            return window.location.protocol === 'file:';
         },
 
         init() {
             console.log('[n8nModule] ✅ Telegram Bridge Version Loaded');
+            console.log('[n8nModule] Protocol:', window.location.protocol);
+            
             this.loadConfig();
             this.bindMethods();
             
-            // Check if running from file protocol
-            if (window.location.protocol === 'file:') {
-                console.warn('[n8nModule] Running from file:// - CORS restrictions apply');
+            if (this.isFileProtocol()) {
+                console.warn('[n8nModule] Running from file:// - CORS proxy mode enabled');
+                this.state.proxyMode = true;
             }
         },
 
         bindMethods() {
-            this.handleSearch = this.handleSearch.bind(this);
-            this.handleAdd = this.handleAdd.bind(this);
-            this.handleEdit = this.handleEdit.bind(this);
-            this.handleDelete = this.handleDelete.bind(this);
-            this.toggleConfig = this.toggleConfig.bind(this);
-            this.saveConfig = this.saveConfig.bind(this);
-            this.testConnection = this.testConnection.bind(this);
-            this.sendTelegramMessage = this.sendTelegramMessage.bind(this);
-            this.getTelegramUpdates = this.getTelegramUpdates.bind(this);
-            this.processTelegramCommand = this.processTelegramCommand.bind(this);
-            this.selectRow = this.selectRow.bind(this);
-            this.renderTable = this.renderTable.bind(this);
+            const methods = [
+                'handleSearch', 'handleAdd', 'handleEdit', 'handleDelete',
+                'toggleConfig', 'saveConfig', 'testConnection', 'testTelegramConnection',
+                'sendTelegramMessage', 'getTelegramUpdates', 'getChatId',
+                'selectRow', 'renderTable', 'makeRequest', 'fetchWithProxy'
+            ];
+            methods.forEach(m => this[m] = this[m].bind(this));
         },
 
         loadConfig() {
@@ -72,8 +94,6 @@
             };
 
             this.state.config = inputs;
-
-            // Save to localStorage
             localStorage.setItem('n8n_config', JSON.stringify(inputs));
             localStorage.setItem('n8n_bot_token', inputs.botToken);
             localStorage.setItem('n8n_chat_id', inputs.chatId);
@@ -83,9 +103,77 @@
 
             this.showNotification('✅ Konfigurasi tersimpan!', 'success');
             
-            // Auto test connection
             if (inputs.botToken) {
-                this.getChatId();
+                setTimeout(() => this.getChatId(), 500);
+            }
+        },
+
+        // ============================================
+        // FETCH WITH CORS PROXY HANDLER
+        // ============================================
+
+        async fetchWithProxy(url, options = {}, retryCount = 0) {
+            const MAX_RETRIES = this.PROXY_LIST.length;
+
+            // Jika bukan file protocol, fetch langsung
+            if (!this.isFileProtocol()) {
+                return fetch(url, options);
+            }
+
+            // Untuk file:// protocol, gunakan proxy
+            const proxyUrl = this.getProxyUrl();
+            const encodedUrl = encodeURIComponent(url);
+            const fullUrl = `${proxyUrl}${encodedUrl}`;
+
+            console.log(`[Proxy] Using: ${proxyUrl.split('?')[0]}...`);
+
+            try {
+                const proxyOptions = {
+                    method: 'GET', // Proxy hanya support GET
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                };
+
+                const response = await fetch(fullUrl, proxyOptions);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                // Parse proxy response format
+                const proxyData = await response.json();
+                
+                // Different proxies have different response formats
+                let finalData;
+                if (proxyData.contents) {
+                    // allorigins format
+                    finalData = JSON.parse(proxyData.contents);
+                } else if (proxyData.body) {
+                    // codetabs format
+                    finalData = JSON.parse(proxyData.body);
+                } else {
+                    // Direct response
+                    finalData = proxyData;
+                }
+
+                // Create a synthetic Response object
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => finalData,
+                    text: async () => JSON.stringify(finalData)
+                };
+
+            } catch (error) {
+                console.error(`[Proxy] Error with ${proxyUrl}:`, error);
+                
+                if (retryCount < MAX_RETRIES - 1) {
+                    this.rotateProxy();
+                    return this.fetchWithProxy(url, options, retryCount + 1);
+                }
+                
+                throw error;
             }
         },
 
@@ -102,30 +190,20 @@
             }
 
             try {
-                const proxyUrl = 'https://api.allorigins.win/get?url=';
                 const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-                const payload = {
+                
+                // Build URL with query params untuk GET request (support proxy)
+                const params = new URLSearchParams({
                     chat_id: chatId,
                     text: text,
                     parse_mode: 'Markdown',
                     ...options
-                };
+                });
 
-                // For file:// protocol, use proxy
-                let response;
-                if (window.location.protocol === 'file:') {
-                    const encodedUrl = encodeURIComponent(`${apiUrl}?${new URLSearchParams(payload).toString()}`);
-                    response = await fetch(`${proxyUrl}${encodedUrl}`);
-                    const data = await response.json();
-                    return JSON.parse(data.contents);
-                } else {
-                    response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    return await response.json();
-                }
+                const fullUrl = `${apiUrl}?${params.toString()}`;
+                const response = await this.fetchWithProxy(fullUrl);
+                return await response.json();
+
             } catch (error) {
                 console.error('[Telegram] Send message error:', error);
                 return null;
@@ -137,25 +215,16 @@
             
             if (!botToken) {
                 this.showNotification('⚠️ Bot Token belum diisi!', 'warning');
-                return;
+                return null;
             }
 
             this.setStatus('🟡', 'Mengambil updates dari Telegram...');
 
             try {
-                const proxyUrl = 'https://api.allorigins.win/get?url=';
                 const apiUrl = `https://api.telegram.org/bot${botToken}/getUpdates?limit=10`;
-                
-                let response;
-                if (window.location.protocol === 'file:') {
-                    const encodedUrl = encodeURIComponent(apiUrl);
-                    response = await fetch(`${proxyUrl}${encodedUrl}`);
-                    const data = await response.json();
-                    return JSON.parse(data.contents);
-                } else {
-                    response = await fetch(apiUrl);
-                    return await response.json();
-                }
+                const response = await this.fetchWithProxy(apiUrl);
+                return await response.json();
+
             } catch (error) {
                 console.error('[Telegram] Get updates error:', error);
                 this.setStatus('🔴', 'Error koneksi Telegram');
@@ -166,7 +235,10 @@
         async getChatId() {
             const { botToken } = this.state.config;
             
-            if (!botToken) return;
+            if (!botToken) {
+                this.showNotification('⚠️ Isi Bot Token dulu!', 'warning');
+                return;
+            }
 
             this.setStatus('🟡', 'Mendeteksi Chat ID...');
 
@@ -174,13 +246,15 @@
                 const result = await this.getTelegramUpdates();
                 
                 if (result && result.ok && result.result.length > 0) {
-                    // Get latest message
                     const latest = result.result[result.result.length - 1];
-                    const chatId = latest.message?.chat?.id || latest.callback_query?.message?.chat?.id;
+                    const chatId = latest.message?.chat?.id || 
+                                   latest.callback_query?.message?.chat?.id ||
+                                   latest.edited_message?.chat?.id;
                     
                     if (chatId) {
                         this.state.config.chatId = chatId;
-                        document.getElementById('chatId').value = chatId;
+                        const chatInput = document.getElementById('chatId');
+                        if (chatInput) chatInput.value = chatId;
                         this.saveConfig();
                         this.showNotification(`✅ Chat ID terdeteksi: ${chatId}`, 'success');
                         this.setStatus('🟢', 'Terhubung ke Telegram');
@@ -193,33 +267,85 @@
                 
             } catch (error) {
                 console.error('[Telegram] Get Chat ID error:', error);
-                this.showNotification('❌ Gagal mendeteksi Chat ID', 'error');
+                this.showNotification('❌ Gagal mendeteksi Chat ID. Coba proxy lain.', 'error');
                 this.setStatus('🔴', 'Error');
             }
         },
 
-        processTelegramCommand(message) {
-            const text = message.text || '';
-            const parts = text.trim().split(/\s+/);
-            const cmd = parts[0].toLowerCase();
-            const args = parts.slice(1).join(' ');
+        // ============================================
+        // GOOGLE APPS SCRIPT API
+        // ============================================
 
-            return { cmd, args, message };
+        async makeRequest(action, params = {}) {
+            const { gasUrl, sheetId } = this.state.config;
+            
+            if (!gasUrl || !sheetId) {
+                this.showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
+                return null;
+            }
+
+            // Build URL dengan query params
+            const url = new URL(gasUrl);
+            url.searchParams.append('action', action);
+            url.searchParams.append('sheetId', sheetId);
+
+            for (let key in params) {
+                if (params[key] !== undefined && params[key] !== null) {
+                    url.searchParams.append(key, params[key]);
+                }
+            }
+
+            console.log('[n8nModule] Request:', url.toString());
+
+            try {
+                this.setStatus('🟡', 'Loading...');
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                const response = await this.fetchWithProxy(url.toString());
+                
+                clearTimeout(timeoutId);
+
+                const data = await response.json();
+                console.log('[n8nModule] Response:', data);
+
+                this.setStatus('🟢', 'Siap');
+                return data;
+                
+            } catch (error) {
+                console.error('[n8nModule] Error:', error);
+                this.setStatus('🔴', 'Error');
+
+                let errorMsg = 'Gagal terhubung ke server';
+                let solution = '';
+
+                if (error.name === 'AbortError') {
+                    errorMsg = 'Request timeout (30s)';
+                    solution = 'Coba lagi atau cek koneksi internet';
+                } else if (this.isFileProtocol()) {
+                    errorMsg = 'CORS Error (File Protocol)';
+                    solution = 'Solusi:\n1. Upload ke web server (GitHub Pages/Netlify)\n2. Gunakan Live Server di VS Code\n3. Atau coba refresh halaman';
+                } else if (error.message.includes('404')) {
+                    errorMsg = 'GAS URL tidak ditemukan';
+                    solution = 'Cek URL GAS atau deploy ulang';
+                }
+
+                this.showNotification(`❌ ${errorMsg}\n${solution}`, 'error', 8000);
+                return null;
+            }
         },
 
         // ============================================
-        // CRUD OPERATIONS VIA TELEGRAM
+        // CRUD OPERATIONS
         // ============================================
 
         async handleSearch() {
             const keyword = document.getElementById('searchInput')?.value.toLowerCase().trim() || '';
             
-            // Kirim notifikasi ke Telegram
+            // Notifikasi ke Telegram
             await this.sendTelegramMessage(
-                `🔍 *PENCARIAN DATA*\n\n` +
-                `Keyword: ${keyword || 'Semua data'}\n` +
-                `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
-                `⏳ Mengambil data dari Google Sheets...`
+                `🔍 *PENCARIAN DATA*\n\nKeyword: ${keyword || 'Semua data'}\nWaktu: ${new Date().toLocaleString('id-ID')}`
             );
 
             const result = await this.makeRequest('getData');
@@ -236,7 +362,6 @@
 
             this.state.data = result.data || [];
 
-            // Filter data
             if (keyword) {
                 this.state.filteredData = this.state.data.filter(item => 
                     (item.nama && item.nama.toLowerCase().includes(keyword)) || 
@@ -248,21 +373,15 @@
 
             this.renderTable();
 
-            // Kirim hasil ke Telegram
             const count = this.state.filteredData.length;
-            let message = `✅ *PENCARIAN SELESAI*\n\n`;
-            message += `Ditemukan: *${count} data*\n`;
-            message += `Keyword: *${keyword || '-' }*\n\n`;
+            let message = `✅ *PENCARIAN SELESAI*\n\nDitemukan: *${count} data*\nKeyword: *${keyword || '-'}*\n\n`;
             
             if (count > 0) {
                 message += `*Hasil (5 teratas):*\n`;
                 this.state.filteredData.slice(0, 5).forEach((item, idx) => {
-                    message `${idx + 1}. ${item.nama || 'N/A'} - ${item.nomor || 'N/A'}\n`;
+                    message += `${idx + 1}. ${item.nama || 'N/A'} - ${item.nomor || 'N/A'}\n`;
                 });
-                
-                if (count > 5) {
-                    message += `\n...dan ${count - 5} data lainnya`;
-                }
+                if (count > 5) message += `\n...dan ${count - 5} data lainnya`;
             } else {
                 message += `❌ Tidak ada data yang cocok`;
             }
@@ -272,22 +391,10 @@
         },
 
         async handleAdd() {
-            // Buka modal untuk input data
             document.getElementById('modalTitle').textContent = 'Tambah Data (via Telegram)';
             document.getElementById('editId').value = '';
             document.getElementById('inputNama').value = '';
             document.getElementById('inputNomor').value = '';
-            
-            // Tambahkan info Telegram
-            const telegramInfo = document.getElementById('telegramInfo');
-            if (telegramInfo) {
-                telegramInfo.innerHTML = `
-                    <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
-                        <strong>💡 Info:</strong> Data akan disimpan ke Google Sheets dan notifikasi dikirim ke Telegram.
-                    </div>
-                `;
-            }
-            
             this.openModal('dataModal');
         },
 
@@ -307,7 +414,6 @@
             document.getElementById('editId').value = item.row;
             document.getElementById('inputNama').value = item.nama || '';
             document.getElementById('inputNomor').value = item.nomor || '';
-            
             this.openModal('dataModal');
         },
 
@@ -323,21 +429,9 @@
                 return;
             }
 
-            // Konfirmasi via Telegram
-            const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\n` +
-                `Nama: *${item.nama || 'N/A'}*\n` +
-                `Nomor: *${item.nomor || 'N/A'}*\n\n` +
-                `Apakah Anda yakin ingin menghapus data ini?\n` +
-                `Balas dengan YA untuk konfirmasi atau BATAL untuk membatalkan.`;
+            const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\nNama: *${item.nama || 'N/A'}*\nNomor: *${item.nomor || 'N/A'}*\n\nKlik tombol di web untuk konfirmasi.`;
 
-            await this.sendTelegramMessage(confirmMsg, {
-                reply_markup: JSON.stringify({
-                    inline_keyboard: [[
-                        { text: '✅ YA, Hapus', callback_data: `delete_${item.row}` },
-                        { text: '❌ Batal', callback_data: 'cancel_delete' }
-                    ]]
-                })
-            });
+            await this.sendTelegramMessage(confirmMsg);
 
             document.getElementById('deleteInfo').textContent = `${item.nama || 'N/A'} - ${item.nomor || 'N/A'}`;
             this.openModal('deleteModal');
@@ -357,12 +451,8 @@
             const params = { nama, nomor };
             if (row) params.row = row;
 
-            // Kirim notifikasi ke Telegram
             await this.sendTelegramMessage(
-                `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\n` +
-                `Nama: *${nama}*\n` +
-                `Nomor: *${nomor}*\n\n` +
-                `⏳ Menyimpan ke Google Sheets...`
+                `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\nNama: *${nama}*\nNomor: *${nomor}*\n\n⏳ Menyimpan...`
             );
 
             const result = await this.makeRequest(action, params);
@@ -370,20 +460,14 @@
             if (result && result.success) {
                 this.closeModal();
                 
-                // Notifikasi sukses ke Telegram
                 await this.sendTelegramMessage(
-                    `✅ *BERHASIL*\n\n` +
-                    `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!\n\n` +
-                    `Nama: *${nama}*\n` +
-                    `Nomor: *${nomor}*\n` +
-                    `${row ? `Row: ${row}` : `Row baru: ${result.row}`}\n\n` +
-                    `Waktu: ${new Date().toLocaleString('id-ID')}`
+                    `✅ *BERHASIL*\n\nData ${row ? 'diupdate' : 'ditambahkan'}!\nNama: *${nama}*\nNomor: *${nomor}*\nWaktu: ${new Date().toLocaleString('id-ID')}`
                 );
 
                 this.handleSearch();
                 this.showNotification(result.message || '✅ Data tersimpan', 'success');
             } else if (result) {
-                await this.sendTelegramMessage(`❌ Gagal menyimpan: ${result.error || 'Unknown error'}`);
+                await this.sendTelegramMessage(`❌ Gagal: ${result.error || 'Unknown error'}`);
                 this.showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
             }
         },
@@ -394,12 +478,8 @@
             const result = await this.makeRequest('deleteData', { row });
             
             if (result && result.success) {
-                // Notifikasi ke Telegram
                 await this.sendTelegramMessage(
-                    `🗑️ *DATA DIHAPUS*\n\n` +
-                    `Row: ${row}\n` +
-                    `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
-                    `Data berhasil dihapus dari Google Sheets.`
+                    `🗑️ *DATA DIHAPUS*\n\nRow: ${row}\nWaktu: ${new Date().toLocaleString('id-ID')}`
                 );
 
                 this.closeModal();
@@ -414,98 +494,10 @@
         },
 
         // ============================================
-        // API CALLS TO GOOGLE APPS SCRIPT
-        // ============================================
-
-        async makeRequest(action, params = {}) {
-            const { gasUrl, sheetId } = this.state.config;
-            
-            if (!gasUrl || !sheetId) {
-                this.showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
-                return null;
-            }
-
-            const url = new URL(gasUrl);
-            url.searchParams.append('action', action);
-            url.searchParams.append('sheetId', sheetId);
-
-            for (let key in params) {
-                if (params[key] !== undefined && params[key] !== null) {
-                    url.searchParams.append(key, params[key]);
-                }
-            }
-
-            console.log('[n8nModule] Request:', url.toString());
-
-            try {
-                this.setStatus('🟡', 'Loading...');
-
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-                let response;
-                
-                // Handle file:// protocol with proxy
-                if (window.location.protocol === 'file:') {
-                    const proxyUrl = 'https://api.allorigins.win/get?url=';
-                    const encodedUrl = encodeURIComponent(url.toString());
-                    response = await fetch(`${proxyUrl}${encodedUrl}`, {
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (!response.ok) {
-                        throw new Error('HTTP ' + response.status);
-                    }
-                    
-                    const proxyData = await response.json();
-                    return JSON.parse(proxyData.contents);
-                } else {
-                    response = await fetch(url.toString(), {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json' },
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-
-                    if (!response.ok) {
-                        throw new Error('HTTP ' + response.status);
-                    }
-
-                    return await response.json();
-                }
-                
-            } catch (error) {
-                console.error('[n8nModule] Error:', error);
-                this.setStatus('🔴', 'Error');
-
-                let errorMsg = error.message;
-                let solution = '';
-
-                if (error.name === 'AbortError') {
-                    errorMsg = 'Request timeout (30s)';
-                    solution = 'Cek koneksi internet atau coba lagi';
-                } else if (error.message.includes('Failed to fetch')) {
-                    errorMsg = 'CORS Error / GAS tidak accessible';
-                    solution = 'Pastikan: 1) GAS sudah deploy sebagai Web App, 2) Access: ANYONE, 3) URL benar';
-                } else if (error.message.includes('404')) {
-                    errorMsg = 'GAS URL tidak ditemukan (404)';
-                    solution = 'Cek URL GAS atau deploy ulang';
-                }
-
-                this.showNotification(`❌ ${errorMsg}. ${solution}`, 'error', 6000);
-                return null;
-            }
-        },
-
-        // ============================================
         // UI RENDERING
         // ============================================
 
         renderPage() {
-            console.log('[n8nModule] Rendering page...');
             const mainContent = document.getElementById('mainContent');
             if (!mainContent) {
                 console.error('[n8nModule] mainContent not found');
@@ -516,34 +508,49 @@
             this.attachEventListeners();
             this.setFormValues();
             
-            // Auto generate GAS code if empty
             if (!this.state.config.gasUrl) {
                 this.generateGAS();
-            }
-            
-            // Auto get chat ID if token exists but chat ID empty
-            if (this.state.config.botToken && !this.state.config.chatId) {
-                this.getChatId();
             }
         },
 
         setFormValues() {
-            document.getElementById('sheetId').value = this.state.config.sheetId;
-            document.getElementById('sheetName').value = this.state.config.sheetName;
-            document.getElementById('gasUrl').value = this.state.config.gasUrl;
-            document.getElementById('botToken').value = this.state.config.botToken;
-            document.getElementById('chatId').value = this.state.config.chatId;
+            const fields = ['sheetId', 'sheetName', 'gasUrl', 'botToken', 'chatId'];
+            fields.forEach(field => {
+                const el = document.getElementById(field);
+                if (el) el.value = this.state.config[field] || '';
+            });
         },
 
         getHTML() {
+            const isFile = this.isFileProtocol();
+            const warningBanner = isFile ? `
+                <div style="background: #fff3e0; border: 2px solid #ff9800; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                    <div style="color: #e65100; font-weight: 600; margin-bottom: 8px;">
+                        ⚠️ Mode File Lokal Terdeteksi
+                    </div>
+                    <div style="color: #e65100; font-size: 13px; margin-bottom: 12px;">
+                        Anda membuka file langsung dari komputer. Beberapa fitur mungkin terbatas karena keamanan browser (CORS).
+                        <br><br>
+                        <strong>Solusi:</strong>
+                        <ol style="margin: 8px 0; padding-left: 20px;">
+                            <li>Gunakan <strong>Live Server</strong> di VS Code (klik kanan file → "Open with Live Server")</li>
+                            <li>Upload ke <strong>GitHub Pages</strong> atau <strong>Netlify</strong></li>
+                            <li>Atau gunakan proxy di bawah (tidak 100% stabil)</li>
+                        </ol>
+                    </div>
+                </div>
+            ` : '';
+
             return `
                 <div class="n8n-container">
+                    ${warningBanner}
+                    
                     <div class="n8n-header">
                         <h2>🔍 N8N Data Management</h2>
                         <p>Kelola data via Telegram Bridge → Google Sheets</p>
                     </div>
 
-                    <!-- TELEGRAM STATUS CARD -->
+                    <!-- TELEGRAM STATUS -->
                     <div class="n8n-telegram-status" style="background: linear-gradient(135deg, #0088cc 0%, #005580 100%); color: white; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
@@ -554,11 +561,20 @@
                                     ${this.state.config.botToken ? '⏳ Menunggu koneksi...' : '⚠️ Belum dikonfigurasi'}
                                 </div>
                             </div>
-                            <button onclick="n8nModule.testTelegramConnection()" 
-                                    style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); 
-                                           color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;">
-                                🔄 Test Koneksi
-                            </button>
+                            <div style="display: flex; gap: 8px;">
+                                ${isFile ? `
+                                <button onclick="n8nModule.rotateProxy(); n8nModule.showNotification('🔄 Proxy rotated', 'success')" 
+                                        style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); 
+                                               color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px;">
+                                    🔄 Rotate Proxy
+                                </button>
+                                ` : ''}
+                                <button onclick="n8nModule.testTelegramConnection()" 
+                                        style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); 
+                                               color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                    🔄 Test Koneksi
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -608,7 +624,7 @@
                                         <td colspan="4" class="n8n-empty-message">
                                             <div class="empty-state">
                                                 <span class="empty-icon">📭</span>
-                                                <p>Belum ada data. Klik "Cari Data" untuk memuat data dari Google Sheets.</p>
+                                                <p>Belum ada data. Klik "Cari Data" untuk memuat.</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -644,7 +660,7 @@
 
                             <div class="n8n-form-group">
                                 <label>Chat ID (Auto-detect)</label>
-                                <input type="text" id="chatId" class="n8n-input" placeholder="Kirim pesan ke bot, lalu klik Test Koneksi" readonly>
+                                <input type="text" id="chatId" class="n8n-input" placeholder="Kirim pesan ke bot, lalu klik Test" readonly>
                                 <small>ID chat akan terdeteksi otomatis saat test koneksi</small>
                             </div>
 
@@ -672,7 +688,7 @@
                             <div class="n8n-form-group">
                                 <label>Sheet Name</label>
                                 <input type="text" id="sheetName" class="n8n-input" placeholder="Data Base Hifzi Cell">
-                                <small>Nama tab/sheet di spreadsheet (auto-create kalau tidak ada)</small>
+                                <small>Nama tab/sheet di spreadsheet</small>
                             </div>
 
                             <div class="n8n-form-group">
@@ -699,8 +715,7 @@
                                 <span class="step-number">3</span>
                                 <h3>📜 Generate Kode GAS (Otomatis)</h3>
                             </div>
-                            <p class="step-desc">Kode di bawah ini sudah sesuai dengan konfigurasi Anda. Copy dan deploy ke Google Apps Script.</p>
-
+                            
                             <div class="n8n-gas-actions">
                                 <button class="n8n-btn n8n-btn-secondary" id="btnGenerateGAS">
                                     <span class="icon">🔄</span>
@@ -710,79 +725,13 @@
                                     <span class="icon">📋</span>
                                     <span>Copy Kode</span>
                                 </button>
-                                <button class="n8n-btn n8n-btn-primary" id="btnOpenGAS" title="Buka script.google.com">
+                                <button class="n8n-btn n8n-btn-primary" id="btnOpenGAS">
                                     <span class="icon">🚀</span>
                                     <span>Buka GAS Editor</span>
                                 </button>
                             </div>
 
-                            <textarea id="gasCodeEditor" class="n8n-textarea" readonly placeholder="Klik 'Regenerate' untuk membuat kode GAS..."></textarea>
-
-                            <div class="gas-tips">
-                                <strong>💡 Tips:</strong> Kode sudah include CORS handling. Tidak perlu edit apapun, langsung copy → paste → deploy.
-                            </div>
-                        </div>
-
-                        <!-- DEPLOY GUIDE -->
-                        <div class="n8n-config-card">
-                            <div class="step-header">
-                                <span class="step-number">4</span>
-                                <h3>🚀 Cara Deploy GAS (Wajib)</h3>
-                            </div>
-
-                            <div class="deploy-steps">
-                                <div class="deploy-step">
-                                    <span class="step-icon">1</span>
-                                    <div class="step-content">
-                                        <strong>Buka GAS Editor</strong>
-                                        <p>Klik tombol "Buka GAS Editor" di atas atau buka <a href="https://script.google.com" target="_blank">script.google.com</a></p>
-                                    </div>
-                                </div>
-
-                                <div class="deploy-step">
-                                    <span class="step-icon">2</span>
-                                    <div class="step-content">
-                                        <strong>New Project</strong>
-                                        <p>Hapus semua kode default (Ctrl+A → Delete)</p>
-                                    </div>
-                                </div>
-
-                                <div class="deploy-step">
-                                    <span class="step-icon">3</span>
-                                    <div class="step-content">
-                                        <strong>Paste Kode</strong>
-                                        <p>Copy kode dari textarea di atas → Paste → Save (Ctrl+S)</p>
-                                    </div>
-                                </div>
-
-                                <div class="deploy-step">
-                                    <span class="step-icon">4</span>
-                                    <div class="step-content">
-                                        <strong>Deploy</strong>
-                                        <p>Deploy → New deployment → Type: Web App</p>
-                                    </div>
-                                </div>
-
-                                <div class="deploy-step">
-                                    <span class="step-icon">5</span>
-                                    <div class="step-content">
-                                        <strong>Setting Access</strong>
-                                        <p>Execute as: <strong>Me</strong> | Who has access: <strong>ANYONE</strong> ⚠️</p>
-                                    </div>
-                                </div>
-
-                                <div class="deploy-step">
-                                    <span class="step-icon">6</span>
-                                    <div class="step-content">
-                                        <strong>Copy URL</strong>
-                                        <p>Copy URL Web App → Paste ke field "GAS Web App URL" di atas</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="deploy-warning">
-                                <strong>⚠️ Penting:</strong> "Who has access" harus <strong>ANYONE</strong>, bukan "Only myself". Kalau tidak, akan muncul CORS error.
-                            </div>
+                            <textarea id="gasCodeEditor" class="n8n-textarea" readonly style="min-height: 300px; font-family: monospace; font-size: 12px;"></textarea>
                         </div>
                     </div>
 
@@ -800,7 +749,6 @@
                             <button class="n8n-modal-close" id="btnCloseModal">&times;</button>
                         </div>
                         <div class="n8n-modal-body">
-                            <div id="telegramInfo"></div>
                             <input type="hidden" id="editId">
                             <div class="n8n-form-group">
                                 <label>Nama <span class="required">*</span></label>
@@ -824,9 +772,6 @@
                         <div class="n8n-modal-body">
                             <p>Apakah Anda yakin ingin menghapus data ini?</p>
                             <p class="delete-info" id="deleteInfo" style="background: rgba(214, 48, 49, 0.1); padding: 10px; border-radius: 8px; margin-top: 10px; font-weight: 600; color: #d63031;"></p>
-                            <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                                💡 Notifikasi konfirmasi juga telah dikirim ke Telegram.
-                            </p>
                         </div>
                         <div class="n8n-modal-footer">
                             <button class="n8n-btn n8n-btn-ghost" id="btnCancelDelete">Batal</button>
@@ -850,7 +795,7 @@
             // Config
             document.getElementById('btnToggleConfig')?.addEventListener('click', this.toggleConfig);
             document.getElementById('btnSaveConfig')?.addEventListener('click', this.saveConfig);
-            document.getElementById('btnTestTelegram')?.addEventListener('click', () => this.getChatId());
+            document.getElementById('btnTestTelegram')?.addEventListener('click', this.getChatId);
             document.getElementById('btnTestGAS')?.addEventListener('click', this.testConnection);
 
             // GAS
@@ -872,39 +817,28 @@
         },
 
         toggleConfig() {
-            const configSection = document.getElementById('configSection');
+            const section = document.getElementById('configSection');
             const arrow = document.getElementById('configArrow');
-
-            if (configSection.style.display === 'none') {
-                configSection.style.display = 'block';
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
                 arrow.textContent = '▲';
-                this.state.configVisible = true;
             } else {
-                configSection.style.display = 'none';
+                section.style.display = 'none';
                 arrow.textContent = '▼';
-                this.state.configVisible = false;
             }
         },
 
-        // ============================================
-        // GAS CODE GENERATOR
-        // ============================================
-
         generateGAS() {
             const sheetName = this.state.config.sheetName || 'Data Base Hifzi Cell';
-
-            const gasCode = `// ============================================
-// GOOGLE APPS SCRIPT - N8N Telegram Bridge
+            const code = `// GAS Code untuk ${sheetName}
 // Auto-generated: ${new Date().toLocaleString()}
-// ============================================
 
 const SHEET_NAME = '${sheetName}';
 
 function doGet(e) {
   const action = e.parameter.action;
   const sheetId = e.parameter.sheetId;
-
-  // CORS Headers untuk semua response
+  
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -912,39 +846,26 @@ function doGet(e) {
   };
 
   try {
-    // Validasi parameter
-    if (!sheetId) {
-      throw new Error('Parameter sheetId diperlukan');
-    }
-
-    if (!action) {
-      throw new Error('Parameter action diperlukan');
-    }
+    if (!sheetId) throw new Error('sheetId required');
+    if (!action) throw new Error('action required');
 
     const ss = SpreadsheetApp.openById(sheetId);
     let sheet = ss.getSheetByName(SHEET_NAME);
 
-    // Auto-create sheet kalau belum ada
     if (!sheet) {
       sheet = ss.insertSheet(SHEET_NAME);
       sheet.appendRow(['NAMA', 'NOMOR']);
-      sheet.getRange(1, 1, 1, 2)
-        .setFontWeight('bold')
-        .setBackground('#4caf50')
-        .setFontColor('white');
+      sheet.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#4caf50').setFontColor('white');
     }
 
     let result = { success: false };
 
     switch(action) {
       case 'test':
-        const sheets = ss.getSheets().map(s => s.getName());
         result = { 
           success: true, 
           message: 'Koneksi berhasil',
-          sheets: sheets,
-          targetSheet: SHEET_NAME,
-          sheetExists: sheets.includes(SHEET_NAME),
+          sheets: ss.getSheets().map(s => s.getName()),
           timestamp: new Date().toISOString()
         };
         break;
@@ -953,156 +874,78 @@ function doGet(e) {
         const data = sheet.getDataRange().getValues();
         const rows = [];
         for (let i = 1; i < data.length; i++) {
-          rows.push({
-            row: i + 1,
-            nama: data[i][0] || '',
-            nomor: data[i][1] || ''
-          });
+          rows.push({ row: i + 1, nama: data[i][0] || '', nomor: data[i][1] || '' });
         }
-        result = { 
-          success: true, 
-          data: rows,
-          count: rows.length
-        };
+        result = { success: true, data: rows, count: rows.length };
         break;
 
       case 'addData':
         const namaAdd = e.parameter.nama || '';
         const nomorAdd = e.parameter.nomor || '';
-
-        if (!namaAdd || !nomorAdd) {
-          throw new Error('Parameter nama dan nomor diperlukan');
-        }
-
+        if (!namaAdd || !nomorAdd) throw new Error('nama dan nomor required');
         sheet.appendRow([namaAdd, nomorAdd]);
-        result = { 
-          success: true, 
-          message: 'Data berhasil ditambahkan',
-          row: sheet.getLastRow()
-        };
+        result = { success: true, message: 'Data ditambahkan', row: sheet.getLastRow() };
         break;
 
       case 'editData':
-        const rowEdit = e.parameter.row;
+        const rowEdit = parseInt(e.parameter.row);
         const namaEdit = e.parameter.nama || '';
         const nomorEdit = e.parameter.nomor || '';
-
-        if (!rowEdit) throw new Error('Parameter row diperlukan');
-        if (!namaEdit || !nomorEdit) throw new Error('Parameter nama dan nomor diperlukan');
-
-        const rowNum = parseInt(rowEdit);
-        if (isNaN(rowNum) || rowNum < 2) throw new Error('Nomor baris tidak valid');
-
-        sheet.getRange(rowNum, 1).setValue(namaEdit);
-        sheet.getRange(rowNum, 2).setValue(nomorEdit);
-        result = { 
-          success: true, 
-          message: 'Data berhasil diupdate',
-          row: rowNum
-        };
+        if (!rowEdit || rowEdit < 2) throw new Error('row invalid');
+        sheet.getRange(rowEdit, 1).setValue(namaEdit);
+        sheet.getRange(rowEdit, 2).setValue(nomorEdit);
+        result = { success: true, message: 'Data diupdate', row: rowEdit };
         break;
 
       case 'deleteData':
-        const rowDelete = e.parameter.row;
-
-        if (!rowDelete) throw new Error('Parameter row diperlukan');
-
-        const rowNumDel = parseInt(rowDelete);
-        if (isNaN(rowNumDel) || rowNumDel < 2) throw new Error('Nomor baris tidak valid');
-
-        sheet.deleteRow(rowNumDel);
-        result = { 
-          success: true, 
-          message: 'Data berhasil dihapus',
-          row: rowNumDel
-        };
+        const rowDel = parseInt(e.parameter.row);
+        if (!rowDel || rowDel < 2) throw new Error('row invalid');
+        sheet.deleteRow(rowDel);
+        result = { success: true, message: 'Data dihapus', row: rowDel };
         break;
 
       default:
-        result = { 
-          success: false, 
-          error: 'Action tidak valid: ' + action,
-          validActions: ['test', 'getData', 'addData', 'editData', 'deleteData']
-        };
+        result = { success: false, error: 'Invalid action: ' + action };
     }
 
     return jsonResponse(result, corsHeaders);
 
   } catch (error) {
-    console.error('Error in doGet:', error);
-    return jsonResponse({ 
-      success: false, 
-      error: error.toString(),
-      message: error.message,
-      stack: error.stack
-    }, corsHeaders);
+    return jsonResponse({ success: false, error: error.toString() }, corsHeaders);
   }
 }
 
-// Handle OPTIONS request untuk CORS preflight
-function doOptions(e) {
-  return ContentService.createTextOutput('')
-    .setHeaders({
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    });
-}
-
 function jsonResponse(data, headers) {
-  let output = ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-
-  // Add CORS headers
+  let output = ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
   if (headers) {
     for (let key in headers) {
       output = output.setHeader(key, headers[key]);
     }
   }
-
   return output;
 }`;
 
             const editor = document.getElementById('gasCodeEditor');
-            if (editor) {
-                editor.value = gasCode;
-            }
-            
-            this.showNotification('✅ Kode GAS generated!', 'success');
+            if (editor) editor.value = code;
         },
 
         copyGASCode() {
             const textarea = document.getElementById('gasCodeEditor');
-            if (!textarea || !textarea.value.trim()) {
-                this.showNotification('⚠️ Tidak ada kode untuk di-copy', 'warning');
+            if (!textarea?.value.trim()) {
+                this.showNotification('⚠️ Generate kode dulu', 'warning');
                 return;
             }
-
             textarea.select();
-            textarea.setSelectionRange(0, 99999);
-
-            try {
-                navigator.clipboard.writeText(textarea.value).then(() => {
-                    this.showNotification('✅ Kode GAS copied to clipboard!', 'success');
-                }).catch(() => {
-                    document.execCommand('copy');
-                    this.showNotification('✅ Kode GAS copied!', 'success');
-                });
-            } catch (e) {
-                document.execCommand('copy');
-                this.showNotification('✅ Kode GAS copied!', 'success');
-            }
+            document.execCommand('copy');
+            this.showNotification('✅ Kode GAS dicopy!', 'success');
         },
-
-        // ============================================
-        // TABLE RENDERING
-        // ============================================
 
         renderTable() {
             const tbody = document.getElementById('tableBody');
+            if (!tbody) return;
 
             if (this.state.filteredData.length === 0) {
-                tbody.innerHTML = `
+                tbody.innerHTML = \`
                     <tr class="n8n-empty-row">
                         <td colspan="4" class="n8n-empty-message">
                             <div class="empty-state">
@@ -1111,41 +954,38 @@ function jsonResponse(data, headers) {
                             </div>
                         </td>
                     </tr>
-                `;
+                \`;
                 this.updateButtonStates();
                 return;
             }
 
             tbody.innerHTML = this.state.filteredData.map((item, index) => {
                 const isSelected = this.state.selectedRow == item.row;
-                return `
-                    <tr class="n8n-data-row ${isSelected ? 'selected' : ''}" data-row="${item.row}">
-                        <td>${index + 1}</td>
-                        <td>${this.escapeHtml(item.nama || '')}</td>
-                        <td>${this.escapeHtml(item.nomor || '')}</td>
+                return \`
+                    <tr class="n8n-data-row \${isSelected ? 'selected' : ''}" data-row="\${item.row}">
+                        <td>\${index + 1}</td>
+                        <td>\${this.escapeHtml(item.nama || '')}</td>
+                        <td>\${this.escapeHtml(item.nomor || '')}</td>
                         <td>
-                            <button class="n8n-btn n8n-btn-sm n8n-btn-select ${isSelected ? 'selected' : ''}" data-row="${item.row}">
-                                ${isSelected ? '✓' : '☐'}
+                            <button class="n8n-btn n8n-btn-sm n8n-btn-select \${isSelected ? 'selected' : ''}" data-row="\${item.row}">
+                                \${isSelected ? '✓' : '☐'}
                             </button>
                         </td>
                     </tr>
-                `;
+                \`;
             }).join('');
 
-            // Event listeners
             tbody.querySelectorAll('.n8n-data-row').forEach(row => {
                 row.addEventListener('click', (e) => {
                     if (e.target.closest('.n8n-btn-select')) return;
-                    const rowNum = parseInt(row.getAttribute('data-row'));
-                    this.selectRow(rowNum);
+                    this.selectRow(parseInt(row.getAttribute('data-row')));
                 });
             });
 
             tbody.querySelectorAll('.n8n-btn-select').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const rowNum = parseInt(btn.getAttribute('data-row'));
-                    this.selectRow(rowNum);
+                    this.selectRow(parseInt(btn.getAttribute('data-row')));
                 });
             });
 
@@ -1153,11 +993,7 @@ function jsonResponse(data, headers) {
         },
 
         selectRow(row) {
-            if (this.state.selectedRow === row) {
-                this.state.selectedRow = null;
-            } else {
-                this.state.selectedRow = row;
-            }
+            this.state.selectedRow = this.state.selectedRow === row ? null : row;
             this.renderTable();
         },
 
@@ -1165,42 +1001,20 @@ function jsonResponse(data, headers) {
             const hasSelection = this.state.selectedRow !== null;
             const btnEdit = document.getElementById('btnEdit');
             const btnDelete = document.getElementById('btnDelete');
-            
             if (btnEdit) btnEdit.disabled = !hasSelection;
             if (btnDelete) btnDelete.disabled = !hasSelection;
         },
 
-        // ============================================
-        // TEST CONNECTIONS
-        // ============================================
-
         async testConnection() {
-            const { sheetId, sheetName, gasUrl } = this.state.config;
-            
-            if (!sheetId || !gasUrl) {
-                this.showNotification('⚠️ Sheet ID dan GAS URL wajib diisi!', 'warning');
-                return;
-            }
-
-            this.setStatus('🟡', 'Testing GAS connection...');
-            
             const result = await this.makeRequest('test');
-            
-            if (result && result.success) {
-                this.showNotification(`✅ ${result.message} | Sheets: ${(result.sheets || []).join(', ')}`, 'success');
-                this.setStatus('🟢', 'Terhubung ke GAS');
-            } else {
-                this.setStatus('🔴', 'GAS Error');
+            if (result?.success) {
+                this.showNotification(\`✅ \${result.message}\`, 'success');
             }
         },
 
         async testTelegramConnection() {
             await this.getChatId();
         },
-
-        // ============================================
-        // UTILITY FUNCTIONS
-        // ============================================
 
         openModal(modalId) {
             document.getElementById('modalOverlay').style.display = 'flex';
@@ -1226,30 +1040,23 @@ function jsonResponse(data, headers) {
             
             if (badgeEl) badgeEl.textContent = badge;
             if (textEl) textEl.textContent = text;
-            
-            // Update telegram status card
             if (telegramStatus) {
-                let statusMsg = text;
-                if (badge === '🟢') statusMsg = '✅ Terhubung';
-                if (badge === '🔴') statusMsg = '❌ Error koneksi';
-                if (badge === '🟡') statusMsg = '⏳ ' + text;
-                telegramStatus.textContent = statusMsg;
+                telegramStatus.textContent = badge === '🟢' ? '✅ Terhubung' : 
+                                           badge === '🔴' ? '❌ Error' : '⏳ ' + text;
             }
         },
 
         showNotification(message, type = 'info', duration = 4000) {
             const notif = document.getElementById('notification');
-            if (!notif) return;
-
+            if (!notif) {
+                alert(message);
+                return;
+            }
             notif.textContent = message;
-            notif.className = `n8n-notification show ${type}`;
-
-            setTimeout(() => {
-                notif.classList.remove('show');
-            }, duration);
+            notif.className = \`n8n-notification show \${type}\`;
+            setTimeout(() => notif.classList.remove('show'), duration);
         }
     };
 
-    // Expose to global scope
     window.n8nModule = n8nModule;
 })();
