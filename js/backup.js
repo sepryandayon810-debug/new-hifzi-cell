@@ -1,7 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.2)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v3.3)
 // Firebase + Google Sheets + Local
-// FIXED: Download from Google Sheets (POST method)
+// FIXED: GAS Code Fetch, Download & Upload
 // ============================================
 
 const backupModule = {
@@ -25,12 +25,13 @@ const backupModule = {
     gasUrl: '',
     sheetId: '',
     
-    gasCodeUrl: 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js',
+    // ✅ PERBAIKAN: URL fallback yang lebih reliable
+    gasCodeUrl: 'https://cdn.jsdelivr.net/gh/hifzi/gas-backup@main/backup-script.js',
+    gasCodeUrlFallback: 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js',
     
     deviceId: 'device_' + Date.now(),
     deviceName: navigator.userAgent.split(' ')[0],
     
-    // ✅ TAMBAHAN: Flag untuk tracking state kritis
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
     
@@ -52,10 +53,6 @@ const backupModule = {
         BACKUP_SETTINGS: 'hifzi_backup_settings'
     },
 
-    // ============================================
-    // INIT & CONFIG MANAGEMENT (FIXED v3.1)
-    // ============================================
-
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
@@ -64,7 +61,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.2...');
+        console.log('[Backup] Initializing v3.3...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -170,7 +167,7 @@ const backupModule = {
             
             this.gasUrl = localStorage.getItem(this.KEYS.GAS_URL) || '';
             this.sheetId = localStorage.getItem(this.KEYS.SHEET_ID) || '';
-            this.gasCodeUrl = localStorage.getItem(this.KEYS.GAS_CODE_URL) || 'https://raw.githubusercontent.com/hifzi/gas-backup/main/backup-script.js';
+            this.gasCodeUrl = localStorage.getItem(this.KEYS.GAS_CODE_URL) || this.gasCodeUrl;
             
             const fbConfig = localStorage.getItem(this.KEYS.FIREBASE_CONFIG);
             this.firebaseConfig = fbConfig ? JSON.parse(fbConfig) : {};
@@ -220,10 +217,6 @@ const backupModule = {
         
         console.log('[Backup] Network listeners setup complete');
     },
-
-    // ============================================
-    // SHEET ID VALIDATION (FIXED v3.1)
-    // ============================================
 
     cleanSheetId(sheetId) {
         if (sheetId === null || sheetId === undefined) {
@@ -296,7 +289,7 @@ const backupModule = {
     },
 
     // ============================================
-    // EXTERNAL GAS CODE LOADER
+    // EXTERNAL GAS CODE LOADER - FIXED v3.3
     // ============================================
 
     async fetchGASCodeFromExternal(forceRefresh = false) {
@@ -312,54 +305,82 @@ const backupModule = {
             }
         }
         
-        this.showToast('⬇️ Mengambil GAS code terbaru...');
+        this.showToast('⬇️ Mengambil GAS code...');
         
-        try {
-            const url = this.gasCodeUrl + (this.gasCodeUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+        // ✅ PERBAIKAN: Coba URL utama dulu, kalau gagal coba fallback
+        const urls = [this.gasCodeUrl, this.gasCodeUrlFallback];
+        let lastError = null;
+        
+        for (let i = 0; i < urls.length; i++) {
+            const url = urls[i] + (urls[i].includes('?') ? '&' : '?') + '_t=' + Date.now();
+            console.log(`[Backup] Trying URL ${i + 1}:`, urls[i]);
             
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/plain, application/javascript, */*',
-                    'Cache-Control': 'no-cache'
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/plain, application/javascript, */*',
+                        'Cache-Control': 'no-cache'
+                    },
+                    // ✅ PERBAIKAN: Tambah timeout
+                    signal: AbortSignal.timeout(10000)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                
+                const code = await response.text();
+                
+                // ✅ Validasi minimal
+                if (!code || code.length < 100) {
+                    throw new Error('Response too short');
+                }
+                
+                if (!code.includes('function doPost') && !code.includes('function doGet')) {
+                    throw new Error('Code tidak valid: tidak mengandung doGet/doPost');
+                }
+                
+                const version = 'v' + new Date().toISOString().split('T')[0] + '-' + Date.now().toString().slice(-4);
+                
+                localStorage.setItem(cacheKey, code);
+                localStorage.setItem(versionKey, version);
+                
+                this.showToast('✅ GAS code berhasil diupdate!');
+                console.log('[Backup] GAS code fetched successfully from:', urls[i]);
+                return { success: true, code: code, version: version, fromCache: false, url: urls[i] };
+                
+            } catch (error) {
+                console.error(`[Backup] Failed to fetch from URL ${i + 1}:`, error);
+                lastError = error;
+                continue; // Coba URL berikutnya
             }
-            
-            const code = await response.text();
-            
-            if (!code.includes('function doGet') && !code.includes('function doPost')) {
-                throw new Error('Code tidak valid: tidak mengandung doGet/doPost');
-            }
-            
-            const version = 'v' + Date.now();
-            
-            localStorage.setItem(cacheKey, code);
-            localStorage.setItem(versionKey, version);
-            
-            this.showToast('✅ GAS code berhasil diupdate!');
-            return { success: true, code: code, version: version, fromCache: false };
-            
-        } catch (error) {
-            console.error('[Backup] Failed to fetch GAS code:', error);
-            
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                this.showToast('⚠️ Menggunakan GAS code dari cache');
-                return { 
-                    success: true, 
-                    code: cached, 
-                    version: localStorage.getItem(versionKey) || 'cached',
-                    fromCache: true,
-                    error: error.message
-                };
-            }
-            
-            return { success: false, error: error.message };
         }
+        
+        // ✅ Jika semua URL gagal, gunakan cache atau fallback code
+        console.error('[Backup] All URLs failed, trying cache...');
+        
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            this.showToast('⚠️ Menggunakan GAS code dari cache');
+            return { 
+                success: true, 
+                code: cached, 
+                version: localStorage.getItem(versionKey) || 'cached',
+                fromCache: true,
+                error: lastError?.message
+            };
+        }
+        
+        // ✅ Gunakan default code embedded jika tidak ada cache
+        this.showToast('⚠️ Menggunakan GAS code default');
+        return { 
+            success: true, 
+            code: this.getDefaultGASCode(), 
+            version: 'embedded-v3.3',
+            fromCache: true,
+            error: lastError?.message
+        };
     },
 
     updateGASCodeUrl(newUrl) {
@@ -378,10 +399,6 @@ const backupModule = {
         this.showToast('✅ URL GAS code diupdate, akan fetch ulang...');
         return true;
     },
-
-    // ============================================
-    // DATA COLLECTION
-    // ============================================
 
     getBackupData() {
         const allData = (typeof dataManager !== 'undefined' && dataManager.getAllData) 
@@ -402,7 +419,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '3.2',
+                version: '3.3',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -434,10 +451,6 @@ const backupModule = {
             }
         }
     },
-
-    // ============================================
-    // AUTO SYNC CONTROL
-    // ============================================
 
     toggleAutoSync() {
         this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
@@ -527,10 +540,6 @@ const backupModule = {
         return Promise.resolve();
     },
 
-    // ============================================
-    // MANUAL SYNC
-    // ============================================
-
     manualUpload() {
         console.log('[Backup] Manual upload initiated');
         const data = this.getBackupData();
@@ -575,10 +584,6 @@ const backupModule = {
             return Promise.resolve();
         }
     },
-
-    // ============================================
-    // FIREBASE (FIXED v3.1 - Auto Re-auth)
-    // ============================================
 
     initFirebase(attemptAutoLogin = false) {
         if (typeof firebase === 'undefined') {
@@ -762,7 +767,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '3.2'
+                version: '3.3'
             }
         };
         
@@ -1034,7 +1039,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE SHEETS (FIXED v3.2 - Download POST)
+    // GOOGLE SHEETS (FIXED v3.3)
     // ============================================
 
     checkNewDeviceGAS() {
@@ -1183,7 +1188,7 @@ const backupModule = {
     },
 
     // ============================================
-    // DOWNLOAD FROM GAS - FIXED v3.2 (POST METHOD)
+    // DOWNLOAD FROM GAS - FIXED v3.3
     // ============================================
     downloadFromGAS(silent = false, force = false) {
         if (!this.gasUrl) {
@@ -1210,8 +1215,6 @@ const backupModule = {
             this.showToast('⬇️ Download... (ID: ' + cleanSheetId.substring(0, 8) + '...)');
         }
         
-        // ✅ PERBAIKAN v3.2: Gunakan POST dengan action restore, jangan GET
-        // Karena GET sering bermasalah dengan CORS dan parameter panjang di URL
         const payload = {
             action: 'restore',
             sheetId: cleanSheetId,
@@ -1222,13 +1225,13 @@ const backupModule = {
         console.log('[Backup] Download payload:', JSON.stringify(payload));
 
         return fetch(this.gasUrl, {
-            method: 'POST', // ✅ Ganti dari GET ke POST
+            method: 'POST',
             mode: 'cors',
             cache: 'no-cache',
             headers: { 
                 'Content-Type': 'text/plain;charset=utf-8'
             },
-            body: JSON.stringify(payload) // ✅ Kirim sebagai body, bukan query param
+            body: JSON.stringify(payload)
         })
         .then(async (r) => {
             console.log('[Backup] Download response status:', r.status);
@@ -1251,7 +1254,6 @@ const backupModule = {
             console.log('[Backup] Download result:', result);
             
             if (result?.success && result.data) {
-                // ✅ Validasi data structure
                 if (typeof result.data !== 'object') {
                     throw new Error('Data format invalid: bukan object');
                 }
@@ -1300,6 +1302,7 @@ const backupModule = {
         const gasCode = fetchResult.success ? fetchResult.code : this.getDefaultGASCode();
         const version = fetchResult.success ? fetchResult.version : 'fallback';
         const sourceInfo = fetchResult.fromCache ? '(dari cache)' : fetchResult.success ? '(terbaru)' : '(fallback)';
+        const urlInfo = fetchResult.url ? `<br>Source: ${fetchResult.url}` : '';
         
         modal.innerHTML = `
             <div style="background: white; border-radius: 16px; max-width: 900px; width: 100%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
@@ -1307,7 +1310,7 @@ const backupModule = {
                     <div>
                         <div style="font-size: 18px; font-weight: 700;">📋 Google Apps Script Generator</div>
                         <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">
-                            Version: ${version} ${sourceInfo} • Auto-update enabled
+                            Version: ${version} ${sourceInfo} ${urlInfo}
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px;">
@@ -1436,7 +1439,7 @@ const backupModule = {
     },
 
     getDefaultGASCode() {
-        return `// GAS CODE v3.2 - PASTE IN script.google.com
+        return `// GAS CODE v3.3 - PASTE IN script.google.com
 // DEPLOY AS: Web app, Execute as: Me, Access: Anyone
 
 const SPREADSHEET_ID = '';
@@ -1479,7 +1482,7 @@ function doPost(e) {
     }
     
     if (action === 'test') {
-      return jsonResponse({ success: true, message: 'Connected!', sheet: ss.getName() });
+      return jsonResponse({ success: true, message: 'Connected! Sheet: ' + ss.getName(), sheetName: ss.getName() });
     }
     
     if (action === 'sync') {
@@ -1493,7 +1496,7 @@ function doPost(e) {
     return jsonResponse({ success: false, message: 'Unknown action: ' + action });
     
   } catch (err) {
-    return jsonResponse({ success: false, message: err.toString() });
+    return jsonResponse({ success: false, message: 'Error: ' + err.toString() });
   }
 }
 
@@ -1507,17 +1510,20 @@ function handleSync(ss, data) {
     // Clear existing data
     sheet.clear();
     
-    // Write metadata
+    // Write metadata row 1
     sheet.getRange(1, 1).setValue('HIFZI_BACKUP_DATA');
     sheet.getRange(1, 2).setValue(new Date().toISOString());
     sheet.getRange(1, 3).setValue(data.deviceId || 'unknown');
     sheet.getRange(1, 4).setValue(data.deviceName || 'unknown');
     
-    // Write actual data as JSON in row 3
+    // Write actual data as JSON in row 3, column 1
     var jsonData = JSON.stringify(data.data || data);
     sheet.getRange(3, 1).setValue(jsonData);
     
-    return jsonResponse({ success: true, message: 'Data synced successfully' });
+    // Auto-resize column
+    sheet.autoResizeColumn(1);
+    
+    return jsonResponse({ success: true, message: 'Data synced successfully to sheet: ' + ss.getName() });
   } catch (err) {
     return jsonResponse({ success: false, message: 'Sync error: ' + err.toString() });
   }
@@ -1527,14 +1533,14 @@ function handleRestore(ss, data) {
   try {
     var sheet = ss.getSheetByName('Backup');
     if (!sheet) {
-      return jsonResponse({ success: false, message: 'Sheet Backup tidak ditemukan' });
+      return jsonResponse({ success: false, message: 'Sheet Backup tidak ditemukan. Silakan upload dulu.' });
     }
     
     // Read JSON data from row 3, column 1
     var jsonData = sheet.getRange(3, 1).getValue();
     
-    if (!jsonData) {
-      return jsonResponse({ success: false, message: 'Tidak ada data di sheet' });
+    if (!jsonData || jsonData === '') {
+      return jsonResponse({ success: false, message: 'Tidak ada data di sheet. Silakan upload dulu.' });
     }
     
     // Parse JSON
@@ -1542,10 +1548,15 @@ function handleRestore(ss, data) {
     try {
       parsedData = JSON.parse(jsonData);
     } catch (e) {
-      return jsonResponse({ success: false, message: 'Data corrupt: ' + e.toString() });
+      return jsonResponse({ success: false, message: 'Data corrupt atau bukan JSON valid: ' + e.toString() });
     }
     
-    return jsonResponse({ success: true, data: parsedData, message: 'Data restored successfully' });
+    return jsonResponse({ 
+      success: true, 
+      data: parsedData, 
+      message: 'Data restored successfully from sheet: ' + ss.getName(),
+      restoredAt: new Date().toISOString()
+    });
   } catch (err) {
     return jsonResponse({ success: false, message: 'Restore error: ' + err.toString() });
   }
@@ -1592,10 +1603,6 @@ function jsonResponse(data, callback) {
 }`;
     },
 
-    // ============================================
-    // LOCAL FILE BACKUP
-    // ============================================
-
     downloadJSON() {
         const data = this.getBackupData();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1639,10 +1646,6 @@ function jsonResponse(data, callback) {
         input.value = '';
     },
 
-    // ============================================
-    // LOGIN HISTORY
-    // ============================================
-
     addLoginHistory(provider, email) {
         const history = JSON.parse(localStorage.getItem('hifzi_login_history') || '[]');
         
@@ -1679,10 +1682,6 @@ function jsonResponse(data, callback) {
             this.render();
         }
     },
-
-    // ============================================
-    // CONFIG & SETTINGS (FIXED v3.1)
-    // ============================================
 
     setProvider(provider) {
         this.currentProvider = provider;
@@ -1767,10 +1766,6 @@ function jsonResponse(data, callback) {
         this.render();
     },
 
-    // ============================================
-    // RESET & DANGER ZONE (FIXED v3.1)
-    // ============================================
-
     resetLocal() {
         if (!confirm('⚠️ Hapus SEMUA data lokal?')) return;
         if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') return;
@@ -1846,10 +1841,6 @@ function jsonResponse(data, callback) {
         }
     },
 
-    // ============================================
-    // UI HELPERS
-    // ============================================
-
     updateSyncStatus(status) {
         const syncText = document.getElementById('syncText');
         if (syncText) syncText.textContent = status;
@@ -1874,10 +1865,6 @@ function jsonResponse(data, callback) {
             }, 3000);
         }
     },
-
-    // ============================================
-    // RENDER UI (FIXED v3.2)
-    // ============================================
 
     render() {
         if (!this.isInitialized) {
@@ -2200,7 +2187,7 @@ function jsonResponse(data, callback) {
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
-                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v3.2)</div>
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v3.3)</div>
                 
                 <button onclick="backupModule.showGASGenerator()" 
                     style="width: 100%; padding: 14px; background: linear-gradient(135deg, #34a853 0%, #0f9d58 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(52,168,83,0.3);">
@@ -2271,10 +2258,6 @@ function jsonResponse(data, callback) {
     }
 };
 
-// ============================================
-// AUTO INIT & EXPOSE
-// ============================================
-
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         backupModule.init();
@@ -2286,5 +2269,5 @@ if (document.readyState === 'loading') {
 window.backupModule = backupModule;
 
 console.log('[Backup] ========================================');
-console.log('[Backup] Module loaded v3.2 - DOWNLOAD FIX (POST)');
+console.log('[Backup] Module loaded v3.3 - FETCH FIX');
 console.log('[Backup] ========================================');
