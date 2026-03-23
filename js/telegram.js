@@ -1,6 +1,6 @@
 /**
  * Telegram Bot Integration Module + SALDO INTEGRATION
- * VERSI FILE LOKAL - Menggunakan Proxy untuk bypass CORS
+ * VERSI INTEGRASI HIFZI CELL - Modular dengan Toggle Sections
  */
 
 const TelegramModule = (function() {
@@ -45,11 +45,6 @@ const TelegramModule = (function() {
     let topups = [];
     let currentFilter = 'all';
     let isInitialized = false;
-    
-    // ==========================================
-    // TAMBAHAN: FILTER WAKTU
-    // ==========================================
-    
     let currentTimeFilter = 'month';
     let customDateRange = { start: null, end: null };
     let isTopupListVisible = true;
@@ -62,10 +57,7 @@ const TelegramModule = (function() {
         custom: { label: 'Custom', icon: '📋' }
     };
     
-    // ==========================================
     // GAS CODE TEMPLATE
-    // ==========================================
-    
     const GAS_CODE = `/**
  * Google Apps Script untuk Telegram + Saldo Integration
  * Deploy sebagai Web App (Execute as: Me, Access: Anyone)
@@ -260,7 +252,7 @@ function jsonResponse(data) {
 }`;
     
     // ==========================================
-    // INIT
+    // INIT & DATA MANAGEMENT
     // ==========================================
     
     function init() {
@@ -307,7 +299,6 @@ function jsonResponse(data) {
             console.error('[Filter] Error loading settings:', e);
         }
         
-        // Load section visibility
         try {
             const savedSections = localStorage.getItem(STORAGE_KEY_SECTIONS);
             if (savedSections) sectionVisibility = { ...sectionVisibility, ...JSON.parse(savedSections) };
@@ -374,7 +365,7 @@ function jsonResponse(data) {
     }
     
     // ==========================================
-    // TAMBAHAN: FILTER WAKTU FUNCTIONS
+    // FILTER WAKTU FUNCTIONS
     // ==========================================
     
     function getFilteredByTime() {
@@ -389,23 +380,18 @@ function jsonResponse(data) {
             switch(currentTimeFilter) {
                 case 'today':
                     return d >= today;
-                    
                 case 'yesterday':
                     return d >= yesterday && d < today;
-                    
                 case 'month':
                     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                    
                 case 'year':
                     return d.getFullYear() === now.getFullYear();
-                    
                 case 'custom':
                     if (!customDateRange.start || !customDateRange.end) return true;
                     const start = new Date(customDateRange.start);
                     const end = new Date(customDateRange.end);
                     end.setHours(23, 59, 59, 999);
                     return d >= start && d <= end;
-                    
                 default:
                     return true;
             }
@@ -423,7 +409,7 @@ function jsonResponse(data) {
     }
     
     // ==========================================
-    // SALDO MODULE - VERSI FILE LOKAL DENGAN PROXY
+    // SALDO MODULE
     // ==========================================
     
     const SaldoModule = {
@@ -479,11 +465,6 @@ function jsonResponse(data) {
                                 style="background: #2196f3; color: white; border: none; padding: 8px 16px; 
                                        border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 8px;">
                             🧪 Test Proxy
-                        </button>
-                        <button onclick="window.open('https://github.com/', '_blank')" 
-                                style="background: #333; color: white; border: none; padding: 8px 16px; 
-                                       border-radius: 6px; cursor: pointer; font-size: 12px;">
-                            📤 Upload ke GitHub
                         </button>
                     </div>
                 `;
@@ -558,7 +539,7 @@ function jsonResponse(data) {
                         <li>Klik jenis saldo yang ingin diinput (DANA/DIGIPOS/MASTERLOAD)</li>
                         <li>Masukkan nominal saldo yang diterima</li>
                         <li>Klik tombol "✅ Simpan ke Sheet"</li>
-                        <li>Data otomatis masuk ke Google Sheet "TOP UP" (sama seperti bot Telegram)</li>
+                        <li>Data otomatis masuk ke Google Sheet "TOP UP"</li>
                     </ol>
                 </div>
                 
@@ -709,7 +690,6 @@ function jsonResponse(data) {
         },
         
         pilihJenis: async function(jenis) {
-            console.log('[Saldo] =======================================');
             console.log('[Saldo] STEP 1: Pilih Jenis =', jenis);
             
             const validation = this.validateConfig();
@@ -729,11 +709,7 @@ function jsonResponse(data) {
                     namaItem: jenis
                 };
                 
-                console.log('[Saldo] Payload:', payload);
-                
                 const result = await this.apiCall(payload);
-                
-                console.log('[Saldo] Response:', result);
                 
                 if (result.success) {
                     this.transaksiAktif = {
@@ -772,8 +748,7 @@ function jsonResponse(data) {
                                '3. Sheet ID salah atau tidak punya akses\n\n' +
                                'Solusi:\n' +
                                '• Cek Script URL dan Sheet ID\n' +
-                               '• Re-deploy GAS dengan "Who has access: Anyone"\n' +
-                               '• Atau upload ke GitHub Pages untuk menghindari CORS';
+                               '• Re-deploy GAS dengan "Who has access: Anyone"';
                 }
                 
                 alert('❌ Error:\n\n' + errorMsg);
@@ -783,9 +758,6 @@ function jsonResponse(data) {
         kirimNominal: async function() {
             const nominalInput = document.getElementById('saldoNominal');
             const nominal = parseInt(nominalInput.value.replace(/\D/g, ''));
-            
-            console.log('[Saldo] =======================================');
-            console.log('[Saldo] STEP 2: Kirim Nominal =', nominal);
             
             if (!nominal || nominal <= 0) {
                 alert('❌ Nominal tidak valid!\n\nMasukkan angka lebih dari 0');
@@ -810,8 +782,6 @@ function jsonResponse(data) {
                 };
                 
                 const result = await this.apiCall(payload);
-                
-                console.log('[Saldo] Response:', result);
                 
                 if (result.success) {
                     const topup = {
@@ -903,17 +873,67 @@ function jsonResponse(data) {
     // ==========================================
     
     function renderPage() {
-        const container = document.getElementById('mainContent');
+        // Coba cari container dengan berbagai kemungkinan ID
+        let container = document.getElementById('mainContent');
+        
+        // Jika tidak ada, coba cari container lain yang umum digunakan
         if (!container) {
-            console.error('[Telegram+Saldo] mainContent not found');
+            container = document.getElementById('content');
+        }
+        if (!container) {
+            container = document.getElementById('app-content');
+        }
+        if (!container) {
+            container = document.getElementById('page-content');
+        }
+        if (!container) {
+            container = document.querySelector('.main-content');
+        }
+        if (!container) {
+            container = document.querySelector('.content-area');
+        }
+        
+        // Jika masih tidak ada, cari element main atau section
+        if (!container) {
+            const main = document.querySelector('main');
+            if (main) container = main;
+        }
+        
+        // Last resort: cari div yang besar di body
+        if (!container) {
+            const divs = document.body.querySelectorAll('div');
+            for (let div of divs) {
+                if (div.offsetWidth > 300 && div.children.length > 3) {
+                    container = div;
+                    break;
+                }
+            }
+        }
+        
+        if (!container) {
+            console.error('[Telegram+Saldo] ERROR: Tidak dapat menemukan container untuk render!');
+            console.error('[Telegram+Saldo] Pastikan ada elemen dengan id="mainContent" atau class="main-content"');
+            
+            // Tampilkan error di body jika memungkinkan
+            const errorDiv = document.createElement('div');
+            errorDiv.innerHTML = `
+                <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 20px; margin: 20px; color: #c62828;">
+                    <h3>❌ Error: Container tidak ditemukan</h3>
+                    <p>Pastikan elemen dengan id="mainContent" ada di HTML Anda.</p>
+                    <p>Atau tambahkan: <code>&lt;div id="mainContent"&gt;&lt;/div&gt;</code></p>
+                </div>
+            `;
+            document.body.appendChild(errorDiv);
             return;
         }
+        
+        console.log('[Telegram+Saldo] Rendering to container:', container.id || container.className || 'unnamed');
         
         const stats = getStats();
         const syncStatus = getSyncStatus();
         
         container.innerHTML = `
-            <div class="tg-container">
+            <div class="tg-container" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
                 ${renderHeader()}
                 ${renderStats(stats)}
                 ${SaldoModule.renderSaldoSection()}
@@ -928,6 +948,119 @@ function jsonResponse(data) {
                 @keyframes slideDown {
                     from { opacity: 0; transform: translateY(-10px); }
                     to { opacity: 1; transform: translateY(0); }
+                }
+                .tg-form-row {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 16px;
+                    margin-bottom: 16px;
+                }
+                .tg-form-group {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .tg-form-group label {
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #555;
+                    margin-bottom: 6px;
+                }
+                .tg-form-group input,
+                .tg-form-group select {
+                    padding: 10px 12px;
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: all 0.3s;
+                }
+                .tg-form-group input:focus,
+                .tg-form-group select:focus {
+                    outline: none;
+                    border-color: #667eea;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+                }
+                .tg-actions {
+                    display: flex;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    margin-top: 16px;
+                }
+                .tg-btn {
+                    padding: 10px 20px;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                    font-size: 14px;
+                }
+                .tg-btn-primary {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }
+                .tg-btn-secondary {
+                    background: #f5f5f5;
+                    color: #666;
+                    border: 1px solid #ddd;
+                }
+                .tg-btn-success {
+                    background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+                    color: white;
+                }
+                .tg-btn-gas {
+                    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+                    color: white;
+                }
+                .tg-btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                .tg-info-box {
+                    background: #e3f2fd;
+                    border-left: 4px solid #2196f3;
+                    padding: 16px;
+                    margin-bottom: 16px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                }
+                .tg-info-box a {
+                    color: #1976d2;
+                    text-decoration: none;
+                }
+                .tg-hint {
+                    font-size: 12px;
+                    color: #666;
+                    margin-top: 4px;
+                }
+                .tg-gas-code-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    background: #333;
+                    color: white;
+                    padding: 12px 16px;
+                    border-radius: 8px 8px 0 0;
+                }
+                .tg-gas-code {
+                    background: #1e1e1e;
+                    color: #d4d4d4;
+                    padding: 16px;
+                    margin: 0;
+                    overflow-x: auto;
+                    font-size: 12px;
+                    line-height: 1.6;
+                    border-radius: 0 0 8px 8px;
+                    max-height: 400px;
+                    overflow-y: auto;
+                }
+                .tg-btn-small {
+                    background: #667eea;
+                    color: white;
+                    border: none;
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 12px;
                 }
             </style>
         `;
@@ -951,15 +1084,22 @@ function jsonResponse(data) {
         const statusText = isConfigured ? (config.isPolling ? 'Aktif' : 'Siap') : 'Belum Setup';
         
         return `
-            <div class="tg-header">
-                <div class="tg-title-area">
-                    <div class="tg-icon">📱</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; 
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        color: white; padding: 24px; border-radius: 16px; margin-bottom: 24px;
+                        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div style="font-size: 48px;">📱</div>
                     <div>
-                        <h2>Telegram + Saldo</h2>
-                        <p>Integrasi Bot n8n & Input Manual</p>
+                        <h2 style="margin: 0; font-size: 24px; font-weight: 700;">Telegram + Saldo</h2>
+                        <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 14px;">Integrasi Bot n8n & Input Manual</p>
                     </div>
                 </div>
-                <div class="tg-status ${statusClass}">${statusText}</div>
+                <div style="background: ${isConfigured ? '#4caf50' : '#ff9800'}; 
+                            color: white; padding: 8px 16px; border-radius: 20px; 
+                            font-size: 13px; font-weight: 600;">
+                    ${statusText}
+                </div>
             </div>
         `;
     }
@@ -1012,37 +1152,38 @@ function jsonResponse(data) {
                 
                 ${customDateInput}
                 
-                <div class="tg-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;">
-                    <div class="tg-stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; position: relative; overflow: hidden;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; 
+                                position: relative; overflow: hidden; padding: 20px; border-radius: 12px;">
                         <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin-bottom: 8px;">
                             Total (${getFilterLabel()})
                         </div>
-                        <div class="tg-stat-value" style="font-size: 24px; color: white;">${formatMoney(stats.total)}</div>
+                        <div style="font-size: 24px; font-weight: 700;">${formatMoney(stats.total)}</div>
                         <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">${stats.count} transaksi</div>
                         <div style="position: absolute; top: -20px; right: -20px; font-size: 80px; opacity: 0.1;">💰</div>
                     </div>
                     
-                    <div class="tg-stat-card" style="border: 2px solid #4caf50; background: #e8f5e9;">
+                    <div style="border: 2px solid #4caf50; background: #e8f5e9; padding: 20px; border-radius: 12px;">
                         <div style="font-size: 11px; color: #2e7d32; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
                             Dikonfirmasi
                         </div>
-                        <div class="tg-stat-value" style="color: #2e7d32;">${stats.confirmed}</div>
+                        <div style="font-size: 24px; font-weight: 700; color: #2e7d32;">${stats.confirmed}</div>
                         <div style="font-size: 12px; color: #4caf50; margin-top: 4px;">transaksi</div>
                     </div>
                     
-                    <div class="tg-stat-card" style="border: 2px solid #ff9800; background: #fff3e0;">
+                    <div style="border: 2px solid #ff9800; background: #fff3e0; padding: 20px; border-radius: 12px;">
                         <div style="font-size: 11px; color: #e65100; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
                             Pending
                         </div>
-                        <div class="tg-stat-value" style="color: #e65100;">${stats.pending}</div>
+                        <div style="font-size: 24px; font-weight: 700; color: #e65100;">${stats.pending}</div>
                         <div style="font-size: 12px; color: #ff9800; margin-top: 4px;">menunggu</div>
                     </div>
                     
-                    <div class="tg-stat-card" style="border: 2px solid #2196f3; background: #e3f2fd;">
+                    <div style="border: 2px solid #2196f3; background: #e3f2fd; padding: 20px; border-radius: 12px;">
                         <div style="font-size: 11px; color: #1565c0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
                             Tersync Sheet
                         </div>
-                        <div class="tg-stat-value" style="color: #1565c0;">${stats.synced}</div>
+                        <div style="font-size: 24px; font-weight: 700; color: #1565c0;">${stats.synced}</div>
                         <div style="font-size: 12px; color: #2196f3; margin-top: 4px;">data tersimpan</div>
                     </div>
                 </div>
@@ -1293,7 +1434,7 @@ function jsonResponse(data) {
         const arrowIcon = isTopupListVisible ? '🔽' : '▶️';
         const containerDisplay = isTopupListVisible ? 'block' : 'none';
         
-        let html = `
+        return `
             <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 24px; 
                         box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                 
@@ -1315,7 +1456,7 @@ function jsonResponse(data) {
                                    display: flex; align-items: center; gap: 6px;"
                             onmouseover="this.style.background='#e0e0e0'"
                             onmouseout="this.style.background='#f5f5f5'">
-                        <span id="topupToggleIcon">${arrowIcon}</span>
+                        <span>${arrowIcon}</span>
                         <span style="font-size: 12px; color: #666; font-weight: 500;">
                             ${isTopupListVisible ? 'Sembunyikan' : 'Tampilkan'}
                         </span>
@@ -1323,35 +1464,31 @@ function jsonResponse(data) {
                 </div>
                 
                 <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e0e0e0; 
-                            display: ${containerDisplay}; animation: fadeIn 0.3s ease;" id="topupFilters">
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                            display: ${containerDisplay}; animation: fadeIn 0.3s ease;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px;">
                         <span style="font-size: 13px; color: #666; font-weight: 500;">Filter Status:</span>
-                        <button class="tg-filter ${currentFilter === 'all' ? 'active' : ''}" 
-                                onclick="event.stopPropagation(); TelegramModule.setFilter('all')"
+                        <button onclick="TelegramModule.setFilter('all')" 
                                 style="padding: 6px 14px; border: 2px solid ${currentFilter === 'all' ? '#667eea' : '#e0e0e0'}; 
                                        background: ${currentFilter === 'all' ? '#667eea' : 'white'}; 
                                        color: ${currentFilter === 'all' ? 'white' : '#666'}; 
                                        border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
                             Semua
                         </button>
-                        <button class="tg-filter ${currentFilter === 'pending' ? 'active' : ''}" 
-                                onclick="event.stopPropagation(); TelegramModule.setFilter('pending')"
+                        <button onclick="TelegramModule.setFilter('pending')" 
                                 style="padding: 6px 14px; border: 2px solid ${currentFilter === 'pending' ? '#ff9800' : '#e0e0e0'}; 
                                        background: ${currentFilter === 'pending' ? '#ff9800' : 'white'}; 
                                        color: ${currentFilter === 'pending' ? 'white' : '#666'}; 
                                        border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
                             Pending
                         </button>
-                        <button class="tg-filter ${currentFilter === 'confirmed' ? 'active' : ''}" 
-                                onclick="event.stopPropagation(); TelegramModule.setFilter('confirmed')"
+                        <button onclick="TelegramModule.setFilter('confirmed')" 
                                 style="padding: 6px 14px; border: 2px solid ${currentFilter === 'confirmed' ? '#4caf50' : '#e0e0e0'}; 
                                        background: ${currentFilter === 'confirmed' ? '#4caf50' : 'white'}; 
                                        color: ${currentFilter === 'confirmed' ? 'white' : '#666'}; 
                                        border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500;">
                             Dikonfirmasi
                         </button>
-                        <button class="tg-filter ${currentFilter === 'rejected' ? 'active' : ''}" 
-                                onclick="event.stopPropagation(); TelegramModule.setFilter('rejected')"
+                        <button onclick="TelegramModule.setFilter('rejected')" 
                                 style="padding: 6px 14px; border: 2px solid ${currentFilter === 'rejected' ? '#f44336' : '#e0e0e0'}; 
                                        background: ${currentFilter === 'rejected' ? '#f44336' : 'white'}; 
                                        color: ${currentFilter === 'rejected' ? 'white' : '#666'}; 
@@ -1359,23 +1496,23 @@ function jsonResponse(data) {
                             Ditolak
                         </button>
                     </div>
-                </div>
-                
-                <div style="display: ${containerDisplay}; margin-top: 16px; animation: fadeIn 0.3s ease;" id="topupListContainer">
-                    ${renderTopupItems(filtered)}
-                </div>
-                
-                ${isTopupListVisible && filtered.length === 0 ? `
-                    <div style="text-align: center; padding: 40px 20px; color: #999; animation: fadeIn 0.3s ease;">
-                        <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
-                        <div style="font-size: 16px; font-weight: 500; color: #666; margin-bottom: 4px;">
-                            Tidak ada data topup
-                        </div>
-                        <div style="font-size: 13px; color: #999;">
-                            untuk periode ${getFilterLabel().toLowerCase()}
-                        </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        ${filtered.map(t => renderTopupItem(t)).join('')}
                     </div>
-                ` : ''}
+                    
+                    ${filtered.length === 0 ? `
+                        <div style="text-align: center; padding: 40px 20px; color: #999;">
+                            <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
+                            <div style="font-size: 16px; font-weight: 500; color: #666; margin-bottom: 4px;">
+                                Tidak ada data topup
+                            </div>
+                            <div style="font-size: 13px; color: #999;">
+                                untuk periode ${getFilterLabel().toLowerCase()}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
             </div>
             
             <style>
@@ -1385,20 +1522,6 @@ function jsonResponse(data) {
                 }
             </style>
         `;
-        
-        return html;
-    }
-    
-    function renderTopupItems(items) {
-        if (items.length === 0) {
-            return '';
-        }
-        
-        return `
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                ${items.map(t => renderTopupItem(t)).join('')}
-            </div>
-        `;
     }
     
     function renderTopupItem(t) {
@@ -1407,30 +1530,26 @@ function jsonResponse(data) {
         const timeStr = date.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
         const isSynced = t.syncedToSheet ? '✓' : '';
         
-        let statusClass = '';
-        let statusText = '';
         let statusBg = '';
+        let statusText = '';
         let actions = '';
         
         if (t.status === 'confirmed') {
-            statusClass = 'confirmed';
-            statusText = '✅ Dikonfirmasi';
             statusBg = '#e8f5e9';
+            statusText = '✅ Dikonfirmasi';
         } else if (t.status === 'rejected') {
-            statusClass = 'rejected';
-            statusText = '❌ Ditolak';
             statusBg = '#ffebee';
+            statusText = '❌ Ditolak';
         } else {
-            statusClass = 'pending';
-            statusText = '⏳ Pending';
             statusBg = '#fff3e0';
+            statusText = '⏳ Pending';
             actions = `
-                <button onclick="event.stopPropagation(); TelegramModule.confirm('${t.id}')" 
+                <button onclick="TelegramModule.confirm('${t.id}')" 
                         style="background: #4caf50; color: white; border: none; padding: 6px 12px; 
                                border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
                     Konfirmasi
                 </button>
-                <button onclick="event.stopPropagation(); TelegramModule.reject('${t.id}')" 
+                <button onclick="TelegramModule.reject('${t.id}')" 
                         style="background: #f44336; color: white; border: none; padding: 6px 12px; 
                                border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
                     Tolak
@@ -1438,17 +1557,11 @@ function jsonResponse(data) {
             `;
         }
         
-        const deleteButton = `
-            <button onclick="event.stopPropagation(); TelegramModule.deleteTopup('${t.id}')" 
-                    style="background: #9e9e9e; color: white; border: none; padding: 6px 12px; 
-                           border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;"
-                    title="Hapus dari daftar ini (tidak menghapus data di Sheet)">
-                🗑️ Hapus
-            </button>
-        `;
+        const borderColor = t.status === 'confirmed' ? '#4caf50' : t.status === 'rejected' ? '#f44336' : '#ff9800';
+        const textColor = t.status === 'confirmed' ? '#2e7d32' : t.status === 'rejected' ? '#c62828' : '#e65100';
         
         return `
-            <div style="background: ${statusBg}; border: 2px solid ${statusBg.replace('0.1', '1').replace('e8f5e9', '#4caf50').replace('ffebee', '#f44336').replace('fff3e0', '#ff9800')}; 
+            <div style="background: ${statusBg}; border: 2px solid ${borderColor}; 
                         border-radius: 12px; padding: 16px; transition: all 0.3s;"
                  onmouseover="this.style.transform='translateX(4px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'"
                  onmouseout="this.style.transform='translateX(0)'; this.style.boxShadow='none'">
@@ -1471,11 +1584,16 @@ function jsonResponse(data) {
                     
                     <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
                         <span style="font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; 
-                                     background: white; color: ${statusBg.replace('e8f5e9', '#2e7d32').replace('ffebee', '#c62828').replace('fff3e0', '#e65100')};">
+                                     background: white; color: ${textColor};">
                             ${statusText}
                         </span>
                         <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;">
-                            ${actions}${deleteButton}
+                            ${actions}
+                            <button onclick="TelegramModule.deleteTopup('${t.id}')" 
+                                    style="background: #9e9e9e; color: white; border: none; padding: 6px 12px; 
+                                           border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                                🗑️ Hapus
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1515,14 +1633,6 @@ function jsonResponse(data) {
         return `<div style="color: orange;">⏳ ${unsynced} data belum tersync</div>`;
     }
     
-    function getFilteredTopups() {
-        let result = [...topups].sort((a, b) => b.timestamp - a.timestamp);
-        if (currentFilter !== 'all') {
-            result = result.filter(t => t.status === currentFilter);
-        }
-        return result;
-    }
-    
     function getDefaultWebhook() {
         return window.location.origin + '/api/telegram-webhook';
     }
@@ -1542,17 +1652,12 @@ function jsonResponse(data) {
     }
     
     function showToast(msg, type = 'info') {
-        if (typeof utils !== 'undefined' && utils.showToast) {
+        if (typeof window.showToast === 'function') {
+            window.showToast(msg, type);
+        } else if (typeof utils !== 'undefined' && utils.showToast) {
             utils.showToast(msg, type);
         } else {
-            const toast = document.getElementById('toast');
-            if (toast) {
-                toast.textContent = msg;
-                toast.className = `toast show ${type}`;
-                setTimeout(() => toast.className = 'toast', 3000);
-            } else {
-                alert(msg);
-            }
+            alert(msg);
         }
     }
     
@@ -1860,8 +1965,7 @@ function jsonResponse(data) {
                 `Tanggal: ${new Date(t.timestamp).toLocaleDateString('id-ID')}\n\n` +
                 `⚠️ Catatan:\n` +
                 `• Data ini hanya dihapus dari tampilan HTML (localStorage)\n` +
-                `• Data di Google Sheet TIDAK terhapus\n` +
-                `• Data bisa muncul lagi jika di-sync ulang dari Sheet`;
+                `• Data di Google Sheet TIDAK terhapus`;
             
             if (confirm(confirmMsg)) {
                 const index = topups.findIndex(x => x.id === id);
@@ -1876,26 +1980,6 @@ function jsonResponse(data) {
         
         setFilter: function(f) {
             currentFilter = f;
-            renderPage();
-        },
-        
-        simulateData: function() {
-            const methods = ['BCA', 'BNI', 'BRI', 'DANA', 'GoPay'];
-            const dummy = {
-                id: 'SIM_' + Date.now(),
-                amount: Math.floor(Math.random() * 500000) + 50000,
-                sender: 'Test User ' + Math.floor(Math.random() * 10),
-                method: methods[Math.floor(Math.random() * methods.length)],
-                transactionId: 'TRX' + Math.floor(Math.random() * 1000000),
-                timestamp: Date.now() - Math.floor(Math.random() * 86400000),
-                status: 'pending',
-                source: 'telegram',
-                syncedToSheet: false
-            };
-            
-            topups.push(dummy);
-            saveData();
-            showToast('✅ Data simulasi ditambahkan!');
             renderPage();
         },
         
@@ -1935,8 +2019,9 @@ function jsonResponse(data) {
     };
 })();
 
+// Inisialisasi saat DOM ready
 document.addEventListener('DOMContentLoaded', function() {
     TelegramModule.init();
     TelegramModule.SaldoModule.checkPending();
-    console.log('[Telegram+Saldo] Module ready - File Local Version');
+    console.log('[Telegram+Saldo] Module ready - Hifzi Cell Integration');
 });
