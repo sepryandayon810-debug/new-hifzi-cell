@@ -842,15 +842,17 @@ const transactionsModule = {
         app.showToast('✅ ' + returnCount + ' item direturn! Stok dikembalikan.');
     },
     
+    // ✅ PERBAIKAN: Void Transaction - hanya kurangi kas jika cash
     voidTransaction() {
         if (!this.currentTransaction) return;
         
-        if (!confirm('⚠️ BATALKAN TRANSAKSI INI?\n\nTindakan ini akan:\n• Mengembalikan semua stok produk\n• Mengurangi kas sesuai total transaksi\n• Menandai transaksi sebagai "Dibatalkan"\n• Transaksi tetap terlihat di laporan\n\nLanjutkan?')) {
+        if (!confirm('⚠️ BATALKAN TRANSAKSI INI?\\n\\nTindakan ini akan:\\n• Mengembalikan semua stok produk\\n• Mengurangi kas sesuai total transaksi (jika cash)\\n• Menandai transaksi sebagai "Dibatalkan"\\n• Transaksi tetap terlihat di laporan\\n\\nLanjutkan?')) {
             return;
         }
         
         const reason = prompt('Alasan pembatalan:') || 'Tidak disebutkan';
         
+        // Kembalikan stok
         this.currentTransaction.items.forEach(item => {
             const product = dataManager.data.products.find(p => p.id === item.id);
             if (product) {
@@ -858,7 +860,22 @@ const transactionsModule = {
             }
         });
         
-        dataManager.data.settings.currentCash -= this.currentTransaction.total;
+        // ✅ PERBAIKAN: Hanya kurangi kas jika pembayaran CASH
+        if (this.currentTransaction.paymentMethod === 'cash') {
+            dataManager.data.settings.currentCash -= this.currentTransaction.total;
+            
+            // Catat di cashTransactions sebagai pos_void
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'pos_void',
+                amount: this.currentTransaction.total,
+                category: 'pembatalan_pos',
+                note: `Pembatalan POS - ${this.currentTransaction.transactionNumber}`,
+                source: 'pos_void',
+                transactionId: this.currentTransaction.id
+            });
+        }
         
         this.currentTransaction.status = 'voided';
         this.currentTransaction.voidInfo = {
@@ -874,10 +891,11 @@ const transactionsModule = {
         app.showToast('✅ Transaksi dibatalkan! Stok & kas dikembalikan.');
     },
     
+    // ✅ PERBAIKAN: Delete Transaction - hanya kurangi kas jika cash
     deleteTransaction() {
         if (!this.currentTransaction) return;
         
-        if (!confirm('🗑️ HAPUS TRANSAKSI INI?\n\nTindakan ini akan:\n• Mengembalikan semua stok produk\n• Mengurangi kas sesuai total transaksi\n• Menandai transaksi sebagai "Terhapus"\n• Transaksi masih terlihat di filter "Terhapus"\n\nLanjutkan?')) {
+        if (!confirm('🗑️ HAPUS TRANSAKSI INI?\\n\\nTindakan ini akan:\\n• Mengembalikan semua stok produk\\n• Mengurangi kas sesuai total transaksi (jika cash)\\n• Menandai transaksi sebagai "Terhapus"\\n• Transaksi masih terlihat di filter "Terhapus"\\n\\nLanjutkan?')) {
             return;
         }
         
@@ -887,6 +905,7 @@ const transactionsModule = {
             return;
         }
         
+        // Kembalikan stok
         this.currentTransaction.items.forEach(item => {
             const product = dataManager.data.products.find(p => p.id === item.id);
             if (product) {
@@ -894,7 +913,22 @@ const transactionsModule = {
             }
         });
         
-        dataManager.data.settings.currentCash -= this.currentTransaction.total;
+        // ✅ PERBAIKAN: Hanya kurangi kas jika pembayaran CASH
+        if (this.currentTransaction.paymentMethod === 'cash') {
+            dataManager.data.settings.currentCash -= this.currentTransaction.total;
+            
+            // Catat di cashTransactions
+            dataManager.data.cashTransactions.push({
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: 'pos_void',
+                amount: this.currentTransaction.total,
+                category: 'penghapusan_pos',
+                note: `Hapus Transaksi POS - ${this.currentTransaction.transactionNumber}`,
+                source: 'pos_void',
+                transactionId: this.currentTransaction.id
+            });
+        }
         
         this.currentTransaction.status = 'deleted';
         this.currentTransaction.deleteInfo = {
@@ -917,7 +951,7 @@ const transactionsModule = {
             return;
         }
         
-        if (!confirm('♻️ RESTORE TRANSAKSI INI?\n\nTransaksi akan dikembalikan ke status aktif.\nStok dan kas TIDAK akan diubah (sudah dikembalikan saat hapus).\n\nLanjutkan?')) {
+        if (!confirm('♻️ RESTORE TRANSAKSI INI?\\n\\nTransaksi akan dikembalikan ke status aktif.\\nStok dan kas TIDAK akan diubah (sudah dikembalikan saat hapus).\\n\\nLanjutkan?')) {
             return;
         }
         
