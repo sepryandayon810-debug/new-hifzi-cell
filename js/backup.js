@@ -1,7 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.1)
+// BACKUP MODULE - HIFZI CELL (COMPLETE v3.2)
 // Firebase + Google Sheets + Local
-// FIXED: Reset LocalStorage, Re-init, Auth Persistence
+// FIXED: Download from Google Sheets (POST method)
 // ============================================
 
 const backupModule = {
@@ -44,12 +44,12 @@ const backupModule = {
         FIREBASE_CONFIG: 'hifzi_firebase_config',
         DEVICE_ID: 'hifzi_device_id',
         FB_USER: 'hifzi_fb_user',
-        FB_AUTH_EMAIL: 'hifzi_fb_auth_email', // ✅ BARU: Simpan email untuk re-auth
-        FB_AUTH_PASSWORD: 'hifzi_fb_auth_password', // ✅ BARU: Simpan password (encrypted sederhana)
+        FB_AUTH_EMAIL: 'hifzi_fb_auth_email',
+        FB_AUTH_PASSWORD: 'hifzi_fb_auth_password',
         GAS_CODE_URL: 'hifzi_gas_code_url',
         GAS_CODE_CACHE: 'hifzi_gas_code_cache',
         GAS_CODE_VERSION: 'hifzi_gas_code_version',
-        BACKUP_SETTINGS: 'hifzi_backup_settings' // ✅ BARU: Simpan semua setting terpisah dari data
+        BACKUP_SETTINGS: 'hifzi_backup_settings'
     },
 
     // ============================================
@@ -59,19 +59,16 @@ const backupModule = {
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
-            // ✅ PERBAIKAN: Tetap reload config meski sudah init
             this.reloadAllConfig();
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.1...');
+        console.log('[Backup] Initializing v3.2...');
         console.log('[Backup] ========================================');
         
-        // ✅ PERBAIKAN UTAMA: Load config dari BACKUP_SETTINGS terlebih dahulu
         this.loadBackupSettings();
         
-        // Setup device ID
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
             console.log('[Backup] New device ID created:', this.deviceId);
@@ -80,7 +77,6 @@ const backupModule = {
             console.log('[Backup] Existing device ID:', this.deviceId);
         }
         
-        // ✅ PERBAIKAN: Bersihkan sheetId dengan validasi ketat
         const originalSheetId = this.sheetId;
         this.sheetId = this.cleanSheetId(this.sheetId);
         
@@ -88,11 +84,10 @@ const backupModule = {
             console.log('[Backup] Sheet ID cleaned from "' + originalSheetId + '" to "' + this.sheetId + '"');
             if (this.sheetId) {
                 localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
-                this.saveBackupSettings(); // ✅ Simpan ke backup settings juga
+                this.saveBackupSettings();
             }
         }
         
-        // ✅ PERBAIKAN: Validasi GAS config
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         
         console.log('[Backup] Provider:', this.currentProvider);
@@ -100,13 +95,11 @@ const backupModule = {
         console.log('[Backup] GAS Valid:', this._gasConfigValid);
         console.log('[Backup] Auto Sync:', this.isAutoSyncEnabled);
         
-        // Setup network listeners
         this.setupNetworkListeners();
         
-        // ✅ PERBAIKAN UTAMA: Init provider dengan pengecekan lebih baik
         if (this.currentProvider === 'firebase') {
             console.log('[Backup] Initializing Firebase...');
-            this.initFirebase(true); // ✅ true = attempt auto-login
+            this.initFirebase(true);
         } else if (this.currentProvider === 'googlesheet') {
             console.log('[Backup] Checking GAS config...');
             if (this._gasConfigValid) {
@@ -127,7 +120,6 @@ const backupModule = {
         return this;
     },
     
-    // ✅ BARU: Simpan semua backup settings terpisah dari data utama
     saveBackupSettings() {
         const settings = {
             provider: this.currentProvider,
@@ -144,7 +136,6 @@ const backupModule = {
         console.log('[Backup] Settings saved to backup_settings');
     },
     
-    // ✅ BARU: Load dari backup settings (persist meski data direset)
     loadBackupSettings() {
         try {
             const saved = localStorage.getItem(this.KEYS.BACKUP_SETTINGS);
@@ -160,7 +151,6 @@ const backupModule = {
                 if (settings.deviceId) this.deviceId = settings.deviceId;
                 console.log('[Backup] Settings loaded from backup_settings');
             } else {
-                // Fallback ke keys lama untuk backward compatibility
                 this.reloadAllConfig();
             }
         } catch (e) {
@@ -188,7 +178,6 @@ const backupModule = {
             const deviceId = localStorage.getItem(this.KEYS.DEVICE_ID);
             if (deviceId) this.deviceId = deviceId;
             
-            // ✅ PERBAIKAN: Cek saved credentials
             const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
             const savedPass = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
             if (savedEmail && savedPass) {
@@ -381,7 +370,7 @@ const backupModule = {
         
         this.gasCodeUrl = newUrl;
         localStorage.setItem(this.KEYS.GAS_CODE_URL, newUrl);
-        this.saveBackupSettings(); // ✅ Simpan ke backup settings
+        this.saveBackupSettings();
         
         localStorage.removeItem(this.KEYS.GAS_CODE_CACHE);
         localStorage.removeItem(this.KEYS.GAS_CODE_VERSION);
@@ -413,7 +402,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '3.1',
+                version: '3.2',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -453,10 +442,9 @@ const backupModule = {
     toggleAutoSync() {
         this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
         localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
-        this.saveBackupSettings(); // ✅ Simpan state
+        this.saveBackupSettings();
         
         if (this.isAutoSyncEnabled) {
-            // ✅ PERBAIKAN: Cek config valid sebelum start
             if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) {
                 this.showToast('⚠️ Auto-sync gagal: Konfigurasi GAS tidak lengkap');
                 this.isAutoSyncEnabled = false;
@@ -489,7 +477,6 @@ const backupModule = {
             return;
         }
         
-        // ✅ PERBAIKAN: Validasi sebelum start
         if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) {
             console.warn('[Backup] Cannot start auto-sync: GAS config invalid');
             return;
@@ -516,7 +503,6 @@ const backupModule = {
     },
 
     shouldSync() {
-        // ✅ PERBAIKAN: Cek config valid
         if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) return false;
         if (this.currentProvider === 'firebase' && !this.currentUser) return false;
         return this.currentProvider !== 'local' && this.isAutoSyncEnabled && this.isOnline;
@@ -552,7 +538,6 @@ const backupModule = {
         if (this.currentProvider === 'firebase') {
             if (!this.currentUser) {
                 this.showToast('❌ Belum login Firebase. Silakan login terlebih dahulu.');
-                // ✅ Tampilkan modal login
                 this.render();
                 return Promise.reject('Not authenticated');
             }
@@ -608,7 +593,6 @@ const backupModule = {
         }
         
         try {
-            // Hapus instance lama jika ada
             if (firebase.apps && firebase.apps.length) {
                 firebase.apps.forEach(app => app.delete());
             }
@@ -619,7 +603,6 @@ const backupModule = {
             
             console.log('[Firebase] Initialized successfully');
             
-            // ✅ PERBAIKAN: Set persistence ke LOCAL
             this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
                 .then(() => {
                     console.log('[Firebase] Persistence set to LOCAL');
@@ -650,7 +633,6 @@ const backupModule = {
                     console.log('[Firebase] User logged out');
                     this.currentUser = null;
                     
-                    // ✅ PERBAIKAN: Attempt auto-login jika ada credentials tersimpan
                     if (attemptAutoLogin) {
                         this.attemptAutoLogin();
                     }
@@ -667,7 +649,6 @@ const backupModule = {
         }
     },
     
-    // ✅ BARU: Attempt auto-login dengan credentials tersimpan
     attemptAutoLogin() {
         const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
         const savedPass = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
@@ -681,7 +662,6 @@ const backupModule = {
                 })
                 .catch((err) => {
                     console.error('[Firebase] Auto-login failed:', err.message);
-                    // Clear invalid credentials
                     localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
                     localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
                     this.showToast('⚠️ Sesi Firebase berakhir. Silakan login ulang.');
@@ -712,7 +692,6 @@ const backupModule = {
             .then((cred) => {
                 this.currentUser = cred.user;
                 
-                // ✅ PERBAIKAN: Simpan credentials untuk auto-login
                 localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
                 
@@ -737,7 +716,6 @@ const backupModule = {
             .then((cred) => {
                 this.currentUser = cred.user;
                 
-                // ✅ PERBAIKAN: Simpan credentials
                 localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
                 
@@ -784,7 +762,7 @@ const backupModule = {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
-                version: '3.1'
+                version: '3.2'
             }
         };
         
@@ -792,7 +770,7 @@ const backupModule = {
             .then(() => {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                this.saveBackupSettings(); // ✅ Simpan lastSync
+                this.saveBackupSettings();
                 if (!silent) this.showToast('✅ Upload berhasil!');
                 this.updateSyncStatus('Synced');
                 return true;
@@ -1056,7 +1034,7 @@ const backupModule = {
     },
 
     // ============================================
-    // GOOGLE SHEETS (FIXED v3.1 - Better Validation)
+    // GOOGLE SHEETS (FIXED v3.2 - Download POST)
     // ============================================
 
     checkNewDeviceGAS() {
@@ -1204,6 +1182,9 @@ const backupModule = {
         });
     },
 
+    // ============================================
+    // DOWNLOAD FROM GAS - FIXED v3.2 (POST METHOD)
+    // ============================================
     downloadFromGAS(silent = false, force = false) {
         if (!this.gasUrl) {
             if (!silent) this.showToast('❌ URL GAS belum diisi');
@@ -1229,32 +1210,52 @@ const backupModule = {
             this.showToast('⬇️ Download... (ID: ' + cleanSheetId.substring(0, 8) + '...)');
         }
         
-        const url = this.gasUrl + 
-            '?action=restore' +
-            '&sheetId=' + encodeURIComponent(cleanSheetId) +
-            '&_t=' + Date.now();
+        // ✅ PERBAIKAN v3.2: Gunakan POST dengan action restore, jangan GET
+        // Karena GET sering bermasalah dengan CORS dan parameter panjang di URL
+        const payload = {
+            action: 'restore',
+            sheetId: cleanSheetId,
+            deviceId: this.deviceId,
+            timestamp: new Date().toISOString()
+        };
 
-        console.log('[Backup] Download URL:', url.substring(0, url.indexOf('&sheetId=') + 30) + '...)');
+        console.log('[Backup] Download payload:', JSON.stringify(payload));
 
-        return fetch(url, {
-            method: 'GET',
+        return fetch(this.gasUrl, {
+            method: 'POST', // ✅ Ganti dari GET ke POST
             mode: 'cors',
             cache: 'no-cache',
-            headers: {
-                'Accept': 'application/json'
-            }
+            headers: { 
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify(payload) // ✅ Kirim sebagai body, bukan query param
         })
         .then(async (r) => {
+            console.log('[Backup] Download response status:', r.status);
             const text = await r.text();
-            console.log('[Backup] Download response:', text.substring(0, 200));
+            console.log('[Backup] Download response:', text.substring(0, 500));
+            
+            if (!r.ok) {
+                throw new Error('HTTP ' + r.status + ': ' + text.substring(0, 100));
+            }
+            
             try {
                 return JSON.parse(text);
             } catch (e) {
-                throw new Error('Invalid JSON: ' + text.substring(0, 100));
+                console.error('[Backup] JSON parse error:', e);
+                console.error('[Backup] Raw response:', text);
+                throw new Error('Invalid JSON response: ' + text.substring(0, 200));
             }
         })
         .then(result => {
+            console.log('[Backup] Download result:', result);
+            
             if (result?.success && result.data) {
+                // ✅ Validasi data structure
+                if (typeof result.data !== 'object') {
+                    throw new Error('Data format invalid: bukan object');
+                }
+                
                 this.saveBackupData(result.data);
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
@@ -1266,7 +1267,8 @@ const backupModule = {
                 }
                 return result;
             } else {
-                throw new Error(result?.message || 'Invalid data');
+                const errorMsg = result?.message || 'Invalid data structure from server';
+                throw new Error(errorMsg);
             }
         })
         .catch((err) => {
@@ -1434,7 +1436,7 @@ const backupModule = {
     },
 
     getDefaultGASCode() {
-        return `// GAS CODE v3.0 - PASTE IN script.google.com
+        return `// GAS CODE v3.2 - PASTE IN script.google.com
 // DEPLOY AS: Web app, Execute as: Me, Access: Anyone
 
 const SPREADSHEET_ID = '';
@@ -1481,23 +1483,76 @@ function doPost(e) {
     }
     
     if (action === 'sync') {
-      // Sync logic here
-      return jsonResponse({ success: true, message: 'Synced' });
+      return handleSync(ss, data);
     }
     
     if (action === 'restore') {
-      // Restore logic here
-      return jsonResponse({ success: true, data: {} });
+      return handleRestore(ss, data);
     }
     
-    return jsonResponse({ success: false, message: 'Unknown action' });
+    return jsonResponse({ success: false, message: 'Unknown action: ' + action });
     
   } catch (err) {
     return jsonResponse({ success: false, message: err.toString() });
   }
 }
 
+function handleSync(ss, data) {
+  try {
+    var sheet = ss.getSheetByName('Backup');
+    if (!sheet) {
+      sheet = ss.insertSheet('Backup');
+    }
+    
+    // Clear existing data
+    sheet.clear();
+    
+    // Write metadata
+    sheet.getRange(1, 1).setValue('HIFZI_BACKUP_DATA');
+    sheet.getRange(1, 2).setValue(new Date().toISOString());
+    sheet.getRange(1, 3).setValue(data.deviceId || 'unknown');
+    sheet.getRange(1, 4).setValue(data.deviceName || 'unknown');
+    
+    // Write actual data as JSON in row 3
+    var jsonData = JSON.stringify(data.data || data);
+    sheet.getRange(3, 1).setValue(jsonData);
+    
+    return jsonResponse({ success: true, message: 'Data synced successfully' });
+  } catch (err) {
+    return jsonResponse({ success: false, message: 'Sync error: ' + err.toString() });
+  }
+}
+
+function handleRestore(ss, data) {
+  try {
+    var sheet = ss.getSheetByName('Backup');
+    if (!sheet) {
+      return jsonResponse({ success: false, message: 'Sheet Backup tidak ditemukan' });
+    }
+    
+    // Read JSON data from row 3, column 1
+    var jsonData = sheet.getRange(3, 1).getValue();
+    
+    if (!jsonData) {
+      return jsonResponse({ success: false, message: 'Tidak ada data di sheet' });
+    }
+    
+    // Parse JSON
+    var parsedData;
+    try {
+      parsedData = JSON.parse(jsonData);
+    } catch (e) {
+      return jsonResponse({ success: false, message: 'Data corrupt: ' + e.toString() });
+    }
+    
+    return jsonResponse({ success: true, data: parsedData, message: 'Data restored successfully' });
+  } catch (err) {
+    return jsonResponse({ success: false, message: 'Restore error: ' + err.toString() });
+  }
+}
+
 function doGet(e) {
+  // Support GET untuk backward compatibility
   var sheetId = e.parameter.sheetId;
   var callback = e.parameter.callback;
   
@@ -1515,10 +1570,10 @@ function doGet(e) {
   }
   
   if (e.parameter.action === 'restore') {
-    return jsonResponse({ success: true, data: {} }, callback);
+    return handleRestore(ss, e.parameter);
   }
   
-  return jsonResponse({ success: true }, callback);
+  return jsonResponse({ success: true, message: 'Use POST method for better reliability' }, callback);
 }
 
 function jsonResponse(data, callback) {
@@ -1632,14 +1687,13 @@ function jsonResponse(data, callback) {
     setProvider(provider) {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
-        this.saveBackupSettings(); // ✅ Simpan ke backup settings
+        this.saveBackupSettings();
         this.stopAutoSync();
         this.firebaseBackupData = null;
         
         if (provider === 'firebase') {
             this.initFirebase(true);
         } else if (provider === 'googlesheet') {
-            // ✅ PERBAIKAN: Re-validate GAS config
             this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
             if (this._gasConfigValid) {
                 this.checkNewDeviceGAS();
@@ -1668,7 +1722,7 @@ function jsonResponse(data, callback) {
         
         this.firebaseConfig = config;
         localStorage.setItem(this.KEYS.FIREBASE_CONFIG, JSON.stringify(config));
-        this.saveBackupSettings(); // ✅ Simpan ke backup settings
+        this.saveBackupSettings();
         
         this.showToast('✅ Config Firebase disimpan!');
         
@@ -1680,7 +1734,6 @@ function jsonResponse(data, callback) {
         const url = document.getElementById('gasUrlInput')?.value?.trim();
         const sheetIdInput = document.getElementById('sheetIdInput')?.value || '';
         
-        // Validasi ketat Sheet ID
         const validation = this.validateSheetId(sheetIdInput);
         
         if (!validation.valid) {
@@ -1699,7 +1752,6 @@ function jsonResponse(data, callback) {
         localStorage.setItem(this.KEYS.GAS_URL, url);
         localStorage.setItem(this.KEYS.SHEET_ID, sheetId);
         
-        // ✅ PERBAIKAN: Update flag dan simpan ke backup settings
         this._gasConfigValid = url && sheetId && sheetId.length === 44;
         this.saveBackupSettings();
         
@@ -1723,7 +1775,6 @@ function jsonResponse(data, callback) {
         if (!confirm('⚠️ Hapus SEMUA data lokal?')) return;
         if (prompt('Ketik HAPUS untuk konfirmasi:') !== 'HAPUS') return;
         
-        // ✅ PERBAIKAN: Simpan backup settings sebelum reset
         this.saveBackupSettings();
         
         const telegramBackup = (typeof dataManager !== 'undefined' && dataManager.data) 
@@ -1732,7 +1783,6 @@ function jsonResponse(data, callback) {
         
         localStorage.removeItem('hifzi_data');
         
-        // ✅ PERBAIKAN: Restore backup settings setelah reset
         setTimeout(() => {
             this.loadBackupSettings();
         }, 100);
@@ -1826,16 +1876,14 @@ function jsonResponse(data, callback) {
     },
 
     // ============================================
-    // RENDER UI (FIXED v3.1 - Better State Display)
+    // RENDER UI (FIXED v3.2)
     // ============================================
 
     render() {
-        // ✅ PERBAIKAN: Selalu re-init untuk memastikan state terbaru
         if (!this.isInitialized) {
             this.init();
         } else {
             this.reloadAllConfig();
-            // Re-validate GAS config
             this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         }
 
@@ -2152,7 +2200,7 @@ function jsonResponse(data, callback) {
         
         return `
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 2px solid #34a853;">
-                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v3.1)</div>
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📊 Google Sheets (v3.2)</div>
                 
                 <button onclick="backupModule.showGASGenerator()" 
                     style="width: 100%; padding: 14px; background: linear-gradient(135deg, #34a853 0%, #0f9d58 100%); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(52,168,83,0.3);">
@@ -2227,19 +2275,16 @@ function jsonResponse(data, callback) {
 // AUTO INIT & EXPOSE
 // ============================================
 
-// Auto-init saat DOM ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         backupModule.init();
     });
 } else {
-    // DOM sudah ready
     backupModule.init();
 }
 
-// Expose ke window
 window.backupModule = backupModule;
 
 console.log('[Backup] ========================================');
-console.log('[Backup] Module loaded v3.1 - RESET & RE-AUTH FIX');
+console.log('[Backup] Module loaded v3.2 - DOWNLOAD FIX (POST)');
 console.log('[Backup] ========================================');
