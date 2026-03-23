@@ -1,6 +1,6 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
-// VERSI FIXED - OPTIMIZED PERFORMANCE
+// VERSI DEBUG - FIXED EDIT DELETE
 // ============================================
 
 const n8nModule = (function() {
@@ -20,10 +20,9 @@ const n8nModule = (function() {
     };
 
     const state = {
-        data: [],
-        filteredData: [],
-        selectedRow: null,
-        selectedOriginalRow: null, // Simpan row asli dari sheet
+        data: [],           // Semua data dari sheet
+        filteredData: [],   // Data yang ditampilkan (setelah filter)
+        selectedItem: null, // Object item yang dipilih (bukan hanya row number)
         config: {
             botToken: '',
             chatId: '',
@@ -31,12 +30,8 @@ const n8nModule = (function() {
             sheetName: 'Data Base Hifzi Cell',
             gasUrl: ''
         },
-        configVisible: false,
         isLoading: false,
-        proxyMode: false,
-        currentProxyIndex: 0,
-        lastFetchTime: 0,
-        cachedData: null // Cache untuk menghindari fetch berulang
+        currentProxyIndex: 0
     };
 
     const PROXY_LIST = [
@@ -72,7 +67,8 @@ const n8nModule = (function() {
     }
 
     function showNotification(message, type = 'info', duration = 4000) {
-        // Tampilkan notifikasi HANYA di web, tidak perlu kirim ke Telegram
+        console.log(`[n8nModule] ${type}: ${message}`);
+        
         if (typeof app !== 'undefined' && app.showToast) {
             app.showToast(message);
             return;
@@ -94,7 +90,7 @@ const n8nModule = (function() {
 
     function setStatus(badge, text) {
         const badgeEl = document.getElementById('statusBadge');
-        const textEl = document.querySelector('.status-text');
+        const textEl = document.getElementById('statusText');
         const telegramStatus = document.getElementById('telegramStatusText');
         
         if (badgeEl) badgeEl.textContent = badge;
@@ -164,16 +160,15 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // FETCH WITH CORS PROXY - OPTIMIZED
+    // FETCH WITH CORS PROXY
     // ============================================
 
     async function fetchWithProxy(url, retryCount = 0) {
         const MAX_RETRIES = PROXY_LIST.length;
-        const timeout = 30000; // 30 detik timeout
+        const timeout = 30000;
 
         console.log(`[n8nModule] Fetching: ${url.substring(0, 100)}...`);
 
-        // Jika bukan file protocol, coba direct fetch dulu dengan timeout
         if (!isFileProtocol()) {
             try {
                 console.log('[n8nModule] Trying direct fetch...');
@@ -201,9 +196,7 @@ const n8nModule = (function() {
             
             const response = await fetch(fullUrl, {
                 method: 'GET',
-                headers: { 
-                    'Accept': 'application/json'
-                },
+                headers: { 'Accept': 'application/json' },
                 signal: controller.signal
             });
             
@@ -260,7 +253,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // TELEGRAM API - HANYA UNTUK NOTIFIKASI PENTING
+    // TELEGRAM API
     // ============================================
 
     async function deleteWebhook() {
@@ -339,7 +332,6 @@ const n8nModule = (function() {
                 setStatus('🟢', 'Terhubung ke Telegram');
                 showNotification(`✅ Chat ID: ${chatId}`, 'success');
                 
-                // Kirim notifikasi hanya saat setup awal
                 await sendTelegramMessage(
                     `✅ *KONEKSI BERHASIL*\n\n` +
                     `Web POS Hifzi Cell terhubung ke Telegram.\n` +
@@ -401,25 +393,15 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // GOOGLE APPS SCRIPT API - OPTIMIZED
+    // GOOGLE APPS SCRIPT API
     // ============================================
 
-    async function makeRequest(action, params = {}, skipCache = false) {
+    async function makeRequest(action, params = {}) {
         const { gasUrl, sheetId } = state.config;
         
         if (!gasUrl || !sheetId) {
             showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
             return null;
-        }
-
-        // Gunakan cache untuk getData jika tidak skipCache
-        if (action === 'getData' && !skipCache && state.cachedData) {
-            const now = Date.now();
-            // Cache valid selama 30 detik
-            if (now - state.lastFetchTime < 30000) {
-                console.log('[n8nModule] Using cached data');
-                return state.cachedData;
-            }
         }
 
         const url = new URL(gasUrl);
@@ -432,27 +414,11 @@ const n8nModule = (function() {
             }
         });
 
-        console.log('[n8nModule] API Request URL:', url.toString());
+        console.log('[n8nModule] API Request:', action, params);
 
         try {
             setStatus('🟡', 'Loading...');
             state.isLoading = true;
-
-            // Show loading in table
-            const tbody = document.getElementById('tableBody');
-            if (tbody) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; padding: 40px;">
-                            <div style="font-size: 32px; margin-bottom: 10px;">⏳</div>
-                            <div>Mengambil data dari Google Sheets...</div>
-                            <div style="font-size: 12px; color: #999; margin-top: 10px;">
-                                Proxy: ${state.currentProxyIndex + 1}/${PROXY_LIST.length}
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }
 
             const response = await fetchWithProxy(url.toString());
             
@@ -467,47 +433,13 @@ const n8nModule = (function() {
                 throw new Error(data.error || 'Unknown error from server');
             }
 
-            // Simpan cache untuk getData
-            if (action === 'getData') {
-                state.cachedData = data;
-                state.lastFetchTime = Date.now();
-            }
-
             setStatus('🟢', 'Siap');
             return data;
             
         } catch (error) {
             console.error('[n8nModule] API Error:', error);
             setStatus('🔴', 'Error');
-
-            // Show error in table
-            const tbody = document.getElementById('tableBody');
-            if (tbody) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; padding: 40px; color: #e74c3c;">
-                            <div style="font-size: 32px; margin-bottom: 10px;">❌</div>
-                            <div><strong>Error:</strong> ${error.message}</div>
-                            <div style="font-size: 12px; margin-top: 15px; color: #666;">
-                                ${isFileProtocol() 
-                                    ? 'Coba klik "🔄 Rotate Proxy" atau gunakan Live Server'
-                                    : 'Cek konfigurasi GAS URL dan Sheet ID'}
-                            </div>
-                            <button onclick="n8nModule.rotateProxy()" 
-                                    style="margin-top: 15px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                                🔄 Coba Proxy Lain
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }
-
-            let errorMsg = error.message;
-            if (error.message.includes('Failed to fetch') || error.message.includes('CORS') || error.message.includes('NetworkError')) {
-                errorMsg = 'CORS Error - GAS tidak bisa diakses';
-            }
-
-            showNotification(`❌ ${errorMsg}`, 'error', 6000);
+            showNotification(`❌ ${error.message}`, 'error', 6000);
             return null;
             
         } finally {
@@ -516,28 +448,56 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // CRUD OPERATIONS - FIXED
+    // CRUD OPERATIONS - FIXED DEBUG VERSION
     // ============================================
 
     async function handleSearch() {
         const keywordInput = document.getElementById('searchInput');
         const keyword = keywordInput?.value.toLowerCase().trim() || '';
         
-        console.log('[n8nModule] Searching with keyword:', keyword);
+        console.log('[n8nModule] === HANDLE SEARCH ===');
+        console.log('[n8nModule] Keyword:', keyword);
 
-        // Hanya kirim notifikasi ringkas ke Telegram, detail cukup di web
-        // atau hapus sama sekali jika tidak perlu
-        // await sendTelegramMessage(...) // DIHAPUS - notifikasi cukup di web
+        // Reset selection
+        state.selectedItem = null;
+        updateButtonStates();
+
+        // Show loading
+        const tbody = document.getElementById('tableBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px;">
+                        <div style="font-size: 32px; margin-bottom: 10px;">⏳</div>
+                        <div>Mengambil data...</div>
+                    </td>
+                </tr>
+            `;
+        }
 
         const result = await makeRequest('getData');
         
         if (!result) {
-            showNotification('❌ Gagal mengambil data dari Google Sheets', 'error');
+            console.error('[n8nModule] Get data failed');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 40px; color: #e74c3c;">
+                            <div style="font-size: 32px; margin-bottom: 10px;">❌</div>
+                            <div>Gagal mengambil data</div>
+                            <button onclick="n8nModule.rotateProxy()" 
+                                    style="margin-top: 15px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                                🔄 Coba Proxy Lain
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
             return;
         }
 
         state.data = result.data || [];
-        console.log('[n8nModule] Data received:', state.data.length, 'rows');
+        console.log('[n8nModule] Raw data from server:', state.data);
 
         if (keyword) {
             state.filteredData = state.data.filter(item => 
@@ -549,21 +509,15 @@ const n8nModule = (function() {
         }
 
         console.log('[n8nModule] Filtered data:', state.filteredData.length, 'rows');
+        console.log('[n8nModule] Sample data:', state.filteredData.slice(0, 3));
 
         renderTable();
-
-        const count = state.filteredData.length;
-        
-        // Auto-select first row if data exists
-        if (count > 0 && state.filteredData[0]) {
-            selectRow(state.filteredData[0].row);
-        }
-
-        // Notifikasi hanya di web, tidak perlu ke Telegram
-        showNotification(`✅ ${count} data ditemukan`, 'success');
+        showNotification(`✅ ${state.filteredData.length} data ditemukan`, 'success');
     }
 
     function handleAdd() {
+        console.log('[n8nModule] === HANDLE ADD ===');
+        
         const modalTitle = document.getElementById('modalTitle');
         const editId = document.getElementById('editId');
         const inputNama = document.getElementById('inputNama');
@@ -573,7 +527,7 @@ const n8nModule = (function() {
         if (editId) editId.value = '';
         if (inputNama) {
             inputNama.value = '';
-            inputNama.focus();
+            setTimeout(() => inputNama.focus(), 100);
         }
         if (inputNomor) inputNomor.value = '';
 
@@ -581,19 +535,11 @@ const n8nModule = (function() {
     }
 
     function handleEdit() {
-        if (!state.selectedRow) {
-            showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
-            return;
-        }
+        console.log('[n8nModule] === HANDLE EDIT ===');
+        console.log('[n8nModule] Selected item:', state.selectedItem);
 
-        // Cari di filteredData dulu, kalau tidak ada cari di data
-        let item = state.filteredData.find(d => d.row == state.selectedRow);
-        if (!item) {
-            item = state.data.find(d => d.row == state.selectedRow);
-        }
-        
-        if (!item) {
-            showNotification('❌ Data tidak ditemukan', 'error');
+        if (!state.selectedItem) {
+            showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
             return;
         }
 
@@ -603,42 +549,37 @@ const n8nModule = (function() {
         const inputNomor = document.getElementById('inputNomor');
 
         if (modalTitle) modalTitle.textContent = '✏️ Edit Data';
-        if (editId) editId.value = item.row;
+        if (editId) editId.value = state.selectedItem.row;
         if (inputNama) {
-            inputNama.value = item.nama || '';
-            inputNama.focus();
+            inputNama.value = state.selectedItem.nama || '';
+            setTimeout(() => inputNama.focus(), 100);
         }
-        if (inputNomor) inputNomor.value = item.nomor || '';
+        if (inputNomor) inputNomor.value = state.selectedItem.nomor || '';
 
+        console.log('[n8nModule] Opening edit modal with row:', state.selectedItem.row);
         openModal('dataModal');
     }
 
-    async function handleDelete() {
-        if (!state.selectedRow) {
-            showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
-            return;
-        }
+    function handleDelete() {
+        console.log('[n8nModule] === HANDLE DELETE ===');
+        console.log('[n8nModule] Selected item:', state.selectedItem);
 
-        // Cari di filteredData dulu, kalau tidak ada cari di data
-        let item = state.filteredData.find(d => d.row == state.selectedRow);
-        if (!item) {
-            item = state.data.find(d => d.row == state.selectedRow);
-        }
-        
-        if (!item) {
-            showNotification('❌ Data tidak ditemukan', 'error');
+        if (!state.selectedItem) {
+            showNotification('⚠️ Pilih data di tabel terlebih dahulu', 'warning');
             return;
         }
 
         const deleteInfo = document.getElementById('deleteInfo');
         if (deleteInfo) {
-            deleteInfo.textContent = `${item.nama || 'N/A'} - ${item.nomor || 'N/A'}`;
+            deleteInfo.textContent = `${state.selectedItem.nama || 'N/A'} - ${state.selectedItem.nomor || 'N/A'}`;
         }
 
         openModal('deleteModal');
     }
 
     async function saveData() {
+        console.log('[n8nModule] === SAVE DATA ===');
+        
         const editId = document.getElementById('editId');
         const inputNama = document.getElementById('inputNama');
         const inputNomor = document.getElementById('inputNomor');
@@ -646,6 +587,8 @@ const n8nModule = (function() {
         const row = editId?.value;
         const nama = inputNama?.value.trim();
         const nomor = inputNomor?.value.trim();
+
+        console.log('[n8nModule] Save params:', { row, nama, nomor });
 
         if (!nama || !nomor) {
             showNotification('⚠️ Nama dan Nomor wajib diisi!', 'warning');
@@ -657,78 +600,69 @@ const n8nModule = (function() {
         const params = { nama, nomor };
         if (row) params.row = row;
 
-        // Notifikasi hanya di web
         showNotification(`⏳ ${row ? 'Mengupdate' : 'Menyimpan'} data...`, 'info');
 
-        const result = await makeRequest(action, params, true); // true = skip cache
+        const result = await makeRequest(action, params);
         
         if (result && result.success) {
             closeModal();
-            
-            // Clear cache agar data fresh
-            state.cachedData = null;
-            state.lastFetchTime = 0;
-
-            // Refresh tabel
-            await handleSearch();
+            await handleSearch(); // Refresh data
             
             showNotification(result.message || '✅ Data berhasil disimpan', 'success');
-            
         } else if (result) {
             showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
         }
     }
 
     async function confirmDelete() {
-        if (!state.selectedRow) {
+        console.log('[n8nModule] === CONFIRM DELETE ===');
+        
+        if (!state.selectedItem) {
             showNotification('❌ Tidak ada data yang dipilih', 'error');
             return;
         }
         
-        const row = state.selectedRow;
+        const row = state.selectedItem.row;
+        console.log('[n8nModule] Deleting row:', row);
         
         showNotification('⏳ Menghapus data...', 'info');
         
-        const result = await makeRequest('deleteData', { row }, true); // true = skip cache
+        const result = await makeRequest('deleteData', { row });
         
         if (result && result.success) {
-            // Clear cache
-            state.cachedData = null;
-            state.lastFetchTime = 0;
-
             closeModal();
-            state.selectedRow = null;
-            state.selectedOriginalRow = null;
+            state.selectedItem = null;
             updateButtonStates();
             
-            // Refresh tabel
-            await handleSearch();
+            await handleSearch(); // Refresh data
             
             showNotification(result.message || '✅ Data dihapus', 'success');
-            
         } else if (result) {
             showNotification('❌ ' + (result.error || 'Gagal menghapus'), 'error');
         }
     }
 
     // ============================================
-    // UI RENDERING - FIXED
+    // UI RENDERING - FIXED WITH DEBUG
     // ============================================
 
     function renderTable() {
+        console.log('[n8nModule] === RENDER TABLE ===');
+        
         const tbody = document.getElementById('tableBody');
-        if (!tbody) return;
+        if (!tbody) {
+            console.error('[n8nModule] tableBody not found!');
+            return;
+        }
 
-        console.log('[n8nModule] Rendering table with', state.filteredData.length, 'rows');
+        console.log('[n8nModule] Rendering', state.filteredData.length, 'rows');
 
         if (state.filteredData.length === 0) {
             tbody.innerHTML = `
-                <tr class="n8n-empty-row">
-                    <td colspan="4" class="n8n-empty-message">
-                        <div class="empty-state">
-                            <span class="empty-icon">📭</span>
-                            <p>Belum ada data. Klik "Cari Data" untuk memuat dari Google Sheets.</p>
-                        </div>
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 60px 20px; color: #9ca3af;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">📭</div>
+                        <div>Belum ada data. Klik "Cari Data" untuk memuat.</div>
                     </td>
                 </tr>
             `;
@@ -736,82 +670,121 @@ const n8nModule = (function() {
             return;
         }
 
-        tbody.innerHTML = state.filteredData.map((item, index) => {
-            const isSelected = state.selectedRow == item.row;
-            return `
-                <tr class="n8n-data-row ${isSelected ? 'selected' : ''}" data-row="${item.row}">
-                    <td>${index + 1}</td>
-                    <td>${escapeHtml(item.nama || '')}</td>
-                    <td>${escapeHtml(item.nomor || '')}</td>
-                    <td>
-                        <button class="n8n-btn n8n-btn-sm n8n-btn-select ${isSelected ? 'selected' : ''}" data-row="${item.row}">
+        let html = '';
+        state.filteredData.forEach((item, index) => {
+            const isSelected = state.selectedItem && state.selectedItem.row == item.row;
+            html += `
+                <tr class="n8n-data-row ${isSelected ? 'selected' : ''}" 
+                    data-row="${item.row}" 
+                    data-index="${index}"
+                    style="cursor: pointer; ${isSelected ? 'background: #e0e7ff;' : ''}">
+                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.nama || '')}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.nomor || '')}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+                        <button class="n8n-btn-select" 
+                                data-row="${item.row}" 
+                                data-index="${index}"
+                                style="padding: 6px 12px; border: 2px solid ${isSelected ? '#667eea' : '#d1d5db'}; 
+                                       background: ${isSelected ? '#667eea' : 'white'}; 
+                                       color: ${isSelected ? 'white' : '#374151'};
+                                       border-radius: 6px; cursor: pointer; font-weight: 600;">
                             ${isSelected ? '✓' : '☐'}
                         </button>
                     </td>
                 </tr>
             `;
-        }).join('');
+        });
 
-        // Add click handlers
+        tbody.innerHTML = html;
+
+        // Attach event listeners
         tbody.querySelectorAll('.n8n-data-row').forEach(row => {
             row.addEventListener('click', (e) => {
                 if (e.target.closest('.n8n-btn-select')) return;
-                selectRow(parseInt(row.getAttribute('data-row')));
+                const rowNum = parseInt(row.getAttribute('data-row'));
+                const index = parseInt(row.getAttribute('data-index'));
+                selectRow(rowNum, index);
             });
         });
 
         tbody.querySelectorAll('.n8n-btn-select').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                selectRow(parseInt(btn.getAttribute('data-row')));
+                const rowNum = parseInt(btn.getAttribute('data-row'));
+                const index = parseInt(btn.getAttribute('data-index'));
+                selectRow(rowNum, index);
             });
         });
 
         updateButtonStates();
     }
 
-    function selectRow(row) {
-        console.log('[n8nModule] Row selected:', row);
-        state.selectedRow = state.selectedRow === row ? null : row;
+    function selectRow(rowNum, index) {
+        console.log('[n8nModule] === SELECT ROW ===');
+        console.log('[n8nModule] Row number:', rowNum, 'Index:', index);
+
+        // Cari item di filteredData
+        const item = state.filteredData.find(d => d.row == rowNum);
+        
+        if (!item) {
+            console.error('[n8nModule] Item not found for row:', rowNum);
+            return;
+        }
+
+        // Toggle selection
+        if (state.selectedItem && state.selectedItem.row == rowNum) {
+            state.selectedItem = null;
+            console.log('[n8nModule] Deselected');
+        } else {
+            state.selectedItem = item;
+            console.log('[n8nModule] Selected:', item);
+        }
+
         renderTable();
     }
 
     function updateButtonStates() {
-        const hasSelection = state.selectedRow !== null;
+        const hasSelection = state.selectedItem !== null;
         const btnEdit = document.getElementById('btnEdit');
         const btnDelete = document.getElementById('btnDelete');
         
-        console.log('[n8nModule] Update buttons - hasSelection:', hasSelection, 'selectedRow:', state.selectedRow);
-        
+        console.log('[n8nModule] Update buttons - hasSelection:', hasSelection);
+
         if (btnEdit) {
             btnEdit.disabled = !hasSelection;
             btnEdit.style.opacity = hasSelection ? '1' : '0.5';
             btnEdit.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
+            btnEdit.style.background = hasSelection ? '#f59e0b' : '#d1d5db';
         }
+        
         if (btnDelete) {
             btnDelete.disabled = !hasSelection;
             btnDelete.style.opacity = hasSelection ? '1' : '0.5';
             btnDelete.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
+            btnDelete.style.background = hasSelection ? '#ef4444' : '#d1d5db';
         }
     }
 
     function openModal(modalId) {
+        console.log('[n8nModule] Opening modal:', modalId);
+        
         const overlay = document.getElementById('modalOverlay');
         const modal = document.getElementById(modalId);
         
         if (overlay) overlay.style.display = 'flex';
         if (modal) {
             modal.style.display = 'block';
-            const firstInput = modal.querySelector('input:not([type="hidden"])');
-            if (firstInput) setTimeout(() => firstInput.focus(), 100);
         }
     }
 
     function closeModal() {
+        console.log('[n8nModule] Closing modals');
+        
         const overlay = document.getElementById('modalOverlay');
         if (overlay) overlay.style.display = 'none';
         
-        document.querySelectorAll('.n8n-modal').forEach(m => {
+        document.querySelectorAll('#dataModal, #deleteModal').forEach(m => {
             m.style.display = 'none';
         });
     }
@@ -1003,7 +976,7 @@ function doOptions(e) {
         
         if (!section || !arrow) return;
 
-        if (section.style.display === 'none') {
+        if (section.style.display === 'none' || section.style.display === '') {
             section.style.display = 'block';
             arrow.textContent = '▲';
             const editor = document.getElementById('gasCodeEditor');
@@ -1015,15 +988,55 @@ function doOptions(e) {
     }
 
     // ============================================
-    // EVENT LISTENERS
+    // EVENT LISTENERS - FIXED
     // ============================================
 
     function attachEventListeners() {
-        document.getElementById('btnSearch')?.addEventListener('click', handleSearch);
-        document.getElementById('btnExecuteSearch')?.addEventListener('click', handleSearch);
-        document.getElementById('btnAdd')?.addEventListener('click', handleAdd);
-        document.getElementById('btnEdit')?.addEventListener('click', handleEdit);
-        document.getElementById('btnDelete')?.addEventListener('click', handleDelete);
+        console.log('[n8nModule] Attaching event listeners...');
+
+        // Main buttons
+        const btnSearch = document.getElementById('btnSearch');
+        const btnExecuteSearch = document.getElementById('btnExecuteSearch');
+        const btnAdd = document.getElementById('btnAdd');
+        const btnEdit = document.getElementById('btnEdit');
+        const btnDelete = document.getElementById('btnDelete');
+
+        if (btnSearch) {
+            btnSearch.addEventListener('click', () => {
+                console.log('[n8nModule] btnSearch clicked');
+                handleSearch();
+            });
+        }
+
+        if (btnExecuteSearch) {
+            btnExecuteSearch.addEventListener('click', () => {
+                console.log('[n8nModule] btnExecuteSearch clicked');
+                handleSearch();
+            });
+        }
+
+        if (btnAdd) {
+            btnAdd.addEventListener('click', () => {
+                console.log('[n8nModule] btnAdd clicked');
+                handleAdd();
+            });
+        }
+
+        if (btnEdit) {
+            btnEdit.addEventListener('click', () => {
+                console.log('[n8nModule] btnEdit clicked');
+                handleEdit();
+            });
+        }
+
+        if (btnDelete) {
+            btnDelete.addEventListener('click', () => {
+                console.log('[n8nModule] btnDelete clicked');
+                handleDelete();
+            });
+        }
+
+        // Config buttons
         document.getElementById('btnToggleConfig')?.addEventListener('click', toggleConfig);
         document.getElementById('btnSaveConfig')?.addEventListener('click', saveConfig);
         document.getElementById('btnTestTelegram')?.addEventListener('click', getChatId);
@@ -1033,20 +1046,42 @@ function doOptions(e) {
         document.getElementById('btnOpenGAS')?.addEventListener('click', () => {
             window.open('https://script.google.com', '_blank');
         });
+
+        // Modal buttons
         document.getElementById('btnCloseModal')?.addEventListener('click', closeModal);
         document.getElementById('btnCancel')?.addEventListener('click', closeModal);
-        document.getElementById('btnSave')?.addEventListener('click', saveData);
+        document.getElementById('btnSave')?.addEventListener('click', () => {
+            console.log('[n8nModule] btnSave clicked');
+            saveData();
+        });
         document.getElementById('btnCancelDelete')?.addEventListener('click', closeModal);
-        document.getElementById('btnConfirmDelete')?.addEventListener('click', confirmDelete);
-        document.getElementById('searchInput')?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleSearch();
+        document.getElementById('btnConfirmDelete')?.addEventListener('click', () => {
+            console.log('[n8nModule] btnConfirmDelete clicked');
+            confirmDelete();
         });
-        document.getElementById('modalOverlay')?.addEventListener('click', (e) => {
-            if (e.target.id === 'modalOverlay') closeModal();
-        });
+
+        // Search input
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleSearch();
+            });
+        }
+
+        // Modal overlay click
+        const modalOverlay = document.getElementById('modalOverlay');
+        if (modalOverlay) {
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target.id === 'modalOverlay') closeModal();
+            });
+        }
+
+        // Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
+
+        console.log('[n8nModule] Event listeners attached');
     }
 
     // ============================================
@@ -1057,7 +1092,7 @@ function doOptions(e) {
         const isFile = isFileProtocol();
         
         const fileWarning = isFile ? `
-            <div class="n8n-warning-banner" style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #856404;">
+            <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #856404;">
                 <div style="font-weight: bold; margin-bottom: 8px;">⚠️ Mode File Lokal Terdeteksi</div>
                 <div style="font-size: 13px; line-height: 1.5;">
                     Beberapa fitur terbatas karena CORS. Solusi:
@@ -1074,13 +1109,13 @@ function doOptions(e) {
             <div class="n8n-container" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
                 ${fileWarning}
                 
-                <div class="n8n-header" style="margin-bottom: 20px;">
+                <div style="margin-bottom: 20px;">
                     <h2 style="margin: 0; color: #333;">🔍 N8N Data Management</h2>
-                    <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Kelola data via Telegram Bridge → Google Sheets</p>
+                    <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Kelola data via Google Sheets</p>
                 </div>
 
                 <!-- TELEGRAM STATUS CARD -->
-                <div class="n8n-telegram-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin-bottom: 20px; color: white;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin-bottom: 20px; color: white;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                         <div>
                             <div style="font-weight: 600; margin-bottom: 4px;">📱 Status Telegram</div>
@@ -1090,11 +1125,11 @@ function doOptions(e) {
                         </div>
                         <div style="display: flex; gap: 10px;">
                             ${isFile ? `
-                            <button class="n8n-btn" onclick="n8nModule.rotateProxy()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <button onclick="n8nModule.rotateProxy()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
                                 🔄 Rotate Proxy
                             </button>
                             ` : ''}
-                            <button class="n8n-btn" onclick="n8nModule.testTelegramConnection()" style="background: white; color: #667eea; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 13px;">
+                            <button onclick="n8nModule.testTelegramConnection()" style="background: white; color: #667eea; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 13px;">
                                 🔄 Test Koneksi
                             </button>
                         </div>
@@ -1102,39 +1137,35 @@ function doOptions(e) {
                 </div>
 
                 <!-- CRUD BUTTONS -->
-                <div class="n8n-crud-section" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                     <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                        <button class="n8n-btn" id="btnSearch" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-                            <span>🔍</span>
-                            <span>Cari Data</span>
+                        <button id="btnSearch" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            🔍 Cari Data
                         </button>
-                        <button class="n8n-btn" id="btnAdd" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-                            <span>➕</span>
-                            <span>Tambah Data</span>
+                        <button id="btnAdd" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            ➕ Tambah Data
                         </button>
-                        <button class="n8n-btn" id="btnEdit" disabled style="background: #f59e0b; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: not-allowed; font-weight: 600; display: flex; align-items: center; gap: 8px; opacity: 0.5;">
-                            <span>✏️</span>
-                            <span>Edit Data</span>
+                        <button id="btnEdit" disabled style="background: #d1d5db; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: not-allowed; font-weight: 600; opacity: 0.5;">
+                            ✏️ Edit Data
                         </button>
-                        <button class="n8n-btn" id="btnDelete" disabled style="background: #ef4444; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: not-allowed; font-weight: 600; display: flex; align-items: center; gap: 8px; opacity: 0.5;">
-                            <span>🗑️</span>
-                            <span>Hapus Data</span>
+                        <button id="btnDelete" disabled style="background: #d1d5db; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: not-allowed; font-weight: 600; opacity: 0.5;">
+                            🗑️ Hapus Data
                         </button>
                     </div>
 
                     <div style="display: flex; gap: 10px;">
                         <input type="text" id="searchInput" placeholder="Ketik nama atau nomor untuk mencari..." 
                                style="flex: 1; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
-                        <button class="n8n-btn" id="btnExecuteSearch" style="background: #667eea; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
+                        <button id="btnExecuteSearch" style="background: #667eea; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
                             🔍
                         </button>
                     </div>
                 </div>
 
                 <!-- DATA TABLE -->
-                <div class="n8n-data-section" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                     <div style="overflow-x: auto;">
-                        <table class="n8n-table" style="width: 100%; border-collapse: collapse;">
+                        <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: #667eea; color: white;">
                                     <th style="padding: 15px; text-align: left; width: 60px;">No</th>
@@ -1157,7 +1188,7 @@ function doOptions(e) {
 
                 <!-- CONFIG TOGGLE -->
                 <div style="margin-top: 20px;">
-                    <button class="n8n-btn" id="btnToggleConfig" style="background: #f3f4f6; color: #374151; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: space-between;">
+                    <button id="btnToggleConfig" style="background: #f3f4f6; color: #374151; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: space-between;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span>⚙️</span>
                             <span>Konfigurasi Telegram & GAS</span>
@@ -1180,18 +1211,16 @@ function doOptions(e) {
                             <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Bot Token <span style="color: #ef4444;">*</span></label>
                             <input type="password" id="botToken" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                            <small style="color: #6b7280; font-size: 12px;">Dapatkan dari @BotFather di Telegram</small>
                         </div>
 
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Chat ID (Auto-detect)</label>
                             <input type="text" id="chatId" placeholder="Kirim pesan ke bot, lalu klik Test" readonly 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; box-sizing: border-box;">
-                            <small style="color: #6b7280; font-size: 12px;">ID chat akan terdeteksi otomatis</small>
                         </div>
 
                         <div>
-                            <button class="n8n-btn" id="btnTestTelegram" style="background: #8b5cf6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            <button id="btnTestTelegram" style="background: #8b5cf6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                                 📱 Test & Dapatkan Chat ID
                             </button>
                         </div>
@@ -1208,7 +1237,6 @@ function doOptions(e) {
                             <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Google Sheet ID <span style="color: #ef4444;">*</span></label>
                             <input type="text" id="sheetId" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                            <small style="color: #6b7280; font-size: 12px;">ID dari URL spreadsheet</small>
                         </div>
 
                         <div style="margin-bottom: 15px;">
@@ -1221,15 +1249,14 @@ function doOptions(e) {
                             <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">GAS Web App URL <span style="color: #ef4444;">*</span></label>
                             <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                            <small style="color: #6b7280; font-size: 12px;">URL dari deployment Web App</small>
                             <div id="gasStatusInfo"></div>
                         </div>
 
                         <div style="display: flex; gap: 10px;">
-                            <button class="n8n-btn" id="btnTestGAS" style="background: #8b5cf6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            <button id="btnTestGAS" style="background: #8b5cf6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                                 🔗 Test Koneksi GAS
                             </button>
-                            <button class="n8n-btn" id="btnSaveConfig" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            <button id="btnSaveConfig" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
                                 💾 Simpan Konfigurasi
                             </button>
                         </div>
@@ -1243,29 +1270,19 @@ function doOptions(e) {
                         </div>
                         
                         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                            <button class="n8n-btn" id="btnGenerateGAS" style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <button id="btnGenerateGAS" style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
                                 🔄 Regenerate
                             </button>
-                            <button class="n8n-btn" id="btnCopyGAS" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <button id="btnCopyGAS" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
                                 📋 Copy Kode
                             </button>
-                            <button class="n8n-btn" id="btnOpenGAS" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <button id="btnOpenGAS" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
                                 🚀 Buka GAS Editor
                             </button>
                         </div>
 
                         <textarea id="gasCodeEditor" readonly placeholder="Klik 'Regenerate' untuk generate kode GAS..." 
                                   style="width: 100%; height: 300px; padding: 15px; border: 2px solid #e5e7eb; border-radius: 8px; font-family: monospace; font-size: 12px; resize: vertical; box-sizing: border-box;"></textarea>
-                        
-                        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px; margin-top: 15px; font-size: 13px;">
-                            <strong style="color: #1e40af;">💡 Tips Deploy:</strong>
-                            <ol style="margin: 10px 0; padding-left: 20px; color: #1e40af;">
-                                <li>Copy kode → Paste ke <a href="https://script.google.com" target="_blank" style="color: #2563eb;">script.google.com</a></li>
-                                <li>Save (Ctrl+S) → Deploy → New deployment</li>
-                                <li>Type: Web App | Execute as: Me | Access: <strong>ANYONE</strong></li>
-                                <li>Copy URL Web App → Paste ke field di atas</li>
-                            </ol>
-                        </div>
                     </div>
                 </div>
 
@@ -1280,7 +1297,7 @@ function doOptions(e) {
             <div id="modalOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;">
                 
                 <!-- Add/Edit Modal -->
-                <div id="dataModal" style="display: none; background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+                <div id="dataModal" style="display: none; background: white; border-radius: 16px; width: 90%; max-width: 500px;">
                     <div style="padding: 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
                         <h3 id="modalTitle" style="margin: 0;">Tambah Data</h3>
                         <button id="btnCloseModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6b7280;">&times;</button>
@@ -1337,11 +1354,6 @@ function doOptions(e) {
             return;
         }
 
-        if (isFileProtocol()) {
-            console.warn('[n8nModule] Running from file:// protocol - CORS proxy enabled');
-            state.proxyMode = true;
-        }
-
         mainContent.innerHTML = getHTML();
         attachEventListeners();
         setFormValues();
@@ -1359,22 +1371,26 @@ function doOptions(e) {
 
     return {
         init: function() {
-            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.3 Fixed Loaded');
+            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.4 Debug Loaded');
             loadConfig();
         },
         
         renderPage: renderPage,
         testTelegramConnection: testTelegramConnection,
         testConnection: testConnection,
-        rotateProxy: function() {
-            rotateProxy();
-        },
+        rotateProxy: rotateProxy,
         handleSearch: handleSearch,
         handleAdd: handleAdd,
         handleEdit: handleEdit,
         handleDelete: handleDelete,
         getConfig: function() { return state.config; },
-        saveConfig: saveConfig
+        saveConfig: saveConfig,
+        
+        // Debug functions
+        getState: function() { 
+            console.log('[n8nModule] Current state:', state);
+            return state; 
+        }
     };
 
 })();
