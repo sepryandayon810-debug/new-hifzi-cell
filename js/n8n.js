@@ -1,6 +1,6 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
-// VERSI DEBUG - FIXED EDIT DELETE
+// VERSI FIXED - SEARCH & COPY FEATURE
 // ============================================
 
 const n8nModule = (function() {
@@ -20,9 +20,9 @@ const n8nModule = (function() {
     };
 
     const state = {
-        data: [],           // Semua data dari sheet
-        filteredData: [],   // Data yang ditampilkan (setelah filter)
-        selectedItem: null, // Object item yang dipilih (bukan hanya row number)
+        data: [],
+        filteredData: [],
+        selectedItem: null,
         config: {
             botToken: '',
             chatId: '',
@@ -66,7 +66,7 @@ const n8nModule = (function() {
         return div.innerHTML;
     }
 
-    function showNotification(message, type = 'info', duration = 4000) {
+    function showNotification(message, type = 'info', duration = 3000) {
         console.log(`[n8nModule] ${type}: ${message}`);
         
         if (typeof app !== 'undefined' && app.showToast) {
@@ -86,6 +86,36 @@ const n8nModule = (function() {
         } else {
             alert(message);
         }
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('📋 Nomor dicopy!', 'success', 2000);
+            }).catch(() => {
+                fallbackCopy(text);
+            });
+        } else {
+            fallbackCopy(text);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        
+        try {
+            document.execCommand('copy');
+            showNotification('📋 Nomor dicopy!', 'success', 2000);
+        } catch (err) {
+            showNotification('❌ Gagal copy', 'error');
+        }
+        
+        document.body.removeChild(textarea);
     }
 
     function setStatus(badge, text) {
@@ -148,7 +178,6 @@ const n8nModule = (function() {
         localStorage.setItem(CONFIG_KEYS.CONFIG, JSON.stringify(inputs));
 
         showNotification('✅ Konfigurasi berhasil disimpan!', 'success');
-        console.log('[n8nModule] Config saved');
     }
 
     function setFormValues() {
@@ -448,15 +477,16 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // CRUD OPERATIONS - FIXED DEBUG VERSION
+    // CRUD OPERATIONS - FIXED SEARCH
     // ============================================
 
     async function handleSearch() {
         const keywordInput = document.getElementById('searchInput');
-        const keyword = keywordInput?.value.toLowerCase().trim() || '';
+        const keyword = keywordInput?.value.trim() || '';
         
         console.log('[n8nModule] === HANDLE SEARCH ===');
-        console.log('[n8nModule] Keyword:', keyword);
+        console.log('[n8nModule] Keyword input:', keyword);
+        console.log('[n8nModule] Keyword lowercase:', keyword.toLowerCase());
 
         // Reset selection
         state.selectedItem = null;
@@ -479,40 +509,47 @@ const n8nModule = (function() {
         
         if (!result) {
             console.error('[n8nModule] Get data failed');
-            if (tbody) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; padding: 40px; color: #e74c3c;">
-                            <div style="font-size: 32px; margin-bottom: 10px;">❌</div>
-                            <div>Gagal mengambil data</div>
-                            <button onclick="n8nModule.rotateProxy()" 
-                                    style="margin-top: 15px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                                🔄 Coba Proxy Lain
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }
             return;
         }
 
         state.data = result.data || [];
-        console.log('[n8nModule] Raw data from server:', state.data);
+        console.log('[n8nModule] Raw data count:', state.data.length);
+        console.log('[n8nModule] First 3 items:', state.data.slice(0, 3));
 
-        if (keyword) {
-            state.filteredData = state.data.filter(item => 
-                (item.nama && item.nama.toLowerCase().includes(keyword)) || 
-                (item.nomor && item.nomor.toLowerCase().includes(keyword))
-            );
+        // FILTER LOGIC - FIXED
+        if (keyword && keyword.length > 0) {
+            const keywordLower = keyword.toLowerCase();
+            console.log('[n8nModule] Filtering with keyword:', keywordLower);
+            
+            state.filteredData = state.data.filter(item => {
+                // Pastikan item ada dan memiliki property
+                if (!item) return false;
+                
+                const nama = String(item.nama || '').toLowerCase();
+                const nomor = String(item.nomor || '').toLowerCase();
+                
+                const matchNama = nama.includes(keywordLower);
+                const matchNomor = nomor.includes(keywordLower);
+                
+                if (matchNama || matchNomor) {
+                    console.log('[n8nModule] Match found:', item);
+                }
+                
+                return matchNama || matchNomor;
+            });
         } else {
             state.filteredData = [...state.data];
         }
 
-        console.log('[n8nModule] Filtered data:', state.filteredData.length, 'rows');
-        console.log('[n8nModule] Sample data:', state.filteredData.slice(0, 3));
+        console.log('[n8nModule] Filtered data count:', state.filteredData.length);
 
         renderTable();
-        showNotification(`✅ ${state.filteredData.length} data ditemukan`, 'success');
+        
+        if (state.filteredData.length === 0 && keyword) {
+            showNotification(`❌ Tidak ada data cocok dengan "${keyword}"`, 'warning');
+        } else {
+            showNotification(`✅ ${state.filteredData.length} data ditemukan`, 'success');
+        }
     }
 
     function handleAdd() {
@@ -556,7 +593,6 @@ const n8nModule = (function() {
         }
         if (inputNomor) inputNomor.value = state.selectedItem.nomor || '';
 
-        console.log('[n8nModule] Opening edit modal with row:', state.selectedItem.row);
         openModal('dataModal');
     }
 
@@ -606,8 +642,7 @@ const n8nModule = (function() {
         
         if (result && result.success) {
             closeModal();
-            await handleSearch(); // Refresh data
-            
+            await handleSearch();
             showNotification(result.message || '✅ Data berhasil disimpan', 'success');
         } else if (result) {
             showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
@@ -633,9 +668,7 @@ const n8nModule = (function() {
             closeModal();
             state.selectedItem = null;
             updateButtonStates();
-            
-            await handleSearch(); // Refresh data
-            
+            await handleSearch();
             showNotification(result.message || '✅ Data dihapus', 'success');
         } else if (result) {
             showNotification('❌ ' + (result.error || 'Gagal menghapus'), 'error');
@@ -643,7 +676,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // UI RENDERING - FIXED WITH DEBUG
+    // UI RENDERING - WITH COPY BUTTON
     // ============================================
 
     function renderTable() {
@@ -673,14 +706,25 @@ const n8nModule = (function() {
         let html = '';
         state.filteredData.forEach((item, index) => {
             const isSelected = state.selectedItem && state.selectedItem.row == item.row;
+            const nomorDisplay = escapeHtml(item.nomor || '-');
+            
             html += `
                 <tr class="n8n-data-row ${isSelected ? 'selected' : ''}" 
                     data-row="${item.row}" 
                     data-index="${index}"
-                    style="cursor: pointer; ${isSelected ? 'background: #e0e7ff;' : ''}">
+                    style="cursor: pointer; ${isSelected ? 'background: #e0e7ff !important;' : ''}">
                     <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.nama || '')}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.nomor || '')}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-weight: 500;">${escapeHtml(item.nama || '')}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>${nomorDisplay}</span>
+                            <button onclick="event.stopPropagation(); n8nModule.copyNumber('${item.nomor || ''}')" 
+                                    style="padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;"
+                                    title="Copy nomor">
+                                📋
+                            </button>
+                        </div>
+                    </td>
                     <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
                         <button class="n8n-btn-select" 
                                 data-row="${item.row}" 
@@ -701,7 +745,7 @@ const n8nModule = (function() {
         // Attach event listeners
         tbody.querySelectorAll('.n8n-data-row').forEach(row => {
             row.addEventListener('click', (e) => {
-                if (e.target.closest('.n8n-btn-select')) return;
+                if (e.target.closest('.n8n-btn-select') || e.target.closest('button')) return;
                 const rowNum = parseInt(row.getAttribute('data-row'));
                 const index = parseInt(row.getAttribute('data-index'));
                 selectRow(rowNum, index);
@@ -724,7 +768,6 @@ const n8nModule = (function() {
         console.log('[n8nModule] === SELECT ROW ===');
         console.log('[n8nModule] Row number:', rowNum, 'Index:', index);
 
-        // Cari item di filteredData
         const item = state.filteredData.find(d => d.row == rowNum);
         
         if (!item) {
@@ -732,7 +775,6 @@ const n8nModule = (function() {
             return;
         }
 
-        // Toggle selection
         if (state.selectedItem && state.selectedItem.row == rowNum) {
             state.selectedItem = null;
             console.log('[n8nModule] Deselected');
@@ -767,8 +809,6 @@ const n8nModule = (function() {
     }
 
     function openModal(modalId) {
-        console.log('[n8nModule] Opening modal:', modalId);
-        
         const overlay = document.getElementById('modalOverlay');
         const modal = document.getElementById(modalId);
         
@@ -779,8 +819,6 @@ const n8nModule = (function() {
     }
 
     function closeModal() {
-        console.log('[n8nModule] Closing modals');
-        
         const overlay = document.getElementById('modalOverlay');
         if (overlay) overlay.style.display = 'none';
         
@@ -988,55 +1026,17 @@ function doOptions(e) {
     }
 
     // ============================================
-    // EVENT LISTENERS - FIXED
+    // EVENT LISTENERS
     // ============================================
 
     function attachEventListeners() {
         console.log('[n8nModule] Attaching event listeners...');
 
-        // Main buttons
-        const btnSearch = document.getElementById('btnSearch');
-        const btnExecuteSearch = document.getElementById('btnExecuteSearch');
-        const btnAdd = document.getElementById('btnAdd');
-        const btnEdit = document.getElementById('btnEdit');
-        const btnDelete = document.getElementById('btnDelete');
-
-        if (btnSearch) {
-            btnSearch.addEventListener('click', () => {
-                console.log('[n8nModule] btnSearch clicked');
-                handleSearch();
-            });
-        }
-
-        if (btnExecuteSearch) {
-            btnExecuteSearch.addEventListener('click', () => {
-                console.log('[n8nModule] btnExecuteSearch clicked');
-                handleSearch();
-            });
-        }
-
-        if (btnAdd) {
-            btnAdd.addEventListener('click', () => {
-                console.log('[n8nModule] btnAdd clicked');
-                handleAdd();
-            });
-        }
-
-        if (btnEdit) {
-            btnEdit.addEventListener('click', () => {
-                console.log('[n8nModule] btnEdit clicked');
-                handleEdit();
-            });
-        }
-
-        if (btnDelete) {
-            btnDelete.addEventListener('click', () => {
-                console.log('[n8nModule] btnDelete clicked');
-                handleDelete();
-            });
-        }
-
-        // Config buttons
+        document.getElementById('btnSearch')?.addEventListener('click', handleSearch);
+        document.getElementById('btnExecuteSearch')?.addEventListener('click', handleSearch);
+        document.getElementById('btnAdd')?.addEventListener('click', handleAdd);
+        document.getElementById('btnEdit')?.addEventListener('click', handleEdit);
+        document.getElementById('btnDelete')?.addEventListener('click', handleDelete);
         document.getElementById('btnToggleConfig')?.addEventListener('click', toggleConfig);
         document.getElementById('btnSaveConfig')?.addEventListener('click', saveConfig);
         document.getElementById('btnTestTelegram')?.addEventListener('click', getChatId);
@@ -1046,21 +1046,12 @@ function doOptions(e) {
         document.getElementById('btnOpenGAS')?.addEventListener('click', () => {
             window.open('https://script.google.com', '_blank');
         });
-
-        // Modal buttons
         document.getElementById('btnCloseModal')?.addEventListener('click', closeModal);
         document.getElementById('btnCancel')?.addEventListener('click', closeModal);
-        document.getElementById('btnSave')?.addEventListener('click', () => {
-            console.log('[n8nModule] btnSave clicked');
-            saveData();
-        });
+        document.getElementById('btnSave')?.addEventListener('click', saveData);
         document.getElementById('btnCancelDelete')?.addEventListener('click', closeModal);
-        document.getElementById('btnConfirmDelete')?.addEventListener('click', () => {
-            console.log('[n8nModule] btnConfirmDelete clicked');
-            confirmDelete();
-        });
-
-        // Search input
+        document.getElementById('btnConfirmDelete')?.addEventListener('click', confirmDelete);
+        
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
             searchInput.addEventListener('keypress', (e) => {
@@ -1068,7 +1059,6 @@ function doOptions(e) {
             });
         }
 
-        // Modal overlay click
         const modalOverlay = document.getElementById('modalOverlay');
         if (modalOverlay) {
             modalOverlay.addEventListener('click', (e) => {
@@ -1076,7 +1066,6 @@ function doOptions(e) {
             });
         }
 
-        // Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
@@ -1099,7 +1088,6 @@ function doOptions(e) {
                     <ol style="margin: 10px 0; padding-left: 20px;">
                         <li>Gunakan <strong>Live Server</strong> di VS Code</li>
                         <li>Upload ke <strong>GitHub Pages</strong></li>
-                        <li>Tekan tombol <strong>🔄 Rotate Proxy</strong> jika gagal</li>
                     </ol>
                 </div>
             </div>
@@ -1154,7 +1142,7 @@ function doOptions(e) {
                     </div>
 
                     <div style="display: flex; gap: 10px;">
-                        <input type="text" id="searchInput" placeholder="Ketik nama atau nomor untuk mencari..." 
+                        <input type="text" id="searchInput" placeholder="Ketik minimal 3 huruf (awal/tengah/akhir nama)..." 
                                style="flex: 1; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
                         <button id="btnExecuteSearch" style="background: #667eea; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
                             🔍
@@ -1371,7 +1359,7 @@ function doOptions(e) {
 
     return {
         init: function() {
-            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.4 Debug Loaded');
+            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.5 Fixed Loaded');
             loadConfig();
         },
         
@@ -1385,8 +1373,9 @@ function doOptions(e) {
         handleDelete: handleDelete,
         getConfig: function() { return state.config; },
         saveConfig: saveConfig,
+        copyNumber: copyToClipboard,
         
-        // Debug functions
+        // Debug
         getState: function() { 
             console.log('[n8nModule] Current state:', state);
             return state; 
