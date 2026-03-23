@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.4 FINAL)
-// FIXED: CORS, Excel View for GAS, Toggle Arrow
+// BACKUP MODULE - HIFZI CELL (COMPLETE v3.6 FINAL)
+// FIXED: CORS, Excel View for Firebase & GAS, Toggle Arrow, Logout Config
 // ============================================
 
 const backupModule = {
@@ -20,8 +20,6 @@ const backupModule = {
     auth: null,
     currentUser: null,
     firebaseBackupData: null,
-    
-    // ✅ UNTUK GAS: Simpan data yang di-fetch untuk Excel view
     gasBackupData: null,
     
     gasUrl: '',
@@ -56,7 +54,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.4 FINAL...');
+        console.log('[Backup] Initializing v3.6 FINAL...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -219,7 +217,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '3.4-final',
+                version: '3.6-final',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -464,6 +462,29 @@ const backupModule = {
         });
     },
 
+    // ✅ BARU: Clear Firebase Config
+    clearFirebaseConfig() {
+        if (!confirm('⚠️ Hapus konfigurasi Firebase? Anda perlu setup ulang.')) return;
+        
+        this.firebaseConfig = {};
+        this.firebaseApp = null;
+        this.database = null;
+        this.auth = null;
+        this.currentUser = null;
+        this.firebaseBackupData = null;
+        
+        localStorage.removeItem(this.KEYS.FIREBASE_CONFIG);
+        localStorage.removeItem(this.KEYS.FB_USER);
+        localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+        localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
+        
+        this.stopAutoSync();
+        this.saveBackupSettings();
+        
+        this.showToast('✅ Konfigurasi Firebase dihapus');
+        this.render();
+    },
+
     uploadToFirebase(data, silent = false) {
         if (!this.database || !this.currentUser) {
             if (!silent) this.showToast('❌ Belum login Firebase');
@@ -473,7 +494,7 @@ const backupModule = {
         
         return this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set({
             ...data,
-            _syncMeta: { lastModified: new Date().toISOString(), deviceId: this.deviceId, version: '3.4' }
+            _syncMeta: { lastModified: new Date().toISOString(), deviceId: this.deviceId, version: '3.6' }
         }).then(() => {
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
@@ -522,6 +543,152 @@ const backupModule = {
     },
 
     // ============================================
+    // FIREBASE EXCEL VIEW
+    // ============================================
+    
+    async fetchFirebaseDataForView() {
+        if (!this.currentUser) {
+            this.showToast('❌ Belum login Firebase');
+            return;
+        }
+        
+        this.showToast('⬇️ Mengambil data dari Firebase...');
+        
+        try {
+            const snapshot = await this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value');
+            const cloudData = snapshot.val();
+            
+            if (cloudData) {
+                this.firebaseBackupData = cloudData;
+                this.showToast('✅ Data berhasil diambil!');
+                this.renderFirebaseExcelView();
+            } else {
+                this.showToast('ℹ️ Tidak ada data di Firebase');
+            }
+        } catch (err) {
+            console.error('[Firebase View Error]', err);
+            this.showToast('❌ Gagal mengambil data: ' + err.message);
+        }
+    },
+
+    renderFirebaseExcelView() {
+        const data = this.firebaseBackupData;
+        if (!data) {
+            this.showToast('ℹ️ Tidak ada data untuk ditampilkan');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'firebase-excel-modal';
+        modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;`;
+
+        const tabs = [
+            { id: 'fb-products', label: '📦 Produk', data: data.products || [] },
+            { id: 'fb-transactions', label: '📝 Transaksi', data: data.transactions || [] },
+            { id: 'fb-cashTransactions', label: '💰 Cash Flow', data: data.cashTransactions || [] },
+            { id: 'fb-dailyClosing', label: '📊 Tutup Kas', data: data.dailyClosing || [] },
+            { id: 'fb-debts', label: '💳 Hutang', data: data.debts || [] },
+            { id: 'fb-users', label: '👥 Users', data: data.users || [] },
+            { id: 'fb-categories', label: '🏷️ Kategori', data: data.categories || [] },
+            { id: 'fb-shifts', label: '⏰ Shift', data: data.shifts || [] }
+        ];
+
+        const generateTable = (tabData) => {
+            if (!tabData || tabData.length === 0) {
+                return `<div style="text-align:center;padding:40px;color:#718096;"><div style="font-size:48px;margin-bottom:16px;">📭</div>Tidak ada data</div>`;
+            }
+            const keys = Object.keys(tabData[0]).filter(k => !k.startsWith('_'));
+            const headerStyle = 'background:#ff6b35;color:white;padding:12px;text-align:left;font-weight:600;font-size:12px;position:sticky;top:0;';
+            const cellStyle = 'padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            
+            const rows = tabData.map((row, idx) => {
+                const cells = keys.map(key => {
+                    let value = row[key];
+                    if (typeof value === 'object') value = JSON.stringify(value);
+                    if (key.toLowerCase().includes('price') || key.toLowerCase().includes('amount')) {
+                        value = typeof value === 'number' ? 'Rp ' + value.toLocaleString('id-ID') : value;
+                    }
+                    return `<td style="${cellStyle} ${idx % 2 === 0 ? 'background:white;' : 'background:#fff5f0;'}">${value || '-'}</td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+
+            const headers = keys.map(key => `<th style="${headerStyle}">${key.replace(/_/g, ' ').toUpperCase()}</th>`).join('');
+
+            return `<div style="overflow-x:auto;border-radius:8px;border:1px solid #e2e8f0;"><table style="width:100%;border-collapse:collapse;font-family:'Segoe UI',sans-serif;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
+        };
+
+        const tabButtons = tabs.map(tab => `
+            <button onclick="backupModule.switchFBTab('${tab.id}')" id="fb-tab-btn-${tab.id}" style="padding:10px 16px;border:none;background:#fed7d7;color:#c53030;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;">${tab.label} (${tab.data.length})</button>
+        `).join('');
+
+        const tabContents = tabs.map(tab => `
+            <div id="fb-tab-content-${tab.id}" style="display:none;">${generateTable(tab.data)}</div>
+        `).join('');
+
+        modal.innerHTML = `
+            <div style="background:white;border-radius:16px;width:100%;max-width:1200px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;margin-top:20px;">
+                <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:white;">
+                    <div>
+                        <div style="font-size:20px;font-weight:700;">🔥 Data Firebase (Excel View)</div>
+                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">${this.currentUser?.email || 'Not logged in'}</div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="backupModule.downloadFBAsExcel()" style="padding:10px 16px;background:white;color:#ff6b35;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">📥 Download Excel</button>
+                        <button onclick="document.getElementById('firebase-excel-modal').remove()" style="padding:10px 16px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">✕ Tutup</button>
+                    </div>
+                </div>
+                <div style="padding:16px;background:#fff5f5;border-bottom:1px solid #fed7d7;">
+                    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">${tabButtons}</div>
+                </div>
+                <div style="padding:20px;overflow-y:auto;flex:1;">${tabContents}</div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        const firstTabWithData = tabs.find(t => t.data.length > 0) || tabs[0];
+        this.switchFBTab(firstTabWithData.id);
+    },
+
+    switchFBTab(tabId) {
+        document.querySelectorAll('[id^="fb-tab-content-"]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[id^="fb-tab-btn-"]').forEach(el => {
+            el.style.background = '#fed7d7'; el.style.color = '#c53030';
+        });
+        const content = document.getElementById(`fb-tab-content-${tabId}`);
+        const btn = document.getElementById(`fb-tab-btn-${tabId}`);
+        if (content) content.style.display = 'block';
+        if (btn) { btn.style.background = '#ff6b35'; btn.style.color = 'white'; }
+    },
+
+    downloadFBAsExcel() {
+        if (!this.firebaseBackupData) return;
+        const data = this.firebaseBackupData;
+        const wb = XLSX.utils.book_new();
+        
+        const sheets = [
+            { name: 'Produk', data: data.products || [] },
+            { name: 'Transaksi', data: data.transactions || [] },
+            { name: 'CashTrans', data: data.cashTransactions || [] },
+            { name: 'TutupKas', data: data.dailyClosing || [] },
+            { name: 'Hutang', data: data.debts || [] },
+            { name: 'Users', data: data.users || [] },
+            { name: 'Kategori', data: data.categories || [] },
+            { name: 'Shift', data: data.shifts || [] }
+        ];
+        
+        sheets.forEach(sheet => {
+            if (sheet.data.length > 0) {
+                const ws = XLSX.utils.json_to_sheet(sheet.data);
+                XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+            }
+        });
+        
+        XLSX.writeFile(wb, `firebase_backup_${new Date().toISOString().split('T')[0]}.xlsx`);
+        this.showToast('✅ File Excel didownload!');
+    },
+
+    // ============================================
     // GOOGLE SHEETS
     // ============================================
 
@@ -550,7 +717,6 @@ const backupModule = {
 
         this.showToast('🧪 Testing koneksi...');
         
-        // ✅ PERBAIKAN: Gunakan text/plain untuk menghindari preflight CORS
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
@@ -670,7 +836,6 @@ const backupModule = {
         })
         .then(result => {
             if (result?.success && result.data) {
-                // ✅ Simpan untuk Excel view
                 this.gasBackupData = result.data;
                 
                 this.saveBackupData(result.data);
@@ -694,11 +859,29 @@ const backupModule = {
         });
     },
 
+    // ✅ BARU: Clear GAS Config
+    clearGASConfig() {
+        if (!confirm('⚠️ Hapus konfigurasi Google Sheets? Anda perlu setup ulang.')) return;
+        
+        this.gasUrl = '';
+        this.sheetId = '';
+        this._gasConfigValid = false;
+        this.gasBackupData = null;
+        
+        localStorage.removeItem(this.KEYS.GAS_URL);
+        localStorage.removeItem(this.KEYS.SHEET_ID);
+        
+        this.stopAutoSync();
+        this.saveBackupSettings();
+        
+        this.showToast('✅ Konfigurasi GAS dihapus');
+        this.render();
+    },
+
     // ============================================
-    // EXCEL VIEW UNTUK GAS - BARU!
+    // GAS EXCEL VIEW
     // ============================================
     
-    // ✅ FETCH data dari GAS untuk Excel view (tanpa download ke local)
     async fetchGASDataForView() {
         if (!this._gasConfigValid) {
             this.showToast('❌ Konfigurasi GAS tidak lengkap');
@@ -739,7 +922,6 @@ const backupModule = {
         }
     },
 
-    // ✅ RENDER Excel view untuk GAS dengan toggle arrow
     renderGASExcelView() {
         const data = this.gasBackupData;
         if (!data) {
@@ -752,14 +934,14 @@ const backupModule = {
         modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;`;
 
         const tabs = [
-            { id: 'products', label: '📦 Produk', data: data.products || [] },
-            { id: 'transactions', label: '📝 Transaksi', data: data.transactions || [] },
-            { id: 'cashTransactions', label: '💰 Cash Flow', data: data.cashTransactions || [] },
-            { id: 'dailyClosing', label: '📊 Tutup Kas', data: data.dailyClosing || [] },
-            { id: 'debts', label: '💳 Hutang', data: data.debts || [] },
-            { id: 'users', label: '👥 Users', data: data.users || [] },
-            { id: 'categories', label: '🏷️ Kategori', data: data.categories || [] },
-            { id: 'shifts', label: '⏰ Shift', data: data.shifts || [] }
+            { id: 'gas-products', label: '📦 Produk', data: data.products || [] },
+            { id: 'gas-transactions', label: '📝 Transaksi', data: data.transactions || [] },
+            { id: 'gas-cashTransactions', label: '💰 Cash Flow', data: data.cashTransactions || [] },
+            { id: 'gas-dailyClosing', label: '📊 Tutup Kas', data: data.dailyClosing || [] },
+            { id: 'gas-debts', label: '💳 Hutang', data: data.debts || [] },
+            { id: 'gas-users', label: '👥 Users', data: data.users || [] },
+            { id: 'gas-categories', label: '🏷️ Kategori', data: data.categories || [] },
+            { id: 'gas-shifts', label: '⏰ Shift', data: data.shifts || [] }
         ];
 
         const generateTable = (tabData) => {
@@ -873,7 +1055,7 @@ const backupModule = {
                 <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;">
                     <div>
                         <div style="font-size:18px;font-weight:700;">📋 Google Apps Script Code</div>
-                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">v3.4 FINAL - CORS Fixed</div>
+                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">v3.6 FINAL - CORS Fixed</div>
                     </div>
                     <button onclick="document.getElementById('gas-generator-modal').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:white;">×</button>
                 </div>
@@ -926,7 +1108,7 @@ const backupModule = {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `hifzi_gas_v3.4.gs`;
+        a.download = `hifzi_gas_v3.6.gs`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -934,16 +1116,12 @@ const backupModule = {
         this.showToast('✅ File didownload!');
     },
 
-    // ============================================
-    // EMBEDDED GAS CODE - CORS FIXED
-    // ============================================
     getDefaultGASCode() {
-        return `// GAS CODE v3.4 FINAL - HIFZI CELL BACKUP
+        return `// GAS CODE v3.6 FINAL - HIFZI CELL BACKUP
 // CORS FIXED - Paste di script.google.com
 // Deploy: Web App, Execute as: Me, Access: ANYONE
 
 function doPost(e) {
-  // ✅ CORS HEADERS - Wajib untuk semua response
   var corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -951,7 +1129,6 @@ function doPost(e) {
   };
   
   try {
-    // Parse JSON dari postData.contents (bukan e.parameter)
     if (!e.postData || !e.postData.contents) {
       return createResponse({ success: false, message: 'No post data' }, corsHeaders);
     }
@@ -960,7 +1137,6 @@ function doPost(e) {
     var action = data.action || 'sync';
     var sheetId = data.sheetId || '';
     
-    // Validasi Sheet ID
     if (!sheetId || sheetId.length !== 44) {
       return createResponse({ success: false, message: 'Sheet ID invalid (must be 44 chars)' }, corsHeaders);
     }
@@ -995,7 +1171,6 @@ function doPost(e) {
   }
 }
 
-// ✅ HANDLE PREFLIGHT OPTIONS REQUEST
 function doOptions(e) {
   var corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -1064,12 +1239,10 @@ function handleRestore(ss, corsHeaders) {
   }
 }
 
-// ✅ HELPER: Create response with CORS headers
 function createResponse(data, headers) {
   var output = ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
   
-  // Set CORS headers
   for (var key in headers) {
     output.setHeader(key, headers[key]);
   }
@@ -1077,11 +1250,10 @@ function createResponse(data, headers) {
   return output;
 }
 
-// Backward compatibility
 function doGet(e) {
   return createResponse({ 
     success: true, 
-    message: 'Hifzi Backup API v3.4 - Use POST method' 
+    message: 'Hifzi Backup API v3.6 - Use POST method' 
   }, {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -1315,7 +1487,163 @@ function doGet(e) {
     },
 
     // ============================================
-    // RENDER - DENGAN TOGGLE ARROW UNTUK GAS EXCEL VIEW
+    // TOGGLE FUNCTIONS
+    // ============================================
+    
+    toggleFBExcelSection() {
+        const section = document.getElementById('fb-excel-section');
+        const arrow = document.getElementById('fb-arrow-icon');
+        if (section && arrow) {
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                section.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+    },
+
+    toggleGASExcelSection() {
+        const section = document.getElementById('gas-excel-section');
+        const arrow = document.getElementById('gas-arrow-icon');
+        if (section && arrow) {
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                section.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+    },
+
+    // ============================================
+    // RENDER SECTIONS
+    // ============================================
+    
+    renderFirebaseSection(isConfigured, isLoggedIn, fbExcelViewToggle) {
+        // Belum dikonfigurasi
+        if (!isConfigured) {
+            return `
+                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
+                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">🔥 Konfigurasi Firebase</div>
+                    <div style="display:grid;gap:12px;margin-bottom:16px;">
+                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                        <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                        <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                        <input type="text" id="fb_projectId" placeholder="Project ID" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                    </div>
+                    <button onclick="backupModule.saveFirebaseConfig()" style="width:100%;padding:14px;background:#ff6b35;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">💾 Simpan & Connect</button>
+                </div>
+            `;
+        }
+        
+        // Sudah dikonfigurasi tapi belum login
+        if (!isLoggedIn) {
+            return `
+                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <div style="font-size:16px;font-weight:600;color:#2d3748;">🔥 Login Firebase</div>
+                        <button onclick="backupModule.clearFirebaseConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;">🗑️ Hapus Config</button>
+                    </div>
+                    <div style="display:grid;gap:12px;margin-bottom:16px;">
+                        <input type="email" id="fb_email" placeholder="Email" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                        <input type="password" id="fb_password" placeholder="Password" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <button onclick="backupModule.firebaseLogin(document.getElementById('fb_email').value,document.getElementById('fb_password').value)" style="padding:14px;background:#ff6b35;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Login</button>
+                        <button onclick="backupModule.firebaseRegister(document.getElementById('fb_email').value,document.getElementById('fb_password').value)" style="padding:14px;background:#48bb78;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Daftar</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Sudah login
+        return `
+            <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <div>
+                        <div style="font-weight:600;color:#2d3748;">🔥 Firebase Connected</div>
+                        <div style="font-size:13px;color:#38a169;margin-top:4px;">✅ ${this.currentUser?.email}</div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="backupModule.firebaseLogout()" style="padding:8px 16px;background:#ed8936;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🚪 Logout</button>
+                        <button onclick="backupModule.clearFirebaseConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🗑️ Hapus Config</button>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f7fafc;border-radius:10px;margin-bottom:16px;">
+                    <div>
+                        <div style="font-weight:600;color:#2d3748;">Auto Sync</div>
+                        <div style="font-size:12px;color:#718096;">Sinkron otomatis tiap 3 menit</div>
+                    </div>
+                    <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
+                        <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
+                    </div>
+                </div>
+                ${fbExcelViewToggle}
+            </div>
+        `;
+    },
+
+    renderGASSection(isConfigured, gasExcelViewToggle) {
+        const hasUrl = this.gasUrl.length > 10;
+        const validation = this.validateSheetId(this.sheetId);
+        const hasSheetId = validation.valid;
+        
+        return `
+            <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #34a853;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <div style="font-size:16px;font-weight:600;color:#2d3748;">📊 Google Sheets (v3.6 FINAL)</div>
+                    ${isConfigured ? `<button onclick="backupModule.clearGASConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;">🗑️ Hapus Config</button>` : ''}
+                </div>
+                
+                <button onclick="backupModule.showGASGenerator()" style="width:100%;padding:14px;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;margin-bottom:16px;">📋 Generate GAS Code (CORS Fixed)</button>
+                
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">🔗 GAS Web App URL</label>
+                    <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:12px;border:1px solid ${hasUrl ? '#48bb78' : '#e2e8f0'};border-radius:8px;font-size:14px;">
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">📄 Google Sheet ID <span style="color:#e53e3e;">*WAJIB*</span></label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="sheetIdInput" value="${this.sheetId || ''}" placeholder="44 karakter dari URL spreadsheet" style="flex:1;padding:12px;border:2px solid ${hasSheetId ? '#48bb78' : '#fc8181'};border-radius:8px;font-size:14px;font-family:monospace;">
+                        <button onclick="document.getElementById('sheetIdInput').value=''" style="padding:12px 16px;background:#fed7d7;color:#c53030;border:none;border-radius:8px;cursor:pointer;">✕</button>
+                    </div>
+                    <div style="font-size:11px;color:#718096;margin-top:4px;">
+                        ${hasSheetId ? '<span style="color:#48bb78;">✓ Valid (44 karakter)</span>' : '<span style="color:#e53e3e;">✗ ' + validation.message + '</span>'}
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                    <button onclick="backupModule.saveGasUrl()" style="padding:14px;background:#34a853;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">💾 Simpan</button>
+                    <button onclick="backupModule.testGASConnection()" style="padding:14px;background:#4299e1;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;" ${!hasSheetId ? 'disabled style="opacity:0.5;"' : ''}>🧪 Test</button>
+                </div>
+                
+                ${isConfigured ? `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f0fff4;border-radius:10px;border:1px solid #9ae6b4;margin-bottom:16px;">
+                        <div>
+                            <div style="font-weight:600;color:#2d3748;">✅ Ready</div>
+                            <div style="font-size:12px;color:#718096;">${this.sheetId.substring(0, 15)}...</div>
+                        </div>
+                        <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
+                            <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
+                        </div>
+                    </div>
+                ` : `
+                    <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;">
+                        <div style="font-size:13px;color:#c53030;">⚠️ Konfigurasi belum lengkap</div>
+                    </div>
+                `}
+                
+                ${gasExcelViewToggle}
+            </div>
+        `;
+    },
+
+    // ============================================
+    // MAIN RENDER
     // ============================================
     render() {
         if (!this.isInitialized) {
@@ -1349,9 +1677,36 @@ function doGet(e) {
             cash: data.settings?.currentCash || 0
         };
 
-        const loginHistory = this.getLoginHistory();
+        // HTML untuk Firebase Excel View toggle
+        const fbExcelViewToggle = isFBLoggedIn ? `
+            <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
+                <div onclick="backupModule.toggleFBExcelSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:12px;background:#fff5f0;border-radius:8px;border:1px solid #fed7d7;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:20px;">📊</span>
+                        <div>
+                            <div style="font-weight:600;color:#2d3748;">Lihat Data di Firebase</div>
+                            <div style="font-size:12px;color:#718096;">Excel View & Download</div>
+                        </div>
+                    </div>
+                    <span id="fb-arrow-icon" style="font-size:20px;transition:transform 0.3s;">▼</span>
+                </div>
+                <div id="fb-excel-section" style="display:none;margin-top:12px;padding:16px;background:#f7fafc;border-radius:8px;">
+                    <div style="font-size:13px;color:#4a5568;margin-bottom:12px;">
+                        💡 Klik tombol di bawah untuk mengambil dan melihat data dari Firebase dalam format Excel.
+                    </div>
+                    <button onclick="backupModule.fetchFirebaseDataForView()" style="width:100%;padding:12px;background:#ff6b35;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <span>👁️</span> Fetch & View Data dari Firebase
+                    </button>
+                    ${this.firebaseBackupData ? `
+                        <button onclick="backupModule.renderFirebaseExcelView()" style="width:100%;margin-top:8px;padding:12px;background:#4299e1;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">
+                            📋 Tampilkan Data Terakhir
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        ` : '';
 
-        // ✅ HTML untuk GAS section dengan toggle arrow
+        // HTML untuk GAS Excel View toggle
         const gasExcelViewToggle = isGASConfigured ? `
             <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
                 <div onclick="backupModule.toggleGASExcelSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:12px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;">
@@ -1442,7 +1797,7 @@ function doGet(e) {
                         <button onclick="backupModule.setProvider('firebase')" style="padding:16px;border:2px solid ${isFirebase ? '#ff6b35' : '#e2e8f0'};border-radius:12px;background:${isFirebase ? '#fff5f0' : 'white'};cursor:pointer;">
                             <div style="font-size:32px;margin-bottom:8px;">🔥</div>
                             <div style="font-weight:600;color:#2d3748;">Firebase</div>
-                            <div style="font-size:12px;color:#718096;margin-top:4px;">${isFBLoggedIn ? '✅ Connected' : 'Real-time sync'}</div>
+                            <div style="font-size:12px;color:#718096;margin-top:4px;">${isFBLoggedIn ? '✅ Connected' : isFBConfigured ? '⚠️ Configured' : 'Real-time sync'}</div>
                         </button>
                         <button onclick="backupModule.setProvider('googlesheet')" style="padding:16px;border:2px solid ${isGAS ? '#34a853' : '#e2e8f0'};border-radius:12px;background:${isGAS ? '#f0fff4' : 'white'};cursor:pointer;">
                             <div style="font-size:32px;margin-bottom:8px;">📊</div>
@@ -1452,7 +1807,7 @@ function doGet(e) {
                     </div>
                 </div>
 
-                ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
+                ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn, fbExcelViewToggle) : ''}
                 ${isGAS ? this.renderGASSection(isGASConfigured, gasExcelViewToggle) : ''}
 
                 <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#fc8181' : '#667eea'};">
@@ -1500,128 +1855,6 @@ function doGet(e) {
         `;
 
         container.innerHTML = html;
-    },
-
-    // ✅ TOGGLE arrow untuk GAS Excel section
-    toggleGASExcelSection() {
-        const section = document.getElementById('gas-excel-section');
-        const arrow = document.getElementById('gas-arrow-icon');
-        if (section && arrow) {
-            if (section.style.display === 'none') {
-                section.style.display = 'block';
-                arrow.style.transform = 'rotate(180deg)';
-            } else {
-                section.style.display = 'none';
-                arrow.style.transform = 'rotate(0deg)';
-            }
-        }
-    },
-
-    renderFirebaseSection(isConfigured, isLoggedIn) {
-        if (!isConfigured) {
-            return `
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">🔥 Konfigurasi Firebase</div>
-                    <div style="display:grid;gap:12px;margin-bottom:16px;">
-                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="text" id="fb_projectId" placeholder="Project ID" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                    </div>
-                    <button onclick="backupModule.saveFirebaseConfig()" style="width:100%;padding:14px;background:#ff6b35;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">💾 Simpan & Connect</button>
-                </div>
-            `;
-        }
-        
-        if (!isLoggedIn) {
-            return `
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">🔥 Login Firebase</div>
-                    <div style="display:grid;gap:12px;margin-bottom:16px;">
-                        <input type="email" id="fb_email" placeholder="Email" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="password" id="fb_password" placeholder="Password" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                        <button onclick="backupModule.firebaseLogin(document.getElementById('fb_email').value,document.getElementById('fb_password').value)" style="padding:14px;background:#ff6b35;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Login</button>
-                        <button onclick="backupModule.firebaseRegister(document.getElementById('fb_email').value,document.getElementById('fb_password').value)" style="padding:14px;background:#48bb78;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Daftar</button>
-                    </div>
-                </div>
-            `;
-        }
-        
-        return `
-            <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <div>
-                        <div style="font-weight:600;color:#2d3748;">🔥 Firebase Connected</div>
-                        <div style="font-size:13px;color:#38a169;margin-top:4px;">✅ ${this.currentUser?.email}</div>
-                    </div>
-                    <button onclick="backupModule.firebaseLogout()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Logout</button>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f7fafc;border-radius:10px;">
-                    <div>
-                        <div style="font-weight:600;color:#2d3748;">Auto Sync</div>
-                        <div style="font-size:12px;color:#718096;">Sinkron otomatis tiap 3 menit</div>
-                    </div>
-                    <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
-                        <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    renderGASSection(isConfigured, gasExcelViewToggle) {
-        const hasUrl = this.gasUrl.length > 10;
-        const validation = this.validateSheetId(this.sheetId);
-        const hasSheetId = validation.valid;
-        
-        return `
-            <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #34a853;">
-                <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">📊 Google Sheets (v3.4 FINAL)</div>
-                
-                <button onclick="backupModule.showGASGenerator()" style="width:100%;padding:14px;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;margin-bottom:16px;">📋 Generate GAS Code (CORS Fixed)</button>
-                
-                <div style="margin-bottom:12px;">
-                    <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">🔗 GAS Web App URL</label>
-                    <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:12px;border:1px solid ${hasUrl ? '#48bb78' : '#e2e8f0'};border-radius:8px;font-size:14px;">
-                </div>
-
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">📄 Google Sheet ID <span style="color:#e53e3e;">*WAJIB*</span></label>
-                    <div style="display:flex;gap:8px;">
-                        <input type="text" id="sheetIdInput" value="${this.sheetId || ''}" placeholder="44 karakter dari URL spreadsheet" style="flex:1;padding:12px;border:2px solid ${hasSheetId ? '#48bb78' : '#fc8181'};border-radius:8px;font-size:14px;font-family:monospace;">
-                        <button onclick="document.getElementById('sheetIdInput').value=''" style="padding:12px 16px;background:#fed7d7;color:#c53030;border:none;border-radius:8px;cursor:pointer;">✕</button>
-                    </div>
-                    <div style="font-size:11px;color:#718096;margin-top:4px;">
-                        ${hasSheetId ? '<span style="color:#48bb78;">✓ Valid (44 karakter)</span>' : '<span style="color:#e53e3e;">✗ ' + validation.message + '</span>'}
-                    </div>
-                </div>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                    <button onclick="backupModule.saveGasUrl()" style="padding:14px;background:#34a853;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">💾 Simpan</button>
-                    <button onclick="backupModule.testGASConnection()" style="padding:14px;background:#4299e1;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;" ${!hasSheetId ? 'disabled style="opacity:0.5;"' : ''}>🧪 Test</button>
-                </div>
-                
-                ${isConfigured ? `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f0fff4;border-radius:10px;border:1px solid #9ae6b4;margin-bottom:16px;">
-                        <div>
-                            <div style="font-weight:600;color:#2d3748;">✅ Ready</div>
-                            <div style="font-size:12px;color:#718096;">${this.sheetId.substring(0, 15)}...</div>
-                        </div>
-                        <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
-                            <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
-                        </div>
-                    </div>
-                ` : `
-                    <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;">
-                        <div style="font-size:13px;color:#c53030;">⚠️ Konfigurasi belum lengkap</div>
-                    </div>
-                `}
-                
-                ${gasExcelViewToggle}
-            </div>
-        `;
     }
 };
 
@@ -1633,4 +1866,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v3.4 FINAL loaded - CORS FIXED + GAS Excel View');
+console.log('[Backup] v3.6 FINAL loaded - CORS FIXED + Excel View + Logout Config');
