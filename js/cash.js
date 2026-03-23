@@ -1577,6 +1577,8 @@ const cashModule = {
     },
 
     // ========== UTILITIES ==========
+    // ✅ PERBAIKAN: calculateActualCash - Hanya hitung dari transaksi kas manual
+    // Penjualan POS sudah otomatis masuk ke currentCash via posModule
     calculateActualCash() {
         let cash = 0;
         
@@ -1588,9 +1590,11 @@ const cashModule = {
                 dataManager.data.cashTransactions.forEach(t => {
                     const amount = parseInt(t.amount) || 0;
                     
-                    if (t.type === 'modal_in') {
-                        return;
-                    }
+                    // Skip modal_in karena sudah dihitung di modalAwal
+                    if (t.type === 'modal_in') return;
+                    
+                    // Skip transaksi dari POS (sudah masuk ke currentCash secara otomatis)
+                    if (t.source === 'pos_sale') return;
                     
                     if (t.type === 'in' || t.type === 'topup') {
                         cash += amount;
@@ -1599,32 +1603,58 @@ const cashModule = {
                     }
                 });
             }
-            
-            if (dataManager.data.transactions && Array.isArray(dataManager.data.transactions)) {
-                dataManager.data.transactions.forEach(t => {
-                    if (t.status !== 'deleted' && t.status !== 'voided' && t.paymentMethod === 'cash') {
-                        cash += parseInt(t.total) || 0;
-                    }
-                });
-            }
         }
         
         return cash;
     },
 
+    // ✅ PERBAIKAN: recalculateCash - Sinkronkan dengan benar
     recalculateCash() {
-        if (!confirm('🔄 Recalculate Kas?\n\nIni akan menghitung ulang kas berdasarkan:\n- Modal Awal: Rp ' + utils.formatNumber(dataManager.data.settings?.modalAwal || 0) + '\n- Transaksi Operasional\n- Penjualan Cash\n\nLanjutkan?')) {
+        const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+        const calculatedCash = this.calculateActualCash();
+        const selisih = currentCash - calculatedCash;
+
+        // Hitung penjualan cash hari ini
+        const todayCashSales = this.getTodayCashSales();
+
+        if (!confirm(`🔄 Recalculate Kas?
+
+Kas Tercatat: Rp ${utils.formatNumber(currentCash)}
+Hitungan Ulang: Rp ${utils.formatNumber(calculatedCash)}
+Selisih: Rp ${utils.formatNumber(selisih)}
+
+Penjualan Cash hari ini: Rp ${utils.formatNumber(todayCashSales)}
+
+Lanjutkan sinkronisasi?`)) {
             return;
         }
 
-        const newCash = this.calculateActualCash();
-        dataManager.data.settings.currentCash = newCash;
-        dataManager.save();
-        
-        app.updateHeader();
-        this.renderHTML();
-        this.renderTransactions();
-        
-        app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(newCash)}`);
+        // Jika ada selisih, sesuaikan currentCash ke calculatedCash
+        // Tapi pertahankan penjualan cash yang sudah tercatat
+        if (Math.abs(selisih) > 0) {
+            dataManager.data.settings.currentCash = calculatedCash + todayCashSales;
+            dataManager.save();
+            
+            app.updateHeader();
+            this.renderHTML();
+            this.renderTransactions();
+            
+            app.showToast(`✅ Kas tersinkron: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
+        } else {
+            app.showToast('✅ Kas sudah sinkron!');
+        }
+    },
+
+    // ✅ TAMBAHAN: Helper untuk lihat penjualan cash hari ini
+    getTodayCashSales() {
+        const today = new Date().toDateString();
+        return (dataManager.data.transactions || [])
+            .filter(t => {
+                if (t.status === 'deleted' || t.status === 'voided') return false;
+                if (t.paymentMethod !== 'cash') return false;
+                const tDate = new Date(t.date).toDateString();
+                return tDate === today;
+            })
+            .reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
     }
 };
