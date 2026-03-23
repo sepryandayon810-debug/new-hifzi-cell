@@ -1,6 +1,6 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
-// VERSI LENGKAP FULL FEATURE - FIXED DEBUG VERSION
+// VERSI FIXED - OPTIMIZED PERFORMANCE
 // ============================================
 
 const n8nModule = (function() {
@@ -23,6 +23,7 @@ const n8nModule = (function() {
         data: [],
         filteredData: [],
         selectedRow: null,
+        selectedOriginalRow: null, // Simpan row asli dari sheet
         config: {
             botToken: '',
             chatId: '',
@@ -33,7 +34,9 @@ const n8nModule = (function() {
         configVisible: false,
         isLoading: false,
         proxyMode: false,
-        currentProxyIndex: 0
+        currentProxyIndex: 0,
+        lastFetchTime: 0,
+        cachedData: null // Cache untuk menghindari fetch berulang
     };
 
     const PROXY_LIST = [
@@ -69,6 +72,7 @@ const n8nModule = (function() {
     }
 
     function showNotification(message, type = 'info', duration = 4000) {
+        // Tampilkan notifikasi HANYA di web, tidak perlu kirim ke Telegram
         if (typeof app !== 'undefined' && app.showToast) {
             app.showToast(message);
             return;
@@ -160,19 +164,25 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // FETCH WITH CORS PROXY - DEBUG VERSION
+    // FETCH WITH CORS PROXY - OPTIMIZED
     // ============================================
 
     async function fetchWithProxy(url, retryCount = 0) {
         const MAX_RETRIES = PROXY_LIST.length;
+        const timeout = 30000; // 30 detik timeout
 
         console.log(`[n8nModule] Fetching: ${url.substring(0, 100)}...`);
 
-        // Jika bukan file protocol, coba direct fetch dulu
+        // Jika bukan file protocol, coba direct fetch dulu dengan timeout
         if (!isFileProtocol()) {
             try {
                 console.log('[n8nModule] Trying direct fetch...');
-                const response = await fetch(url);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+                
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
                 console.log('[n8nModule] Direct fetch success:', response.status);
                 if (response.ok) return response;
             } catch (e) {
@@ -186,12 +196,18 @@ const n8nModule = (function() {
         console.log(`[n8nModule] Using proxy: ${proxyUrl}`);
 
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
             const response = await fetch(fullUrl, {
                 method: 'GET',
                 headers: { 
                     'Accept': 'application/json'
-                }
+                },
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             
             console.log('[n8nModule] Proxy response status:', response.status);
 
@@ -244,7 +260,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // TELEGRAM API
+    // TELEGRAM API - HANYA UNTUK NOTIFIKASI PENTING
     // ============================================
 
     async function deleteWebhook() {
@@ -323,6 +339,7 @@ const n8nModule = (function() {
                 setStatus('🟢', 'Terhubung ke Telegram');
                 showNotification(`✅ Chat ID: ${chatId}`, 'success');
                 
+                // Kirim notifikasi hanya saat setup awal
                 await sendTelegramMessage(
                     `✅ *KONEKSI BERHASIL*\n\n` +
                     `Web POS Hifzi Cell terhubung ke Telegram.\n` +
@@ -384,15 +401,25 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // GOOGLE APPS SCRIPT API - DEBUG VERSION
+    // GOOGLE APPS SCRIPT API - OPTIMIZED
     // ============================================
 
-    async function makeRequest(action, params = {}) {
+    async function makeRequest(action, params = {}, skipCache = false) {
         const { gasUrl, sheetId } = state.config;
         
         if (!gasUrl || !sheetId) {
             showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
             return null;
+        }
+
+        // Gunakan cache untuk getData jika tidak skipCache
+        if (action === 'getData' && !skipCache && state.cachedData) {
+            const now = Date.now();
+            // Cache valid selama 30 detik
+            if (now - state.lastFetchTime < 30000) {
+                console.log('[n8nModule] Using cached data');
+                return state.cachedData;
+            }
         }
 
         const url = new URL(gasUrl);
@@ -440,6 +467,12 @@ const n8nModule = (function() {
                 throw new Error(data.error || 'Unknown error from server');
             }
 
+            // Simpan cache untuk getData
+            if (action === 'getData') {
+                state.cachedData = data;
+                state.lastFetchTime = Date.now();
+            }
+
             setStatus('🟢', 'Siap');
             return data;
             
@@ -483,7 +516,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // CRUD OPERATIONS
+    // CRUD OPERATIONS - FIXED
     // ============================================
 
     async function handleSearch() {
@@ -492,18 +525,14 @@ const n8nModule = (function() {
         
         console.log('[n8nModule] Searching with keyword:', keyword);
 
-        // Send Telegram notification
-        await sendTelegramMessage(
-            `🔍 *PENCARIAN DATA*\n\n` +
-            `Keyword: ${keyword || 'Semua data'}\n` +
-            `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
-            `⏳ Mengambil data...`
-        );
+        // Hanya kirim notifikasi ringkas ke Telegram, detail cukup di web
+        // atau hapus sama sekali jika tidak perlu
+        // await sendTelegramMessage(...) // DIHAPUS - notifikasi cukup di web
 
         const result = await makeRequest('getData');
         
         if (!result) {
-            await sendTelegramMessage('❌ Gagal mengambil data dari Google Sheets');
+            showNotification('❌ Gagal mengambil data dari Google Sheets', 'error');
             return;
         }
 
@@ -516,7 +545,7 @@ const n8nModule = (function() {
                 (item.nomor && item.nomor.toLowerCase().includes(keyword))
             );
         } else {
-            state.filteredData = state.data;
+            state.filteredData = [...state.data];
         }
 
         console.log('[n8nModule] Filtered data:', state.filteredData.length, 'rows');
@@ -527,30 +556,10 @@ const n8nModule = (function() {
         
         // Auto-select first row if data exists
         if (count > 0 && state.filteredData[0]) {
-            state.selectedRow = state.filteredData[0].row;
-            renderTable(); // Re-render to show selection
+            selectRow(state.filteredData[0].row);
         }
 
-        let message = `✅ *PENCARIAN SELESAI*\n\n`;
-        message += `Ditemukan: *${count} data*\n`;
-        message += `Keyword: *${keyword || '-'}*\n\n`;
-        
-        if (count > 0) {
-            message += `*Hasil (5 teratas):*\n`;
-            state.filteredData.slice(0, 5).forEach((item, idx) => {
-                const nama = (item.nama || 'N/A').substring(0, 20);
-                const nomor = (item.nomor || 'N/A').substring(0, 15);
-                message += `${idx + 1}\\. ${nama} \\- ${nomor}\n`;
-            });
-            
-            if (count > 5) {
-                message += `\n...dan ${count - 5} data lainnya`;
-            }
-        } else {
-            message += `❌ Tidak ada data yang cocok`;
-        }
-
-        await sendTelegramMessage(message);
+        // Notifikasi hanya di web, tidak perlu ke Telegram
         showNotification(`✅ ${count} data ditemukan`, 'success');
     }
 
@@ -577,7 +586,12 @@ const n8nModule = (function() {
             return;
         }
 
-        const item = state.filteredData.find(d => d.row == state.selectedRow);
+        // Cari di filteredData dulu, kalau tidak ada cari di data
+        let item = state.filteredData.find(d => d.row == state.selectedRow);
+        if (!item) {
+            item = state.data.find(d => d.row == state.selectedRow);
+        }
+        
         if (!item) {
             showNotification('❌ Data tidak ditemukan', 'error');
             return;
@@ -605,18 +619,16 @@ const n8nModule = (function() {
             return;
         }
 
-        const item = state.filteredData.find(d => d.row == state.selectedRow);
+        // Cari di filteredData dulu, kalau tidak ada cari di data
+        let item = state.filteredData.find(d => d.row == state.selectedRow);
+        if (!item) {
+            item = state.data.find(d => d.row == state.selectedRow);
+        }
+        
         if (!item) {
             showNotification('❌ Data tidak ditemukan', 'error');
             return;
         }
-
-        const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\n` +
-            `Nama: *${(item.nama || 'N/A').substring(0, 20)}*\n` +
-            `Nomor: *${(item.nomor || 'N/A').substring(0, 15)}*\n\n` +
-            `Klik tombol HAPUS di web untuk konfirmasi.`;
-
-        await sendTelegramMessage(confirmMsg);
 
         const deleteInfo = document.getElementById('deleteInfo');
         if (deleteInfo) {
@@ -645,54 +657,62 @@ const n8nModule = (function() {
         const params = { nama, nomor };
         if (row) params.row = row;
 
-        await sendTelegramMessage(
-            `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\n` +
-            `Nama: *${nama}*\n` +
-            `Nomor: *${nomor}*\n\n` +
-            `⏳ Menyimpan...`
-        );
+        // Notifikasi hanya di web
+        showNotification(`⏳ ${row ? 'Mengupdate' : 'Menyimpan'} data...`, 'info');
 
-        const result = await makeRequest(action, params);
+        const result = await makeRequest(action, params, true); // true = skip cache
         
         if (result && result.success) {
             closeModal();
             
-            await sendTelegramMessage(
-                `✅ *BERHASIL*\n\n` +
-                `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!`
-            );
+            // Clear cache agar data fresh
+            state.cachedData = null;
+            state.lastFetchTime = 0;
 
+            // Refresh tabel
             await handleSearch();
+            
             showNotification(result.message || '✅ Data berhasil disimpan', 'success');
             
         } else if (result) {
-            await sendTelegramMessage(`❌ Gagal: ${result.error || 'Error'}`);
             showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
         }
     }
 
     async function confirmDelete() {
+        if (!state.selectedRow) {
+            showNotification('❌ Tidak ada data yang dipilih', 'error');
+            return;
+        }
+        
         const row = state.selectedRow;
         
-        const result = await makeRequest('deleteData', { row });
+        showNotification('⏳ Menghapus data...', 'info');
+        
+        const result = await makeRequest('deleteData', { row }, true); // true = skip cache
         
         if (result && result.success) {
-            await sendTelegramMessage(`🗑️ *DATA DIHAPUS*\\n\\nRow: ${row}`);
+            // Clear cache
+            state.cachedData = null;
+            state.lastFetchTime = 0;
 
             closeModal();
             state.selectedRow = null;
+            state.selectedOriginalRow = null;
             updateButtonStates();
+            
+            // Refresh tabel
             await handleSearch();
+            
             showNotification(result.message || '✅ Data dihapus', 'success');
             
         } else if (result) {
-            await sendTelegramMessage(`❌ Gagal menghapus`);
             showNotification('❌ ' + (result.error || 'Gagal menghapus'), 'error');
         }
     }
 
     // ============================================
-    // UI RENDERING
+    // UI RENDERING - FIXED
     // ============================================
 
     function renderTable() {
@@ -761,7 +781,7 @@ const n8nModule = (function() {
         const btnEdit = document.getElementById('btnEdit');
         const btnDelete = document.getElementById('btnDelete');
         
-        console.log('[n8nModule] Update buttons - hasSelection:', hasSelection);
+        console.log('[n8nModule] Update buttons - hasSelection:', hasSelection, 'selectedRow:', state.selectedRow);
         
         if (btnEdit) {
             btnEdit.disabled = !hasSelection;
@@ -1281,7 +1301,7 @@ function doOptions(e) {
                     <div style="padding: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 10px;">
                         <button id="btnCancel" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: white; border-radius: 8px; cursor: pointer; font-weight: 500;">Batal</button>
                         <button id="btnSave" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                            💾 Simpan & Notifikasi Telegram
+                            💾 Simpan
                         </button>
                     </div>
                 </div>
@@ -1294,7 +1314,6 @@ function doOptions(e) {
                     <div style="padding: 20px;">
                         <p>Apakah Anda yakin ingin menghapus data ini?</p>
                         <p id="deleteInfo" style="font-weight: 600; color: #d63031; padding: 10px; background: #fff5f5; border-radius: 8px; margin: 10px 0;"></p>
-                        <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">💡 Notifikasi juga akan dikirim ke Telegram.</p>
                     </div>
                     <div style="padding: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 10px;">
                         <button id="btnCancelDelete" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: white; border-radius: 8px; cursor: pointer; font-weight: 500;">Batal</button>
@@ -1340,7 +1359,7 @@ function doOptions(e) {
 
     return {
         init: function() {
-            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.2 Loaded');
+            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.3 Fixed Loaded');
             loadConfig();
         },
         
