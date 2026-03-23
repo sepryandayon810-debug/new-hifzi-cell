@@ -663,7 +663,7 @@ const cashModule = {
     },
 
     resetToZero() {
-        if (!confirm('⚠️ Yakin reset Kas dan Modal ke Rp 0?\n\nSemua transaksi hari ini akan tetap tersimpan tapi kas diatur ke 0.')) {
+        if (!confirm('⚠️ Yakin reset Kas dan Modal ke Rp 0?\\n\\nSemua transaksi hari ini akan tetap tersimpan tapi kas diatur ke 0.')) {
             return;
         }
 
@@ -1169,7 +1169,7 @@ const cashModule = {
             return;
         }
         
-        const confirmMsg = `Hapus transaksi "${t.note || t.category}"?\n\nRp ${utils.formatNumber(t.amount)}\n\nKas akan disesuaikan.`;
+        const confirmMsg = `Hapus transaksi "${t.note || t.category}"?\\n\\nRp ${utils.formatNumber(t.amount)}\\n\\nKas akan disesuaikan.`;
         
         if (!confirm(confirmMsg)) {
             return;
@@ -1320,7 +1320,7 @@ const cashModule = {
         });
         
         if (existingModal) {
-            if (!confirm(`⚠️ Sudah ada modal hari ini: Rp ${utils.formatNumber(existingModal.amount)}\n\nInput modal lagi akan menambah kas. Lanjutkan?`)) {
+            if (!confirm(`⚠️ Sudah ada modal hari ini: Rp ${utils.formatNumber(existingModal.amount)}\\n\\nInput modal lagi akan menambah kas. Lanjutkan?`)) {
                 return;
             }
         }
@@ -1650,7 +1650,7 @@ const cashModule = {
         
         // ✅ PERBAIKAN: Kas bisa minus, hanya warning saja
         if (total > currentCash) {
-            if (!confirm(`⚠️ Kas akan minus!\n\nKas saat ini: Rp ${utils.formatNumber(currentCash)}\nTotal keluar: Rp ${utils.formatNumber(total)}\n\nSisa kas: Rp ${utils.formatNumber(currentCash - total)}\n\nLanjutkan?`)) {
+            if (!confirm(`⚠️ Kas akan minus!\\n\\nKas saat ini: Rp ${utils.formatNumber(currentCash)}\\nTotal keluar: Rp ${utils.formatNumber(total)}\\n\\nSisa kas: Rp ${utils.formatNumber(currentCash - total)}\\n\\nLanjutkan?`)) {
                 return;
             }
         }
@@ -1718,7 +1718,7 @@ const cashModule = {
     // ========== UTILITIES ==========
     
     /**
-     * ✅ PERBAIKAN: Hitung kas aktual dari semua sumber
+     * ✅ PERBAIKAN: Hitung kas aktual yang benar
      * Termasuk modal, transaksi manual, top up, dan penjualan POS
      */
     calculateActualCash() {
@@ -1728,7 +1728,7 @@ const cashModule = {
         const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
         cash += modalAwal;
         
-        // 2. Transaksi Kas Manual
+        // 2. Transaksi Kas Manual + POS
         if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
             dataManager.data.cashTransactions.forEach(t => {
                 const amount = parseInt(t.amount) || 0;
@@ -1736,6 +1736,7 @@ const cashModule = {
                 // Skip modal_in karena sudah dihitung di modalAwal
                 if (t.type === 'modal_in') return;
                 
+                // POS Sale masuk sebagai kas
                 if (t.type === 'in' || t.type === 'topup' || t.type === 'pos_sale') {
                     cash += amount;
                 } else if (t.type === 'out' || t.type === 'pos_void') {
