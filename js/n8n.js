@@ -1,6 +1,6 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
-// VERSI LENGKAP FULL FEATURE
+// VERSI LENGKAP FULL FEATURE - FIXED CORS & PROXY
 // ============================================
 
 const n8nModule = (function() {
@@ -36,11 +36,12 @@ const n8nModule = (function() {
         currentProxyIndex: 0
     };
 
+    // UPDATED: Proxy list yang masih aktif
     const PROXY_LIST = [
-        'https://api.allorigins.win/get?url=',
+        'https://api.allorigins.win/raw?url=',
         'https://api.codetabs.com/v1/proxy?quest=',
-        'https://thingproxy.freeboard.io/fetch/',
-        'https://corsproxy.io/?'
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest='
     ];
 
     // ============================================
@@ -166,25 +167,34 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // FETCH WITH CORS PROXY
+    // FETCH WITH CORS PROXY - FIXED
     // ============================================
 
     async function fetchWithProxy(url, retryCount = 0) {
         const MAX_RETRIES = PROXY_LIST.length;
 
+        // Jika bukan file protocol, coba direct fetch dulu
         if (!isFileProtocol()) {
-            return fetch(url);
+            try {
+                const response = await fetch(url);
+                if (response.ok) return response;
+            } catch (e) {
+                console.log('[n8nModule] Direct fetch failed, trying proxy...');
+            }
         }
 
         const proxyUrl = getProxyUrl();
         const fullUrl = `${proxyUrl}${encodeURIComponent(url)}`;
 
-        console.log(`[n8nModule] Using proxy [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]`);
+        console.log(`[n8nModule] Using proxy [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]: ${proxyUrl}`);
 
         try {
             const response = await fetch(fullUrl, {
                 method: 'GET',
-                headers: { 'Accept': 'application/json' }
+                headers: { 
+                    'Accept': 'application/json',
+                    'Origin': window.location.origin
+                }
             });
             
             if (!response.ok) {
@@ -194,10 +204,19 @@ const n8nModule = (function() {
             const proxyData = await response.json();
             let finalData;
             
+            // Handle berbagai format response proxy
             if (proxyData.contents) {
-                finalData = JSON.parse(proxyData.contents);
+                try {
+                    finalData = JSON.parse(proxyData.contents);
+                } catch {
+                    finalData = proxyData.contents;
+                }
             } else if (proxyData.body) {
-                finalData = JSON.parse(proxyData.body);
+                try {
+                    finalData = JSON.parse(proxyData.body);
+                } catch {
+                    finalData = proxyData.body;
+                }
             } else if (proxyData.data) {
                 finalData = typeof proxyData.data === 'string' ? JSON.parse(proxyData.data) : proxyData.data;
             } else {
@@ -307,9 +326,9 @@ const n8nModule = (function() {
                 showNotification(`✅ Chat ID terdeteksi: ${chatId}`, 'success');
                 
                 await sendTelegramMessage(
-                    `✅ *KONEKSI BERHASIL*\n\n` +
-                    `Web POS Hifzi Cell telah terhubung ke Telegram.\n` +
-                    `Chat ID: ${chatId}\n` +
+                    `✅ *KONEKSI BERHASIL*\\n\\n` +
+                    `Web POS Hifzi Cell telah terhubung ke Telegram.\\n` +
+                    `Chat ID: ${chatId}\\n` +
                     `Waktu: ${new Date().toLocaleString('id-ID')}`
                 );
                 
@@ -334,10 +353,18 @@ const n8nModule = (function() {
         }
 
         try {
+            // Escape markdown characters
+            const escapedText = text
+                .replace(/\./g, '\\.')
+                .replace(/-/g, '\\-')
+                .replace(/!/g, '\\!')
+                .replace(/\(/g, '\\(')
+                .replace(/\)/g, '\\)');
+
             const params = new URLSearchParams({
                 chat_id: chatId,
-                text: text,
-                parse_mode: 'Markdown',
+                text: escapedText,
+                parse_mode: 'MarkdownV2',
                 ...options
             });
 
@@ -360,7 +387,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // GOOGLE APPS SCRIPT API
+    // GOOGLE APPS SCRIPT API - FIXED
     // ============================================
 
     async function makeRequest(action, params = {}) {
@@ -371,6 +398,7 @@ const n8nModule = (function() {
             return null;
         }
 
+        // Build URL with parameters
         const url = new URL(gasUrl);
         url.searchParams.append('action', action);
         url.searchParams.append('sheetId', sheetId);
@@ -381,13 +409,19 @@ const n8nModule = (function() {
             }
         });
 
-        console.log('[n8nModule] API Request:', { action, sheetId });
+        console.log('[n8nModule] API Request:', { action, sheetId, url: url.toString() });
 
         try {
             setStatus('🟡', 'Loading...');
             state.isLoading = true;
 
             const response = await fetchWithProxy(url.toString());
+            
+            // Check if response is valid
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
             const data = await response.json();
 
             console.log('[n8nModule] API Response:', data);
@@ -406,14 +440,14 @@ const n8nModule = (function() {
             let errorMsg = error.message;
             let solution = '';
 
-            if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+            if (error.message.includes('Failed to fetch') || error.message.includes('CORS') || error.message.includes('NetworkError')) {
                 errorMsg = 'CORS Error - GAS tidak bisa diakses';
                 solution = isFileProtocol() 
-                    ? '\n\n💡 Solusi:\n1. Gunakan Live Server di VS Code\n2. Atau upload ke GitHub Pages/Netlify'
-                    : '\n\n💡 Solusi:\n1. Pastikan GAS Deploy dengan "Access: ANYONE"\n2. Cek URL GAS benar\n3. Deploy ulang GAS';
+                    ? '\\n\\n💡 Solusi:\\n1. Gunakan Live Server di VS Code\\n2. Atau upload ke GitHub Pages/Netlify\\n3. Coba klik 🔄 Rotate Proxy'
+                    : '\\n\\n💡 Solusi:\\n1. Pastikan GAS Deploy dengan "Access: ANYONE"\\n2. Cek URL GAS benar\\n3. Deploy ulang GAS\\n4. Cek Sheet ID benar';
             } else if (error.message.includes('404')) {
                 errorMsg = 'GAS URL tidak ditemukan (404)';
-                solution = '\n\n💡 Deploy ulang GAS dan copy URL baru';
+                solution = '\\n\\n💡 Deploy ulang GAS dan copy URL baru';
             }
 
             showNotification(`❌ ${errorMsg}${solution}`, 'error', 8000);
@@ -432,17 +466,19 @@ const n8nModule = (function() {
         const keywordInput = document.getElementById('searchInput');
         const keyword = keywordInput?.value.toLowerCase().trim() || '';
         
+        // Send initial message
         await sendTelegramMessage(
-            `🔍 *PENCARIAN DATA*\n\n` +
-            `Keyword: ${keyword || 'Semua data'}\n` +
-            `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
+            `🔍 *PENCARIAN DATA*\\n\\n` +
+            `Keyword: ${keyword || 'Semua data'}\\n` +
+            `Waktu: ${new Date().toLocaleString('id-ID')}\\n\\n` +
             `⏳ Mengambil data dari Google Sheets...`
         );
 
+        // FIXED: Properly handle the response
         const result = await makeRequest('getData');
         
         if (!result) {
-            await sendTelegramMessage('❌ Gagal mengambil data dari Google Sheets');
+            await sendTelegramMessage('❌ Gagal mengambil data dari Google Sheets\\n\\nCek koneksi dan konfigurasi GAS');
             return;
         }
 
@@ -460,18 +496,20 @@ const n8nModule = (function() {
         renderTable();
 
         const count = state.filteredData.length;
-        let message = `✅ *PENCARIAN SELESAI*\n\n`;
-        message += `Ditemukan: *${count} data*\n`;
-        message += `Keyword: *${keyword || '-'}*\n\n`;
+        let message = `✅ *PENCARIAN SELESAI*\\n\\n`;
+        message += `Ditemukan: *${count} data*\\n`;
+        message += `Keyword: *${keyword || '-'}*\\n\\n`;
         
         if (count > 0) {
-            message += `*Hasil (5 teratas):*\n`;
+            message += `*Hasil (5 teratas):*\\n`;
             state.filteredData.slice(0, 5).forEach((item, idx) => {
-                message += `${idx + 1}. ${item.nama || 'N/A'} - ${item.nomor || 'N/A'}\n`;
+                const nama = (item.nama || 'N/A').substring(0, 20);
+                const nomor = (item.nomor || 'N/A').substring(0, 15);
+                message += `${idx + 1}\\. ${nama} \\- ${nomor}\\n`;
             });
             
             if (count > 5) {
-                message += `\n...dan ${count - 5} data lainnya`;
+                message += `\\n...dan ${count - 5} data lainnya`;
             }
         } else {
             message += `❌ Tidak ada data yang cocok`;
@@ -538,9 +576,9 @@ const n8nModule = (function() {
             return;
         }
 
-        const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\n` +
-            `Nama: *${item.nama || 'N/A'}*\n` +
-            `Nomor: *${item.nomor || 'N/A'}*\n\n` +
+        const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\\n\\n` +
+            `Nama: *${(item.nama || 'N/A').substring(0, 20)}*\\n` +
+            `Nomor: *${(item.nomor || 'N/A').substring(0, 15)}*\\n\\n` +
             `Klik tombol HAPUS di web untuk konfirmasi.`;
 
         await sendTelegramMessage(confirmMsg);
@@ -573,9 +611,9 @@ const n8nModule = (function() {
         if (row) params.row = row;
 
         await sendTelegramMessage(
-            `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\n` +
-            `Nama: *${nama}*\n` +
-            `Nomor: *${nomor}*\n\n` +
+            `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\\n\\n` +
+            `Nama: *${nama}*\\n` +
+            `Nomor: *${nomor}*\\n\\n` +
             `⏳ Menyimpan ke Google Sheets...`
         );
 
@@ -585,12 +623,12 @@ const n8nModule = (function() {
             closeModal();
             
             await sendTelegramMessage(
-                `✅ *BERHASIL*\n\n` +
-                `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!\n\n` +
-                `📋 *Detail:*\n` +
-                `Nama: *${nama}*\n` +
-                `Nomor: *${nomor}*\n` +
-                `${row ? `Row: ${row}` : `Row baru: ${result.row}`}\n\n` +
+                `✅ *BERHASIL*\\n\\n` +
+                `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!\\n\\n` +
+                `📋 *Detail:*\\n` +
+                `Nama: *${nama}*\\n` +
+                `Nomor: *${nomor}*\\n` +
+                `${row ? `Row: ${row}` : `Row baru: ${result.row}`}\\n\\n` +
                 `🕐 Waktu: ${new Date().toLocaleString('id-ID')}`
             );
 
@@ -610,8 +648,8 @@ const n8nModule = (function() {
         
         if (result && result.success) {
             await sendTelegramMessage(
-                `🗑️ *DATA BERHASIL DIHAPUS*\n\n` +
-                `Row: ${row}\n` +
+                `🗑️ *DATA BERHASIL DIHAPUS*\\n\\n` +
+                `Row: ${row}\\n` +
                 `🕐 Waktu: ${new Date().toLocaleString('id-ID')}`
             );
 
@@ -725,7 +763,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // GAS CODE GENERATOR
+    // GAS CODE GENERATOR - FIXED
     // ============================================
 
     function generateGAS() {
@@ -743,12 +781,10 @@ function doGet(e) {
   const action = e.parameter.action;
   const sheetId = e.parameter.sheetId;
   
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
-  };
-
+  // CORS Headers yang benar untuk ContentService
+  const output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+  
   try {
     // Validasi parameter
     if (!sheetId) throw new Error('Parameter sheetId diperlukan');
@@ -863,38 +899,24 @@ function doGet(e) {
         };
     }
 
-    return jsonResponse(result, corsHeaders);
+    output.setContent(JSON.stringify(result));
+    return output;
 
   } catch (error) {
     console.error('GAS Error:', error);
-    return jsonResponse({ 
+    const errorResult = { 
       success: false, 
       error: error.toString(),
       message: error.message
-    }, corsHeaders);
+    };
+    output.setContent(JSON.stringify(errorResult));
+    return output;
   }
 }
 
 // Handle OPTIONS untuk CORS preflight
 function doOptions(e) {
-  return ContentService.createTextOutput('')
-    .setHeaders({
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    });
-}
-
-function jsonResponse(data, headers) {
-  let output = ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-
-  if (headers) {
-    for (let key in headers) {
-      output = output.setHeader(key, headers[key]);
-    }
-  }
-
+  const output = ContentService.createTextOutput('');
   return output;
 }`;
 
@@ -1345,9 +1367,8 @@ function jsonResponse(data, headers) {
 
     return {
         init: function() {
-            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.0 Loaded');
+            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.1 Loaded');
             loadConfig();
-            renderPage();
         },
         
         renderPage: renderPage,
@@ -1369,9 +1390,12 @@ function jsonResponse(data, headers) {
 
 })();
 
-// Auto-init
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => n8nModule.init());
-} else {
-    n8nModule.init();
+// Auto-init hanya jika belum di-init
+if (typeof n8nModule !== 'undefined' && !window.n8nInitialized) {
+    window.n8nInitialized = true;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => n8nModule.init());
+    } else {
+        n8nModule.init();
+    }
 }
