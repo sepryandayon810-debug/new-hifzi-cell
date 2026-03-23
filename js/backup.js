@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.6 FINAL)
-// FIXED: CORS, Excel View for Firebase & GAS, Toggle Arrow, Logout Config
+// BACKUP MODULE - HIFZI CELL (COMPLETE v3.7 FINAL)
+// FIXED: CORS, Excel View, Toggle Arrow, Logout Config, REAL-TIME SYNC
 // ============================================
 
 const backupModule = {
@@ -13,6 +13,14 @@ const backupModule = {
     lastSyncTime: null,
     isOnline: navigator.onLine,
     pendingSync: false,
+    isSyncing: false,
+    syncStatus: 'idle', // idle, syncing, synced, error
+    
+    // Real-time sync properties
+    dataChangeObserver: null,
+    syncDebounceTimer: null,
+    lastLocalDataHash: null,
+    lastCloudDataHash: null,
     
     firebaseConfig: {},
     firebaseApp: null,
@@ -43,7 +51,8 @@ const backupModule = {
         FB_USER: 'hifzi_fb_user',
         FB_AUTH_EMAIL: 'hifzi_fb_auth_email',
         FB_AUTH_PASSWORD: 'hifzi_fb_auth_password',
-        BACKUP_SETTINGS: 'hifzi_backup_settings'
+        BACKUP_SETTINGS: 'hifzi_backup_settings',
+        LAST_DATA_HASH: 'hifzi_last_data_hash'
     },
 
     init(forceReinit = false) {
@@ -54,10 +63,11 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.6 FINAL...');
+        console.log('[Backup] Initializing v3.7 FINAL - Real-time Sync...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
+        this.lastLocalDataHash = localStorage.getItem(this.KEYS.LAST_DATA_HASH) || null;
         
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
@@ -84,6 +94,7 @@ const backupModule = {
         console.log('[Backup] GAS Valid:', this._gasConfigValid);
         
         this.setupNetworkListeners();
+        this.setupDataChangeObserver(); // ✅ Real-time sync setup
         
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
@@ -98,8 +109,185 @@ const backupModule = {
         }
 
         this.isInitialized = true;
-        console.log('[Backup] Initialization complete');
+        console.log('[Backup] Initialization complete - Real-time sync active');
         return this;
+    },
+    
+    // ============================================
+    // REAL-TIME SYNC SYSTEM
+    // ============================================
+    
+    setupDataChangeObserver() {
+        // Override dataManager.saveData untuk detect perubahan
+        if (typeof dataManager !== 'undefined') {
+            const originalSaveData = dataManager.saveData.bind(dataManager);
+            const self = this;
+            
+            dataManager.saveData = function() {
+                const result = originalSaveData.apply(this, arguments);
+                self.handleDataChange();
+                return result;
+            };
+            
+            // Juga observe saveAllData jika ada
+            if (dataManager.saveAllData) {
+                const originalSaveAll = dataManager.saveAllData.bind(dataManager);
+                dataManager.saveAllData = function() {
+                    const result = originalSaveAll.apply(this, arguments);
+                    self.handleDataChange();
+                    return result;
+                };
+            }
+        }
+        
+        // Listen untuk custom event dari aplikasi
+        window.addEventListener('hifzi_data_changed', () => {
+            this.handleDataChange();
+        });
+        
+        console.log('[Backup] Data change observer installed');
+    },
+    
+    handleDataChange() {
+        // Debounce untuk menghindari multiple sync
+        if (this.syncDebounceTimer) {
+            clearTimeout(this.syncDebounceTimer);
+        }
+        
+        // Delay 2 detik setelah perubahan terakhir baru sync
+        this.syncDebounceTimer = setTimeout(() => {
+            this.checkAndSync();
+        }, 2000);
+        
+        this.updateSyncStatus('pending');
+    },
+    
+    async checkAndSync() {
+        if (!this.isOnline) {
+            this.updateSyncStatus('offline');
+            return;
+        }
+        
+        if (this.currentProvider === 'local') {
+            return;
+        }
+        
+        if (this.currentProvider === 'firebase' && !this.currentUser) {
+            return;
+        }
+        
+        if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) {
+            return;
+        }
+        
+        // Check apakah data benar-benar berubah
+        const currentData = this.getBackupData();
+        const currentHash = this.generateDataHash(currentData);
+        
+        if (currentHash === this.lastLocalDataHash) {
+            console.log('[Backup] Data tidak berubah, skip sync');
+            return;
+        }
+        
+        // Sync ke cloud
+        this.updateSyncStatus('syncing');
+        
+        try {
+            if (this.currentProvider === 'firebase') {
+                await this.uploadToFirebase(currentData, true);
+            } else if (this.currentProvider === 'googlesheet') {
+                await this.uploadToGAS(currentData, true);
+            }
+            
+            this.lastLocalDataHash = currentHash;
+            localStorage.setItem(this.KEYS.LAST_DATA_HASH, currentHash);
+            this.updateSyncStatus('synced');
+            
+            // Update last sync time display
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+            this.saveBackupSettings();
+            
+            // Update UI jika ter-render
+            if (this.isRendered) {
+                this.updateSyncIndicator();
+            }
+            
+        } catch (err) {
+            console.error('[Backup] Auto sync failed:', err);
+            this.updateSyncStatus('error');
+            this.pendingSync = true;
+        }
+    },
+    
+    generateDataHash(data) {
+        // Simple hash dari data JSON
+        const str = JSON.stringify(data);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString();
+    },
+    
+    updateSyncStatus(status) {
+        this.syncStatus = status;
+        if (this.isRendered) {
+            this.updateSyncIndicator();
+        }
+    },
+    
+    updateSyncIndicator() {
+        const indicator = document.getElementById('sync-status-indicator');
+        if (!indicator) return;
+        
+        const statusConfig = {
+            idle: { icon: '⚪', text: 'Standby', color: '#a0aec0' },
+            pending: { icon: '⏳', text: 'Menunggu...', color: '#ed8936' },
+            syncing: { icon: '🔄', text: 'Syncing...', color: '#4299e1' },
+            synced: { icon: '✅', text: 'Synced', color: '#48bb78' },
+            error: { icon: '❌', text: 'Error', color: '#fc8181' },
+            offline: { icon: '📴', text: 'Offline', color: '#718096' }
+        };
+        
+        const config = statusConfig[this.syncStatus] || statusConfig.idle;
+        indicator.innerHTML = `<span style="font-size:16px;">${config.icon}</span> <span style="color:${config.color};font-weight:600;">${config.text}</span>`;
+    },
+    
+    // Force sync manual
+    async forceSyncNow() {
+        if (this.isSyncing) {
+            this.showToast('⏳ Sync sedang berjalan...');
+            return;
+        }
+        
+        this.updateSyncStatus('syncing');
+        this.showToast('🔄 Force sync dimulai...');
+        
+        try {
+            const data = this.getBackupData();
+            
+            if (this.currentProvider === 'firebase') {
+                if (!this.currentUser) throw new Error('Belum login');
+                await this.uploadToFirebase(data, false);
+            } else if (this.currentProvider === 'googlesheet') {
+                if (!this._gasConfigValid) throw new Error('Config tidak lengkap');
+                await this.uploadToGAS(data, false);
+            } else {
+                throw new Error('Provider tidak valid');
+            }
+            
+            this.lastLocalDataHash = this.generateDataHash(data);
+            localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
+            this.updateSyncStatus('synced');
+            this.showToast('✅ Force sync berhasil!');
+            
+        } catch (err) {
+            this.updateSyncStatus('error');
+            this.showToast('❌ Force sync gagal: ' + err.message);
+        }
     },
     
     saveBackupSettings() {
@@ -161,13 +349,15 @@ const backupModule = {
         
         this.handleOnline = () => {
             this.isOnline = true;
-            this.showToast('🌐 Online');
-            if (this.pendingSync) this.manualUpload();
+            this.showToast('🌐 Online - Resume sync');
+            this.updateSyncStatus('idle');
+            if (this.pendingSync) this.checkAndSync();
         };
         
         this.handleOffline = () => {
             this.isOnline = false;
-            this.showToast('📴 Offline');
+            this.showToast('📴 Offline - Sync paused');
+            this.updateSyncStatus('offline');
         };
         
         window.addEventListener('online', this.handleOnline);
@@ -217,11 +407,12 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '3.6-final',
+                version: '3.7-final',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
-                provider: this.currentProvider
+                provider: this.currentProvider,
+                syncMode: 'real-time'
             }
         };
     },
@@ -265,7 +456,7 @@ const backupModule = {
             }
             this.startAutoSync();
             this.syncToCloud(true);
-            this.showToast('🟢 Auto-sync aktif');
+            this.showToast('🟢 Auto-sync aktif (Real-time)');
         } else {
             this.stopAutoSync();
             this.showToast('⚪ Auto-sync dimatikan');
@@ -278,9 +469,10 @@ const backupModule = {
         if (!this.isAutoSyncEnabled || this.currentProvider === 'local') return;
         if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) return;
         
+        // Interval backup setiap 3 menit sebagai safety net
         this.autoSyncInterval = setInterval(() => {
-            console.log('[Backup] Auto-sync running...');
-            this.syncToCloud(true);
+            console.log('[Backup] Safety sync running...');
+            this.checkAndSync();
         }, 180000);
     },
 
@@ -292,40 +484,11 @@ const backupModule = {
     },
 
     syncToCloud(silent = true) {
-        if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) return Promise.resolve();
-        if (this.currentProvider === 'firebase' && !this.currentUser) return Promise.resolve();
-        if (this.currentProvider === 'local') return Promise.resolve();
-        
-        const data = this.getBackupData();
-        
-        if (this.currentProvider === 'firebase' && this.currentUser) {
-            return this.uploadToFirebase(data, silent);
-        } else if (this.currentProvider === 'googlesheet') {
-            return this.uploadToGAS(data, silent);
-        }
-        return Promise.resolve();
+        return this.checkAndSync();
     },
 
     manualUpload() {
-        console.log('[Backup] Manual upload...');
-        const data = this.getBackupData();
-        
-        if (this.currentProvider === 'firebase') {
-            if (!this.currentUser) {
-                this.showToast('❌ Belum login Firebase');
-                return Promise.reject('Not authenticated');
-            }
-            return this.uploadToFirebase(data, false);
-        } else if (this.currentProvider === 'googlesheet') {
-            if (!this._gasConfigValid) {
-                this.showToast('❌ Konfigurasi tidak lengkap');
-                return Promise.reject('GAS config invalid');
-            }
-            return this.uploadToGAS(data, false);
-        } else {
-            this.downloadJSON();
-            return Promise.resolve();
-        }
+        return this.forceSyncNow();
     },
 
     manualDownload() {
@@ -380,6 +543,9 @@ const backupModule = {
                     }));
                     if (this.isAutoSyncEnabled) this.startAutoSync();
                     this.checkNewDeviceFirebase();
+                    
+                    // Setup real-time listener untuk Firebase
+                    this.setupFirebaseRealtimeListener();
                 } else {
                     this.currentUser = null;
                     if (attemptAutoLogin) this.attemptAutoLogin();
@@ -389,6 +555,30 @@ const backupModule = {
         } catch (err) {
             this.showToast('❌ Error Firebase: ' + err.message);
         }
+    },
+    
+    setupFirebaseRealtimeListener() {
+        if (!this.database || !this.currentUser) return;
+        
+        const userRef = this.database.ref('users/' + this.currentUser.uid + '/hifzi_data');
+        
+        // Listen untuk perubahan dari cloud (multi-device sync)
+        userRef.on('value', (snapshot) => {
+            const cloudData = snapshot.val();
+            if (cloudData && cloudData._syncMeta) {
+                const cloudDeviceId = cloudData._syncMeta.deviceId;
+                const cloudTime = new Date(cloudData._syncMeta.lastModified);
+                const localTime = this.lastSyncTime ? new Date(this.lastSyncTime) : new Date(0);
+                
+                // Hanya proses jika perubahan dari device lain dan lebih baru
+                if (cloudDeviceId !== this.deviceId && cloudTime > localTime) {
+                    console.log('[Backup] Detected change from other device');
+                    // Optional: Auto-merge atau notify user
+                }
+            }
+        });
+        
+        console.log('[Backup] Firebase real-time listener active');
     },
     
     attemptAutoLogin() {
@@ -421,6 +611,7 @@ const backupModule = {
                 localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
                 this.showToast('✅ Login berhasil!');
+                this.setupFirebaseRealtimeListener();
                 this.render();
                 return cred.user;
             })
@@ -438,6 +629,7 @@ const backupModule = {
                 localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
                 this.showToast('✅ Daftar berhasil!');
+                this.setupFirebaseRealtimeListener();
                 this.uploadToFirebase(this.getBackupData(), true);
                 this.render();
                 return cred.user;
@@ -450,6 +642,12 @@ const backupModule = {
 
     firebaseLogout() {
         if (!this.auth) return Promise.resolve();
+        
+        // Remove Firebase listener
+        if (this.database && this.currentUser) {
+            this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').off();
+        }
+        
         return this.auth.signOut().then(() => {
             this.currentUser = null;
             localStorage.removeItem(this.KEYS.FB_USER);
@@ -462,7 +660,6 @@ const backupModule = {
         });
     },
 
-    // ✅ BARU: Clear Firebase Config
     clearFirebaseConfig() {
         if (!confirm('⚠️ Hapus konfigurasi Firebase? Anda perlu setup ulang.')) return;
         
@@ -490,18 +687,27 @@ const backupModule = {
             if (!silent) this.showToast('❌ Belum login Firebase');
             return Promise.reject('Not authenticated');
         }
+        
+        this.isSyncing = true;
         if (!silent) this.showToast('⬆️ Mengupload ke Firebase...');
         
         return this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set({
             ...data,
-            _syncMeta: { lastModified: new Date().toISOString(), deviceId: this.deviceId, version: '3.6' }
+            _syncMeta: { 
+                lastModified: new Date().toISOString(), 
+                deviceId: this.deviceId, 
+                version: '3.7',
+                hash: this.generateDataHash(data)
+            }
         }).then(() => {
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
             this.saveBackupSettings();
+            this.isSyncing = false;
             if (!silent) this.showToast('✅ Upload berhasil!');
             return true;
         }).catch((err) => {
+            this.isSyncing = false;
             if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
             throw err;
         });
@@ -526,6 +732,11 @@ const backupModule = {
                     this.lastSyncTime = new Date().toISOString();
                     localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
                     this.saveBackupSettings();
+                    
+                    // Update hash
+                    this.lastLocalDataHash = cloudData._syncMeta?.hash || this.generateDataHash(cloudData);
+                    localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
+                    
                     if (!silent) {
                         this.showToast('✅ Download berhasil! Reload...');
                         setTimeout(() => location.reload(), 1500);
@@ -755,6 +966,7 @@ const backupModule = {
             return Promise.reject('Sheet ID empty');
         }
         
+        this.isSyncing = true;
         if (!silent) this.showToast('⬆️ Uploading...');
         
         const payload = {
@@ -763,7 +975,8 @@ const backupModule = {
             deviceId: this.deviceId,
             deviceName: this.deviceName,
             sheetId: cleanSheetId,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            hash: this.generateDataHash(data)
         };
 
         return fetch(this.gasUrl, {
@@ -782,8 +995,9 @@ const backupModule = {
                 this.lastSyncTime = new Date().toISOString();
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
                 this.saveBackupSettings();
-                if (!silent) this.showToast('✅ Upload berhasil!');
+                this.isSyncing = false;
                 this.pendingSync = false;
+                if (!silent) this.showToast('✅ Upload berhasil!');
                 return result;
             } else {
                 throw new Error(result?.message || 'Upload failed');
@@ -791,6 +1005,7 @@ const backupModule = {
         })
         .catch((err) => {
             console.error('[GAS Upload Error]', err);
+            this.isSyncing = false;
             this.pendingSync = true;
             if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
             throw err;
@@ -843,6 +1058,10 @@ const backupModule = {
                 localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
                 this.saveBackupSettings();
                 
+                // Update hash
+                this.lastLocalDataHash = result.data._backupMeta?.hash || this.generateDataHash(result.data);
+                localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
+                
                 if (!silent) {
                     this.showToast('✅ Download berhasil! Reload...');
                     setTimeout(() => location.reload(), 1500);
@@ -859,7 +1078,6 @@ const backupModule = {
         });
     },
 
-    // ✅ BARU: Clear GAS Config
     clearGASConfig() {
         if (!confirm('⚠️ Hapus konfigurasi Google Sheets? Anda perlu setup ulang.')) return;
         
@@ -1055,7 +1273,7 @@ const backupModule = {
                 <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;">
                     <div>
                         <div style="font-size:18px;font-weight:700;">📋 Google Apps Script Code</div>
-                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">v3.6 FINAL - CORS Fixed</div>
+                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">v3.7 FINAL - CORS Fixed</div>
                     </div>
                     <button onclick="document.getElementById('gas-generator-modal').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:white;">×</button>
                 </div>
@@ -1108,7 +1326,7 @@ const backupModule = {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `hifzi_gas_v3.6.gs`;
+        a.download = `hifzi_gas_v3.7.gs`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1117,7 +1335,7 @@ const backupModule = {
     },
 
     getDefaultGASCode() {
-        return `// GAS CODE v3.6 FINAL - HIFZI CELL BACKUP
+        return `// GAS CODE v3.7 FINAL - HIFZI CELL BACKUP
 // CORS FIXED - Paste di script.google.com
 // Deploy: Web App, Execute as: Me, Access: ANYONE
 
@@ -1192,6 +1410,7 @@ function handleSync(ss, data, corsHeaders) {
     sheet.getRange(1, 2).setValue(new Date().toISOString());
     sheet.getRange(1, 3).setValue(data.deviceId || 'unknown');
     sheet.getRange(1, 4).setValue(data.deviceName || 'unknown');
+    sheet.getRange(1, 5).setValue(data.hash || 'no-hash');
     
     var jsonString = JSON.stringify(data.data);
     sheet.getRange(3, 1).setValue(jsonString);
@@ -1201,7 +1420,8 @@ function handleSync(ss, data, corsHeaders) {
       success: true, 
       message: 'Data synced successfully',
       sheetName: ss.getName(),
-      dataSize: jsonString.length
+      dataSize: jsonString.length,
+      hash: data.hash
     }, corsHeaders);
     
   } catch (err) {
@@ -1253,7 +1473,7 @@ function createResponse(data, headers) {
 function doGet(e) {
   return createResponse({ 
     success: true, 
-    message: 'Hifzi Backup API v3.6 - Use POST method' 
+    message: 'Hifzi Backup API v3.7 - Real-time Sync Ready' 
   }, {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -1417,6 +1637,8 @@ function doGet(e) {
             : {};
         
         localStorage.removeItem('hifzi_data');
+        localStorage.removeItem(this.KEYS.LAST_DATA_HASH);
+        this.lastLocalDataHash = null;
         
         setTimeout(() => this.loadBackupSettings(), 100);
         
@@ -1523,7 +1745,6 @@ function doGet(e) {
     // ============================================
     
     renderFirebaseSection(isConfigured, isLoggedIn, fbExcelViewToggle) {
-        // Belum dikonfigurasi
         if (!isConfigured) {
             return `
                 <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
@@ -1539,7 +1760,6 @@ function doGet(e) {
             `;
         }
         
-        // Sudah dikonfigurasi tapi belum login
         if (!isLoggedIn) {
             return `
                 <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
@@ -1559,7 +1779,6 @@ function doGet(e) {
             `;
         }
         
-        // Sudah login
         return `
             <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -1572,15 +1791,26 @@ function doGet(e) {
                         <button onclick="backupModule.clearFirebaseConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🗑️ Hapus Config</button>
                     </div>
                 </div>
+                
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f7fafc;border-radius:10px;margin-bottom:16px;">
                     <div>
-                        <div style="font-weight:600;color:#2d3748;">Auto Sync</div>
-                        <div style="font-size:12px;color:#718096;">Sinkron otomatis tiap 3 menit</div>
+                        <div style="font-weight:600;color:#2d3748;">Real-time Sync</div>
+                        <div style="font-size:12px;color:#718096;">Auto sync saat data berubah</div>
                     </div>
                     <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
                         <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
                     </div>
                 </div>
+                
+                <div style="display:flex;gap:8px;margin-bottom:16px;">
+                    <button onclick="backupModule.forceSyncNow()" style="flex:1;padding:12px;background:#4299e1;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">
+                        🔄 Force Sync Now
+                    </button>
+                    <button onclick="backupModule.manualDownload()" style="flex:1;padding:12px;background:#48bb78;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">
+                        ⬇️ Download dari Cloud
+                    </button>
+                </div>
+                
                 ${fbExcelViewToggle}
             </div>
         `;
@@ -1594,7 +1824,7 @@ function doGet(e) {
         return `
             <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #34a853;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <div style="font-size:16px;font-weight:600;color:#2d3748;">📊 Google Sheets (v3.6 FINAL)</div>
+                    <div style="font-size:16px;font-weight:600;color:#2d3748;">📊 Google Sheets (v3.7 FINAL)</div>
                     ${isConfigured ? `<button onclick="backupModule.clearGASConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;">🗑️ Hapus Config</button>` : ''}
                 </div>
                 
@@ -1630,6 +1860,15 @@ function doGet(e) {
                         <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
                             <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
                         </div>
+                    </div>
+                    
+                    <div style="display:flex;gap:8px;margin-bottom:16px;">
+                        <button onclick="backupModule.forceSyncNow()" style="flex:1;padding:12px;background:#4299e1;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">
+                            🔄 Force Sync Now
+                        </button>
+                        <button onclick="backupModule.manualDownload()" style="flex:1;padding:12px;background:#48bb78;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">
+                            ⬇️ Download dari Sheets
+                        </button>
                     </div>
                 ` : `
                     <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;">
@@ -1677,7 +1916,6 @@ function doGet(e) {
             cash: data.settings?.currentCash || 0
         };
 
-        // HTML untuk Firebase Excel View toggle
         const fbExcelViewToggle = isFBLoggedIn ? `
             <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
                 <div onclick="backupModule.toggleFBExcelSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:12px;background:#fff5f0;border-radius:8px;border:1px solid #fed7d7;">
@@ -1706,7 +1944,6 @@ function doGet(e) {
             </div>
         ` : '';
 
-        // HTML untuk GAS Excel View toggle
         const gasExcelViewToggle = isGASConfigured ? `
             <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
                 <div onclick="backupModule.toggleGASExcelSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:12px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;">
@@ -1745,14 +1982,17 @@ function doGet(e) {
                             <div style="font-size:24px;font-weight:700;">${isLocal ? '💾 Local' : isFirebase ? '🔥 Firebase' : '📊 Google Sheets'}</div>
                             <div style="font-size:13px;margin-top:8px;opacity:0.9;">
                                 ${this.isOnline ? '🟢 Online' : '🔴 Offline'} 
-                                ${this.isAutoSyncEnabled ? '• Auto-sync ON' : ''}
+                                ${this.isAutoSyncEnabled ? '• Real-time ON' : ''}
                                 ${isGAS && !isGASConfigured ? '• ⚠️ Config Invalid' : ''}
                             </div>
                         </div>
                         <div style="text-align:right;">
-                            <div style="font-size:12px;opacity:0.9;margin-bottom:4px;">Last Sync</div>
-                            <div style="font-size:18px;font-weight:600;">
-                                ${this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Belum'}
+                            <div style="font-size:12px;opacity:0.9;margin-bottom:4px;">Sync Status</div>
+                            <div id="sync-status-indicator" style="font-size:14px;font-weight:600;">
+                                <span style="font-size:16px;">⚪</span> <span style="color:#a0aec0;">Standby</span>
+                            </div>
+                            <div style="font-size:11px;opacity:0.8;margin-top:4px;">
+                                ${this.lastSyncTime ? 'Last: ' + new Date(this.lastSyncTime).toLocaleTimeString('id-ID') : 'Belum sync'}
                             </div>
                         </div>
                     </div>
@@ -1855,6 +2095,9 @@ function doGet(e) {
         `;
 
         container.innerHTML = html;
+        
+        // Update sync indicator immediately after render
+        setTimeout(() => this.updateSyncIndicator(), 100);
     }
 };
 
@@ -1866,4 +2109,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v3.6 FINAL loaded - CORS FIXED + Excel View + Logout Config');
+console.log('[Backup] v3.7 FINAL loaded - REAL-TIME SYNC ACTIVE');
