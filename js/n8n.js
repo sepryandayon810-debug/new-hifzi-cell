@@ -1,6 +1,6 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
-// VERSI LENGKAP FULL FEATURE - FIXED CORS & PROXY
+// VERSI LENGKAP FULL FEATURE - FIXED DEBUG VERSION
 // ============================================
 
 const n8nModule = (function() {
@@ -36,12 +36,10 @@ const n8nModule = (function() {
         currentProxyIndex: 0
     };
 
-    // UPDATED: Proxy list yang masih aktif
     const PROXY_LIST = [
         'https://api.allorigins.win/raw?url=',
         'https://api.codetabs.com/v1/proxy?quest=',
-        'https://corsproxy.io/?',
-        'https://api.codetabs.com/v1/proxy?quest='
+        'https://corsproxy.io/?'
     ];
 
     // ============================================
@@ -59,6 +57,7 @@ const n8nModule = (function() {
     function rotateProxy() {
         state.currentProxyIndex = (state.currentProxyIndex + 1) % PROXY_LIST.length;
         console.log(`[n8nModule] Proxy rotated to: ${getProxyUrl()}`);
+        showNotification(`🔄 Proxy ${state.currentProxyIndex + 1}/${PROXY_LIST.length}`, 'info');
         return getProxyUrl();
     }
 
@@ -69,12 +68,11 @@ const n8nModule = (function() {
         return div.innerHTML;
     }
 
-    function formatRupiah(angka) {
-        if (!angka) return 'Rp 0';
-        return 'Rp ' + parseInt(angka).toLocaleString('id-ID');
-    }
-
     function showNotification(message, type = 'info', duration = 4000) {
+        if (typeof app !== 'undefined' && app.showToast) {
+            app.showToast(message);
+            return;
+        }
         if (typeof utils !== 'undefined' && utils.showToast) {
             utils.showToast(message, type);
             return;
@@ -128,12 +126,7 @@ const n8nModule = (function() {
             }
         }
 
-        console.log('[n8nModule] Config loaded:', {
-            hasBotToken: !!state.config.botToken,
-            hasChatId: !!state.config.chatId,
-            hasSheetId: !!state.config.sheetId,
-            hasGasUrl: !!state.config.gasUrl
-        });
+        console.log('[n8nModule] Config loaded:', state.config);
     }
 
     function saveConfig() {
@@ -167,44 +160,50 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // FETCH WITH CORS PROXY - FIXED
+    // FETCH WITH CORS PROXY - DEBUG VERSION
     // ============================================
 
     async function fetchWithProxy(url, retryCount = 0) {
         const MAX_RETRIES = PROXY_LIST.length;
 
+        console.log(`[n8nModule] Fetching: ${url.substring(0, 100)}...`);
+
         // Jika bukan file protocol, coba direct fetch dulu
         if (!isFileProtocol()) {
             try {
+                console.log('[n8nModule] Trying direct fetch...');
                 const response = await fetch(url);
+                console.log('[n8nModule] Direct fetch success:', response.status);
                 if (response.ok) return response;
             } catch (e) {
-                console.log('[n8nModule] Direct fetch failed, trying proxy...');
+                console.log('[n8nModule] Direct fetch failed:', e.message);
             }
         }
 
         const proxyUrl = getProxyUrl();
         const fullUrl = `${proxyUrl}${encodeURIComponent(url)}`;
 
-        console.log(`[n8nModule] Using proxy [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]: ${proxyUrl}`);
+        console.log(`[n8nModule] Using proxy: ${proxyUrl}`);
 
         try {
             const response = await fetch(fullUrl, {
                 method: 'GET',
                 headers: { 
-                    'Accept': 'application/json',
-                    'Origin': window.location.origin
+                    'Accept': 'application/json'
                 }
             });
             
+            console.log('[n8nModule] Proxy response status:', response.status);
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const proxyData = await response.json();
+            console.log('[n8nModule] Proxy raw response:', proxyData);
+
             let finalData;
             
-            // Handle berbagai format response proxy
             if (proxyData.contents) {
                 try {
                     finalData = JSON.parse(proxyData.contents);
@@ -223,6 +222,8 @@ const n8nModule = (function() {
                 finalData = proxyData;
             }
 
+            console.log('[n8nModule] Parsed data:', finalData);
+
             return {
                 ok: true,
                 status: 200,
@@ -231,11 +232,10 @@ const n8nModule = (function() {
             };
 
         } catch (error) {
-            console.error(`[n8nModule] Proxy error:`, error.message);
+            console.error(`[n8nModule] Proxy error:`, error);
             
             if (retryCount < MAX_RETRIES - 1) {
                 rotateProxy();
-                console.log('[n8nModule] Retrying with next proxy...');
                 return fetchWithProxy(url, retryCount + 1);
             }
             
@@ -244,7 +244,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // TELEGRAM API - FIX WEBHOOK CONFLICT
+    // TELEGRAM API
     // ============================================
 
     async function deleteWebhook() {
@@ -285,9 +285,7 @@ const n8nModule = (function() {
             return;
         }
 
-        setStatus('🟡', 'Menghapus webhook lama...');
-        
-        // FIX: Delete webhook dulu sebelum getUpdates!
+        setStatus('🟡', 'Menghapus webhook...');
         await deleteWebhook();
         await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -323,18 +321,18 @@ const n8nModule = (function() {
                 localStorage.setItem(CONFIG_KEYS.CHAT_ID, chatId);
                 
                 setStatus('🟢', 'Terhubung ke Telegram');
-                showNotification(`✅ Chat ID terdeteksi: ${chatId}`, 'success');
+                showNotification(`✅ Chat ID: ${chatId}`, 'success');
                 
                 await sendTelegramMessage(
-                    `✅ *KONEKSI BERHASIL*\\n\\n` +
-                    `Web POS Hifzi Cell telah terhubung ke Telegram.\\n` +
-                    `Chat ID: ${chatId}\\n` +
+                    `✅ *KONEKSI BERHASIL*\n\n` +
+                    `Web POS Hifzi Cell terhubung ke Telegram.\n` +
+                    `Chat ID: ${chatId}\n` +
                     `Waktu: ${new Date().toLocaleString('id-ID')}`
                 );
                 
                 return chatId;
             } else {
-                throw new Error('Chat ID tidak ditemukan dalam pesan');
+                throw new Error('Chat ID tidak ditemukan');
             }
             
         } catch (error) {
@@ -353,7 +351,6 @@ const n8nModule = (function() {
         }
 
         try {
-            // Escape markdown characters
             const escapedText = text
                 .replace(/\./g, '\\.')
                 .replace(/-/g, '\\-')
@@ -387,7 +384,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // GOOGLE APPS SCRIPT API - FIXED
+    // GOOGLE APPS SCRIPT API - DEBUG VERSION
     // ============================================
 
     async function makeRequest(action, params = {}) {
@@ -398,7 +395,6 @@ const n8nModule = (function() {
             return null;
         }
 
-        // Build URL with parameters
         const url = new URL(gasUrl);
         url.searchParams.append('action', action);
         url.searchParams.append('sheetId', sheetId);
@@ -409,21 +405,35 @@ const n8nModule = (function() {
             }
         });
 
-        console.log('[n8nModule] API Request:', { action, sheetId, url: url.toString() });
+        console.log('[n8nModule] API Request URL:', url.toString());
 
         try {
             setStatus('🟡', 'Loading...');
             state.isLoading = true;
 
+            // Show loading in table
+            const tbody = document.getElementById('tableBody');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 40px;">
+                            <div style="font-size: 32px; margin-bottom: 10px;">⏳</div>
+                            <div>Mengambil data dari Google Sheets...</div>
+                            <div style="font-size: 12px; color: #999; margin-top: 10px;">
+                                Proxy: ${state.currentProxyIndex + 1}/${PROXY_LIST.length}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+
             const response = await fetchWithProxy(url.toString());
             
-            // Check if response is valid
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-
             console.log('[n8nModule] API Response:', data);
 
             if (!data.success) {
@@ -437,20 +447,34 @@ const n8nModule = (function() {
             console.error('[n8nModule] API Error:', error);
             setStatus('🔴', 'Error');
 
-            let errorMsg = error.message;
-            let solution = '';
-
-            if (error.message.includes('Failed to fetch') || error.message.includes('CORS') || error.message.includes('NetworkError')) {
-                errorMsg = 'CORS Error - GAS tidak bisa diakses';
-                solution = isFileProtocol() 
-                    ? '\\n\\n💡 Solusi:\\n1. Gunakan Live Server di VS Code\\n2. Atau upload ke GitHub Pages/Netlify\\n3. Coba klik 🔄 Rotate Proxy'
-                    : '\\n\\n💡 Solusi:\\n1. Pastikan GAS Deploy dengan "Access: ANYONE"\\n2. Cek URL GAS benar\\n3. Deploy ulang GAS\\n4. Cek Sheet ID benar';
-            } else if (error.message.includes('404')) {
-                errorMsg = 'GAS URL tidak ditemukan (404)';
-                solution = '\\n\\n💡 Deploy ulang GAS dan copy URL baru';
+            // Show error in table
+            const tbody = document.getElementById('tableBody');
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 40px; color: #e74c3c;">
+                            <div style="font-size: 32px; margin-bottom: 10px;">❌</div>
+                            <div><strong>Error:</strong> ${error.message}</div>
+                            <div style="font-size: 12px; margin-top: 15px; color: #666;">
+                                ${isFileProtocol() 
+                                    ? 'Coba klik "🔄 Rotate Proxy" atau gunakan Live Server'
+                                    : 'Cek konfigurasi GAS URL dan Sheet ID'}
+                            </div>
+                            <button onclick="n8nModule.rotateProxy()" 
+                                    style="margin-top: 15px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                                🔄 Coba Proxy Lain
+                            </button>
+                        </td>
+                    </tr>
+                `;
             }
 
-            showNotification(`❌ ${errorMsg}${solution}`, 'error', 8000);
+            let errorMsg = error.message;
+            if (error.message.includes('Failed to fetch') || error.message.includes('CORS') || error.message.includes('NetworkError')) {
+                errorMsg = 'CORS Error - GAS tidak bisa diakses';
+            }
+
+            showNotification(`❌ ${errorMsg}`, 'error', 6000);
             return null;
             
         } finally {
@@ -466,23 +490,25 @@ const n8nModule = (function() {
         const keywordInput = document.getElementById('searchInput');
         const keyword = keywordInput?.value.toLowerCase().trim() || '';
         
-        // Send initial message
+        console.log('[n8nModule] Searching with keyword:', keyword);
+
+        // Send Telegram notification
         await sendTelegramMessage(
-            `🔍 *PENCARIAN DATA*\\n\\n` +
-            `Keyword: ${keyword || 'Semua data'}\\n` +
-            `Waktu: ${new Date().toLocaleString('id-ID')}\\n\\n` +
-            `⏳ Mengambil data dari Google Sheets...`
+            `🔍 *PENCARIAN DATA*\n\n` +
+            `Keyword: ${keyword || 'Semua data'}\n` +
+            `Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
+            `⏳ Mengambil data...`
         );
 
-        // FIXED: Properly handle the response
         const result = await makeRequest('getData');
         
         if (!result) {
-            await sendTelegramMessage('❌ Gagal mengambil data dari Google Sheets\\n\\nCek koneksi dan konfigurasi GAS');
+            await sendTelegramMessage('❌ Gagal mengambil data dari Google Sheets');
             return;
         }
 
         state.data = result.data || [];
+        console.log('[n8nModule] Data received:', state.data.length, 'rows');
 
         if (keyword) {
             state.filteredData = state.data.filter(item => 
@@ -493,23 +519,32 @@ const n8nModule = (function() {
             state.filteredData = state.data;
         }
 
+        console.log('[n8nModule] Filtered data:', state.filteredData.length, 'rows');
+
         renderTable();
 
         const count = state.filteredData.length;
-        let message = `✅ *PENCARIAN SELESAI*\\n\\n`;
-        message += `Ditemukan: *${count} data*\\n`;
-        message += `Keyword: *${keyword || '-'}*\\n\\n`;
+        
+        // Auto-select first row if data exists
+        if (count > 0 && state.filteredData[0]) {
+            state.selectedRow = state.filteredData[0].row;
+            renderTable(); // Re-render to show selection
+        }
+
+        let message = `✅ *PENCARIAN SELESAI*\n\n`;
+        message += `Ditemukan: *${count} data*\n`;
+        message += `Keyword: *${keyword || '-'}*\n\n`;
         
         if (count > 0) {
-            message += `*Hasil (5 teratas):*\\n`;
+            message += `*Hasil (5 teratas):*\n`;
             state.filteredData.slice(0, 5).forEach((item, idx) => {
                 const nama = (item.nama || 'N/A').substring(0, 20);
                 const nomor = (item.nomor || 'N/A').substring(0, 15);
-                message += `${idx + 1}\\. ${nama} \\- ${nomor}\\n`;
+                message += `${idx + 1}\\. ${nama} \\- ${nomor}\n`;
             });
             
             if (count > 5) {
-                message += `\\n...dan ${count - 5} data lainnya`;
+                message += `\n...dan ${count - 5} data lainnya`;
             }
         } else {
             message += `❌ Tidak ada data yang cocok`;
@@ -576,9 +611,9 @@ const n8nModule = (function() {
             return;
         }
 
-        const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\\n\\n` +
-            `Nama: *${(item.nama || 'N/A').substring(0, 20)}*\\n` +
-            `Nomor: *${(item.nomor || 'N/A').substring(0, 15)}*\\n\\n` +
+        const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\n` +
+            `Nama: *${(item.nama || 'N/A').substring(0, 20)}*\n` +
+            `Nomor: *${(item.nomor || 'N/A').substring(0, 15)}*\n\n` +
             `Klik tombol HAPUS di web untuk konfirmasi.`;
 
         await sendTelegramMessage(confirmMsg);
@@ -611,10 +646,10 @@ const n8nModule = (function() {
         if (row) params.row = row;
 
         await sendTelegramMessage(
-            `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\\n\\n` +
-            `Nama: *${nama}*\\n` +
-            `Nomor: *${nomor}*\\n\\n` +
-            `⏳ Menyimpan ke Google Sheets...`
+            `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\n` +
+            `Nama: *${nama}*\n` +
+            `Nomor: *${nomor}*\n\n` +
+            `⏳ Menyimpan...`
         );
 
         const result = await makeRequest(action, params);
@@ -623,21 +658,16 @@ const n8nModule = (function() {
             closeModal();
             
             await sendTelegramMessage(
-                `✅ *BERHASIL*\\n\\n` +
-                `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!\\n\\n` +
-                `📋 *Detail:*\\n` +
-                `Nama: *${nama}*\\n` +
-                `Nomor: *${nomor}*\\n` +
-                `${row ? `Row: ${row}` : `Row baru: ${result.row}`}\\n\\n` +
-                `🕐 Waktu: ${new Date().toLocaleString('id-ID')}`
+                `✅ *BERHASIL*\n\n` +
+                `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!`
             );
 
             await handleSearch();
             showNotification(result.message || '✅ Data berhasil disimpan', 'success');
             
         } else if (result) {
-            await sendTelegramMessage(`❌ Gagal menyimpan: ${result.error || 'Unknown error'}`);
-            showNotification('❌ ' + (result.error || 'Gagal menyimpan data'), 'error');
+            await sendTelegramMessage(`❌ Gagal: ${result.error || 'Error'}`);
+            showNotification('❌ ' + (result.error || 'Gagal menyimpan'), 'error');
         }
     }
 
@@ -647,21 +677,17 @@ const n8nModule = (function() {
         const result = await makeRequest('deleteData', { row });
         
         if (result && result.success) {
-            await sendTelegramMessage(
-                `🗑️ *DATA BERHASIL DIHAPUS*\\n\\n` +
-                `Row: ${row}\\n` +
-                `🕐 Waktu: ${new Date().toLocaleString('id-ID')}`
-            );
+            await sendTelegramMessage(`🗑️ *DATA DIHAPUS*\\n\\nRow: ${row}`);
 
             closeModal();
             state.selectedRow = null;
             updateButtonStates();
             await handleSearch();
-            showNotification(result.message || '✅ Data berhasil dihapus', 'success');
+            showNotification(result.message || '✅ Data dihapus', 'success');
             
         } else if (result) {
-            await sendTelegramMessage(`❌ Gagal menghapus: ${result.error || 'Unknown error'}`);
-            showNotification('❌ ' + (result.error || 'Gagal menghapus data'), 'error');
+            await sendTelegramMessage(`❌ Gagal menghapus`);
+            showNotification('❌ ' + (result.error || 'Gagal menghapus'), 'error');
         }
     }
 
@@ -672,6 +698,8 @@ const n8nModule = (function() {
     function renderTable() {
         const tbody = document.getElementById('tableBody');
         if (!tbody) return;
+
+        console.log('[n8nModule] Rendering table with', state.filteredData.length, 'rows');
 
         if (state.filteredData.length === 0) {
             tbody.innerHTML = `
@@ -704,6 +732,7 @@ const n8nModule = (function() {
             `;
         }).join('');
 
+        // Add click handlers
         tbody.querySelectorAll('.n8n-data-row').forEach(row => {
             row.addEventListener('click', (e) => {
                 if (e.target.closest('.n8n-btn-select')) return;
@@ -722,6 +751,7 @@ const n8nModule = (function() {
     }
 
     function selectRow(row) {
+        console.log('[n8nModule] Row selected:', row);
         state.selectedRow = state.selectedRow === row ? null : row;
         renderTable();
     }
@@ -731,13 +761,17 @@ const n8nModule = (function() {
         const btnEdit = document.getElementById('btnEdit');
         const btnDelete = document.getElementById('btnDelete');
         
+        console.log('[n8nModule] Update buttons - hasSelection:', hasSelection);
+        
         if (btnEdit) {
             btnEdit.disabled = !hasSelection;
             btnEdit.style.opacity = hasSelection ? '1' : '0.5';
+            btnEdit.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
         }
         if (btnDelete) {
             btnDelete.disabled = !hasSelection;
             btnDelete.style.opacity = hasSelection ? '1' : '0.5';
+            btnDelete.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
         }
     }
 
@@ -763,7 +797,7 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // GAS CODE GENERATOR - FIXED
+    // GAS CODE GENERATOR
     // ============================================
 
     function generateGAS() {
@@ -781,19 +815,16 @@ function doGet(e) {
   const action = e.parameter.action;
   const sheetId = e.parameter.sheetId;
   
-  // CORS Headers yang benar untuk ContentService
   const output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
   
   try {
-    // Validasi parameter
     if (!sheetId) throw new Error('Parameter sheetId diperlukan');
     if (!action) throw new Error('Parameter action diperlukan');
 
     const ss = SpreadsheetApp.openById(sheetId);
     let sheet = ss.getSheetByName(SHEET_NAME);
 
-    // Auto-create sheet jika belum ada
     if (!sheet) {
       sheet = ss.insertSheet(SHEET_NAME);
       sheet.appendRow(['NAMA', 'NOMOR']);
@@ -812,7 +843,6 @@ function doGet(e) {
           message: '✅ Koneksi berhasil!',
           sheets: ss.getSheets().map(s => s.getName()),
           targetSheet: SHEET_NAME,
-          sheetExists: !!sheet,
           timestamp: new Date().toISOString()
         };
         break;
@@ -838,11 +868,7 @@ function doGet(e) {
       case 'addData':
         const namaAdd = e.parameter.nama || '';
         const nomorAdd = e.parameter.nomor || '';
-
-        if (!namaAdd || !nomorAdd) {
-          throw new Error('Parameter nama dan nomor diperlukan');
-        }
-
+        if (!namaAdd || !nomorAdd) throw new Error('Parameter nama dan nomor diperlukan');
         sheet.appendRow([namaAdd, nomorAdd]);
         result = { 
           success: true, 
@@ -856,17 +882,10 @@ function doGet(e) {
         const rowEdit = parseInt(e.parameter.row);
         const namaEdit = e.parameter.nama || '';
         const nomorEdit = e.parameter.nomor || '';
-
-        if (!rowEdit || isNaN(rowEdit) || rowEdit < 2) {
-          throw new Error('Parameter row tidak valid');
-        }
-        if (!namaEdit || !nomorEdit) {
-          throw new Error('Parameter nama dan nomor diperlukan');
-        }
-
+        if (!rowEdit || isNaN(rowEdit) || rowEdit < 2) throw new Error('Parameter row tidak valid');
+        if (!namaEdit || !nomorEdit) throw new Error('Parameter nama dan nomor diperlukan');
         sheet.getRange(rowEdit, 1).setValue(namaEdit);
         sheet.getRange(rowEdit, 2).setValue(nomorEdit);
-        
         result = { 
           success: true, 
           message: '✅ Data berhasil diupdate',
@@ -877,11 +896,7 @@ function doGet(e) {
 
       case 'deleteData':
         const rowDel = parseInt(e.parameter.row);
-
-        if (!rowDel || isNaN(rowDel) || rowDel < 2) {
-          throw new Error('Parameter row tidak valid');
-        }
-
+        if (!rowDel || isNaN(rowDel) || rowDel < 2) throw new Error('Parameter row tidak valid');
         sheet.deleteRow(rowDel);
         result = { 
           success: true, 
@@ -894,8 +909,7 @@ function doGet(e) {
       default:
         result = { 
           success: false, 
-          error: 'Action tidak valid: ' + action,
-          validActions: ['test', 'getData', 'addData', 'editData', 'deleteData']
+          error: 'Action tidak valid: ' + action
         };
     }
 
@@ -903,7 +917,6 @@ function doGet(e) {
     return output;
 
   } catch (error) {
-    console.error('GAS Error:', error);
     const errorResult = { 
       success: false, 
       error: error.toString(),
@@ -914,17 +927,13 @@ function doGet(e) {
   }
 }
 
-// Handle OPTIONS untuk CORS preflight
 function doOptions(e) {
   const output = ContentService.createTextOutput('');
   return output;
 }`;
 
         const editor = document.getElementById('gasCodeEditor');
-        if (editor) {
-            editor.value = code;
-            console.log('[n8nModule] GAS code generated');
-        }
+        if (editor) editor.value = code;
     }
 
     function copyGASCode() {
@@ -933,21 +942,9 @@ function doOptions(e) {
             showNotification('⚠️ Generate kode GAS terlebih dahulu', 'warning');
             return;
         }
-
         textarea.select();
-        textarea.setSelectionRange(0, 99999);
-        
-        try {
-            navigator.clipboard.writeText(textarea.value).then(() => {
-                showNotification('✅ Kode GAS berhasil dicopy!', 'success');
-            }).catch(() => {
-                document.execCommand('copy');
-                showNotification('✅ Kode GAS dicopy!', 'success');
-            });
-        } catch (e) {
-            document.execCommand('copy');
-            showNotification('✅ Kode GAS dicopy!', 'success');
-        }
+        document.execCommand('copy');
+        showNotification('✅ Kode GAS dicopy!', 'success');
     }
 
     // ============================================
@@ -958,15 +955,14 @@ function doOptions(e) {
         const result = await makeRequest('test');
         
         if (result?.success) {
-            const msg = `✅ ${result.message}\n📊 Sheets: ${(result.sheets || []).join(', ')}`;
-            showNotification(msg, 'success');
+            showNotification(`✅ ${result.message}`, 'success');
             
             const statusInfo = document.getElementById('gasStatusInfo');
             if (statusInfo) {
                 statusInfo.innerHTML = `
                     <div style="color: #4caf50; font-size: 12px; margin-top: 8px;">
                         ✅ Terhubung ke: ${result.targetSheet}<br>
-                        📊 Total sheets: ${result.sheets?.length || 0}
+                        📊 Sheets: ${(result.sheets || []).join(', ')}
                     </div>
                 `;
             }
@@ -991,9 +987,7 @@ function doOptions(e) {
             section.style.display = 'block';
             arrow.textContent = '▲';
             const editor = document.getElementById('gasCodeEditor');
-            if (editor && !editor.value.trim()) {
-                generateGAS();
-            }
+            if (editor && !editor.value.trim()) generateGAS();
         } else {
             section.style.display = 'none';
             arrow.textContent = '▼';
@@ -1005,44 +999,31 @@ function doOptions(e) {
     // ============================================
 
     function attachEventListeners() {
-        // CRUD
         document.getElementById('btnSearch')?.addEventListener('click', handleSearch);
         document.getElementById('btnExecuteSearch')?.addEventListener('click', handleSearch);
         document.getElementById('btnAdd')?.addEventListener('click', handleAdd);
         document.getElementById('btnEdit')?.addEventListener('click', handleEdit);
         document.getElementById('btnDelete')?.addEventListener('click', handleDelete);
-
-        // Config
         document.getElementById('btnToggleConfig')?.addEventListener('click', toggleConfig);
         document.getElementById('btnSaveConfig')?.addEventListener('click', saveConfig);
         document.getElementById('btnTestTelegram')?.addEventListener('click', getChatId);
         document.getElementById('btnTestGAS')?.addEventListener('click', testConnection);
-
-        // GAS
         document.getElementById('btnGenerateGAS')?.addEventListener('click', generateGAS);
         document.getElementById('btnCopyGAS')?.addEventListener('click', copyGASCode);
         document.getElementById('btnOpenGAS')?.addEventListener('click', () => {
             window.open('https://script.google.com', '_blank');
         });
-
-        // Modal
         document.getElementById('btnCloseModal')?.addEventListener('click', closeModal);
         document.getElementById('btnCancel')?.addEventListener('click', closeModal);
         document.getElementById('btnSave')?.addEventListener('click', saveData);
         document.getElementById('btnCancelDelete')?.addEventListener('click', closeModal);
         document.getElementById('btnConfirmDelete')?.addEventListener('click', confirmDelete);
-
-        // Search on Enter
         document.getElementById('searchInput')?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') handleSearch();
         });
-
-        // Close modal on overlay click
         document.getElementById('modalOverlay')?.addEventListener('click', (e) => {
             if (e.target.id === 'modalOverlay') closeModal();
         });
-
-        // Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
@@ -1056,46 +1037,44 @@ function doOptions(e) {
         const isFile = isFileProtocol();
         
         const fileWarning = isFile ? `
-            <div class="n8n-warning-banner">
-                <div class="n8n-warning-title">⚠️ Mode File Lokal Terdeteksi</div>
-                <div class="n8n-warning-text">
-                    Anda membuka file langsung dari komputer. Beberapa fitur mungkin terbatas karena keamanan browser (CORS).
-                    <br><br>
-                    <strong>Solusi:</strong>
-                    <ol>
-                        <li>Gunakan <strong>Live Server</strong> di VS Code (klik kanan file → "Open with Live Server")</li>
-                        <li>Upload ke <strong>GitHub Pages</strong> atau <strong>Netlify</strong></li>
-                        <li>Tekan tombol <strong>🔄 Rotate Proxy</strong> jika koneksi gagal</li>
+            <div class="n8n-warning-banner" style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #856404;">
+                <div style="font-weight: bold; margin-bottom: 8px;">⚠️ Mode File Lokal Terdeteksi</div>
+                <div style="font-size: 13px; line-height: 1.5;">
+                    Beberapa fitur terbatas karena CORS. Solusi:
+                    <ol style="margin: 10px 0; padding-left: 20px;">
+                        <li>Gunakan <strong>Live Server</strong> di VS Code</li>
+                        <li>Upload ke <strong>GitHub Pages</strong></li>
+                        <li>Tekan tombol <strong>🔄 Rotate Proxy</strong> jika gagal</li>
                     </ol>
                 </div>
             </div>
         ` : '';
 
         return `
-            <div class="n8n-container">
+            <div class="n8n-container" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
                 ${fileWarning}
                 
-                <div class="n8n-header">
-                    <h2>🔍 N8N Data Management</h2>
-                    <p>Kelola data via Telegram Bridge → Google Sheets</p>
+                <div class="n8n-header" style="margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #333;">🔍 N8N Data Management</h2>
+                    <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Kelola data via Telegram Bridge → Google Sheets</p>
                 </div>
 
                 <!-- TELEGRAM STATUS CARD -->
-                <div class="n8n-telegram-card">
-                    <div class="n8n-telegram-header">
+                <div class="n8n-telegram-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin-bottom: 20px; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                         <div>
-                            <div class="n8n-telegram-title">📱 Status Telegram</div>
-                            <div class="n8n-telegram-status" id="telegramStatusText">
+                            <div style="font-weight: 600; margin-bottom: 4px;">📱 Status Telegram</div>
+                            <div id="telegramStatusText" style="font-size: 14px; opacity: 0.9;">
                                 ${state.config.botToken ? '⏳ Menunggu koneksi...' : '⚠️ Belum dikonfigurasi'}
                             </div>
                         </div>
-                        <div class="n8n-telegram-actions">
+                        <div style="display: flex; gap: 10px;">
                             ${isFile ? `
-                            <button class="n8n-btn n8n-btn-secondary" onclick="n8nModule.rotateProxy()">
+                            <button class="n8n-btn" onclick="n8nModule.rotateProxy()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
                                 🔄 Rotate Proxy
                             </button>
                             ` : ''}
-                            <button class="n8n-btn n8n-btn-primary" onclick="n8nModule.testTelegramConnection()">
+                            <button class="n8n-btn" onclick="n8nModule.testTelegramConnection()" style="background: white; color: #667eea; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 13px;">
                                 🔄 Test Koneksi
                             </button>
                         </div>
@@ -1103,53 +1082,52 @@ function doOptions(e) {
                 </div>
 
                 <!-- CRUD BUTTONS -->
-                <div class="n8n-crud-section">
-                    <div class="n8n-action-bar">
-                        <button class="n8n-btn n8n-btn-primary" id="btnSearch">
-                            <span class="icon">🔍</span>
+                <div class="n8n-crud-section" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <button class="n8n-btn" id="btnSearch" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                            <span>🔍</span>
                             <span>Cari Data</span>
                         </button>
-                        <button class="n8n-btn n8n-btn-success" id="btnAdd">
-                            <span class="icon">➕</span>
+                        <button class="n8n-btn" id="btnAdd" style="background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                            <span>➕</span>
                             <span>Tambah Data</span>
                         </button>
-                        <button class="n8n-btn n8n-btn-warning" id="btnEdit" disabled>
-                            <span class="icon">✏️</span>
+                        <button class="n8n-btn" id="btnEdit" disabled style="background: #f59e0b; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: not-allowed; font-weight: 600; display: flex; align-items: center; gap: 8px; opacity: 0.5;">
+                            <span>✏️</span>
                             <span>Edit Data</span>
                         </button>
-                        <button class="n8n-btn n8n-btn-danger" id="btnDelete" disabled>
-                            <span class="icon">🗑️</span>
+                        <button class="n8n-btn" id="btnDelete" disabled style="background: #ef4444; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: not-allowed; font-weight: 600; display: flex; align-items: center; gap: 8px; opacity: 0.5;">
+                            <span>🗑️</span>
                             <span>Hapus Data</span>
                         </button>
                     </div>
 
-                    <div class="n8n-search-box">
-                        <input type="text" id="searchInput" class="n8n-input" placeholder="Ketik nama atau nomor untuk mencari...">
-                        <button class="n8n-btn n8n-btn-primary" id="btnExecuteSearch">
-                            <span class="icon">🔍</span>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="searchInput" placeholder="Ketik nama atau nomor untuk mencari..." 
+                               style="flex: 1; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;">
+                        <button class="n8n-btn" id="btnExecuteSearch" style="background: #667eea; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
+                            🔍
                         </button>
                     </div>
                 </div>
 
                 <!-- DATA TABLE -->
-                <div class="n8n-data-section">
-                    <div class="n8n-table-container">
-                        <table class="n8n-table" id="dataTable">
+                <div class="n8n-data-section" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="overflow-x: auto;">
+                        <table class="n8n-table" style="width: 100%; border-collapse: collapse;">
                             <thead>
-                                <tr>
-                                    <th style="width: 50px;">No</th>
-                                    <th>NAMA</th>
-                                    <th>NOMOR</th>
-                                    <th style="width: 80px;">Pilih</th>
+                                <tr style="background: #667eea; color: white;">
+                                    <th style="padding: 15px; text-align: left; width: 60px;">No</th>
+                                    <th style="padding: 15px; text-align: left;">NAMA</th>
+                                    <th style="padding: 15px; text-align: left;">NOMOR</th>
+                                    <th style="padding: 15px; text-align: center; width: 100px;">Pilih</th>
                                 </tr>
                             </thead>
                             <tbody id="tableBody">
-                                <tr class="n8n-empty-row">
-                                    <td colspan="4" class="n8n-empty-message">
-                                        <div class="empty-state">
-                                            <span class="empty-icon">📭</span>
-                                            <p>Belum ada data. Klik "Cari Data" untuk memuat dari Google Sheets.</p>
-                                        </div>
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 60px 20px; color: #9ca3af;">
+                                        <div style="font-size: 48px; margin-bottom: 15px;">📭</div>
+                                        <div>Belum ada data. Klik "Cari Data" untuk memuat dari Google Sheets.</div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1158,174 +1136,172 @@ function doOptions(e) {
                 </div>
 
                 <!-- CONFIG TOGGLE -->
-                <div class="n8n-config-toggle">
-                    <button class="n8n-btn n8n-btn-ghost" id="btnToggleConfig">
-                        <span class="icon">⚙️</span>
-                        <span>Konfigurasi Telegram & GAS</span>
-                        <span class="toggle-arrow" id="configArrow">▼</span>
+                <div style="margin-top: 20px;">
+                    <button class="n8n-btn" id="btnToggleConfig" style="background: #f3f4f6; color: #374151; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>⚙️</span>
+                            <span>Konfigurasi Telegram & GAS</span>
+                        </div>
+                        <span id="configArrow">▼</span>
                     </button>
                 </div>
 
                 <!-- CONFIGURATION SECTION -->
-                <div class="n8n-config-section" id="configSection" style="display: none;">
+                <div id="configSection" style="display: none; margin-top: 20px;">
                     
                     <!-- STEP 1: TELEGRAM -->
-                    <div class="n8n-config-card">
-                        <div class="n8n-step-header">
-                            <span class="n8n-step-number">1</span>
-                            <h3>📱 Konfigurasi Telegram Bot</h3>
+                    <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                            <span style="background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">1</span>
+                            <h3 style="margin: 0;">📱 Konfigurasi Telegram Bot</h3>
                         </div>
                         
-                        <div class="n8n-form-group">
-                            <label>Bot Token <span class="required">*</span></label>
-                            <input type="password" id="botToken" class="n8n-input" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz">
-                            <small>Dapatkan dari @BotFather di Telegram</small>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Bot Token <span style="color: #ef4444;">*</span></label>
+                            <input type="password" id="botToken" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                            <small style="color: #6b7280; font-size: 12px;">Dapatkan dari @BotFather di Telegram</small>
                         </div>
 
-                        <div class="n8n-form-group">
-                            <label>Chat ID (Auto-detect)</label>
-                            <input type="text" id="chatId" class="n8n-input" placeholder="Kirim pesan ke bot, lalu klik Test" readonly>
-                            <small>ID chat akan terdeteksi otomatis saat test koneksi</small>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Chat ID (Auto-detect)</label>
+                            <input type="text" id="chatId" placeholder="Kirim pesan ke bot, lalu klik Test" readonly 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; box-sizing: border-box;">
+                            <small style="color: #6b7280; font-size: 12px;">ID chat akan terdeteksi otomatis</small>
                         </div>
 
-                        <div class="n8n-config-actions">
-                            <button class="n8n-btn n8n-btn-secondary" id="btnTestTelegram">
-                                <span class="icon">📱</span>
-                                <span>Test & Dapatkan Chat ID</span>
+                        <div>
+                            <button class="n8n-btn" id="btnTestTelegram" style="background: #8b5cf6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                📱 Test & Dapatkan Chat ID
                             </button>
                         </div>
                     </div>
 
                     <!-- STEP 2: GOOGLE SHEETS -->
-                    <div class="n8n-config-card">
-                        <div class="n8n-step-header">
-                            <span class="n8n-step-number">2</span>
-                            <h3>⚙️ Pengaturan Google Sheets</h3>
+                    <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                            <span style="background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">2</span>
+                            <h3 style="margin: 0;">⚙️ Pengaturan Google Sheets</h3>
                         </div>
 
-                        <div class="n8n-form-group">
-                            <label>Google Sheet ID <span class="required">*</span></label>
-                            <input type="text" id="sheetId" class="n8n-input" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE">
-                            <small>ID dari URL spreadsheet (copy dari browser)</small>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Google Sheet ID <span style="color: #ef4444;">*</span></label>
+                            <input type="text" id="sheetId" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                            <small style="color: #6b7280; font-size: 12px;">ID dari URL spreadsheet</small>
                         </div>
 
-                        <div class="n8n-form-group">
-                            <label>Sheet Name</label>
-                            <input type="text" id="sheetName" class="n8n-input" placeholder="Data Base Hifzi Cell">
-                            <small>Nama tab/sheet di spreadsheet</small>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Sheet Name</label>
+                            <input type="text" id="sheetName" placeholder="Data Base Hifzi Cell" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
 
-                        <div class="n8n-form-group">
-                            <label>GAS Web App URL <span class="required">*</span></label>
-                            <input type="text" id="gasUrl" class="n8n-input" placeholder="https://script.google.com/macros/s/XXXX/exec">
-                            <small>URL dari deployment Web App Google Apps Script</small>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">GAS Web App URL <span style="color: #ef4444;">*</span></label>
+                            <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                            <small style="color: #6b7280; font-size: 12px;">URL dari deployment Web App</small>
                             <div id="gasStatusInfo"></div>
                         </div>
 
-                        <div class="n8n-config-actions">
-                            <button class="n8n-btn n8n-btn-secondary" id="btnTestGAS">
-                                <span class="icon">🔗</span>
-                                <span>Test Koneksi GAS</span>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="n8n-btn" id="btnTestGAS" style="background: #8b5cf6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                🔗 Test Koneksi GAS
                             </button>
-                            <button class="n8n-btn n8n-btn-primary" id="btnSaveConfig">
-                                <span class="icon">💾</span>
-                                <span>Simpan Konfigurasi</span>
+                            <button class="n8n-btn" id="btnSaveConfig" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                💾 Simpan Konfigurasi
                             </button>
                         </div>
                     </div>
 
                     <!-- STEP 3: GAS CODE -->
-                    <div class="n8n-config-card">
-                        <div class="n8n-step-header">
-                            <span class="n8n-step-number">3</span>
-                            <h3>📜 Generate Kode GAS (Otomatis)</h3>
+                    <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                            <span style="background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">3</span>
+                            <h3 style="margin: 0;">📜 Generate Kode GAS</h3>
                         </div>
                         
-                        <div class="n8n-gas-actions">
-                            <button class="n8n-btn n8n-btn-secondary" id="btnGenerateGAS">
-                                <span class="icon">🔄</span>
-                                <span>Regenerate</span>
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                            <button class="n8n-btn" id="btnGenerateGAS" style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                🔄 Regenerate
                             </button>
-                            <button class="n8n-btn n8n-btn-success" id="btnCopyGAS">
-                                <span class="icon">📋</span>
-                                <span>Copy Kode</span>
+                            <button class="n8n-btn" id="btnCopyGAS" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                📋 Copy Kode
                             </button>
-                            <button class="n8n-btn n8n-btn-primary" id="btnOpenGAS">
-                                <span class="icon">🚀</span>
-                                <span>Buka GAS Editor</span>
+                            <button class="n8n-btn" id="btnOpenGAS" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
+                                🚀 Buka GAS Editor
                             </button>
                         </div>
 
-                        <textarea id="gasCodeEditor" class="n8n-textarea" readonly placeholder="Klik 'Regenerate' untuk generate kode GAS..."></textarea>
+                        <textarea id="gasCodeEditor" readonly placeholder="Klik 'Regenerate' untuk generate kode GAS..." 
+                                  style="width: 100%; height: 300px; padding: 15px; border: 2px solid #e5e7eb; border-radius: 8px; font-family: monospace; font-size: 12px; resize: vertical; box-sizing: border-box;"></textarea>
                         
-                        <div class="n8n-gas-tips">
-                            <strong>💡 Tips Deploy:</strong>
-                            <ol>
-                                <li>Copy kode di atas → Paste ke <a href="https://script.google.com" target="_blank">script.google.com</a></li>
+                        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px; margin-top: 15px; font-size: 13px;">
+                            <strong style="color: #1e40af;">💡 Tips Deploy:</strong>
+                            <ol style="margin: 10px 0; padding-left: 20px; color: #1e40af;">
+                                <li>Copy kode → Paste ke <a href="https://script.google.com" target="_blank" style="color: #2563eb;">script.google.com</a></li>
                                 <li>Save (Ctrl+S) → Deploy → New deployment</li>
                                 <li>Type: Web App | Execute as: Me | Access: <strong>ANYONE</strong></li>
-                                <li>Copy URL Web App → Paste ke field "GAS Web App URL" di atas</li>
+                                <li>Copy URL Web App → Paste ke field di atas</li>
                             </ol>
                         </div>
                     </div>
                 </div>
 
                 <!-- STATUS BAR -->
-                <div class="n8n-status-bar" id="statusBar">
-                    <span class="status-text">Siap</span>
-                    <span class="status-badge" id="statusBadge">🟢</span>
+                <div style="position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; padding: 10px 20px; border-radius: 20px; font-size: 13px; display: flex; align-items: center; gap: 10px; z-index: 100;">
+                    <span id="statusText">Siap</span>
+                    <span id="statusBadge">🟢</span>
                 </div>
             </div>
 
             <!-- MODALS -->
-            <div class="n8n-modal-overlay" id="modalOverlay" style="display: none;">
+            <div id="modalOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;">
                 
                 <!-- Add/Edit Modal -->
-                <div class="n8n-modal" id="dataModal" style="display: none;">
-                    <div class="n8n-modal-header">
-                        <h3 id="modalTitle">Tambah Data</h3>
-                        <button class="n8n-modal-close" id="btnCloseModal">&times;</button>
+                <div id="dataModal" style="display: none; background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+                    <div style="padding: 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 id="modalTitle" style="margin: 0;">Tambah Data</h3>
+                        <button id="btnCloseModal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6b7280;">&times;</button>
                     </div>
-                    <div class="n8n-modal-body">
+                    <div style="padding: 20px;">
                         <input type="hidden" id="editId">
-                        <div class="n8n-form-group">
-                            <label>Nama <span class="required">*</span></label>
-                            <input type="text" id="inputNama" class="n8n-input" placeholder="Masukkan nama lengkap">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Nama <span style="color: #ef4444;">*</span></label>
+                            <input type="text" id="inputNama" placeholder="Masukkan nama lengkap" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
-                        <div class="n8n-form-group">
-                            <label>Nomor <span class="required">*</span></label>
-                            <input type="text" id="inputNomor" class="n8n-input" placeholder="Masukkan nomor telepon/HP">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Nomor <span style="color: #ef4444;">*</span></label>
+                            <input type="text" id="inputNomor" placeholder="Masukkan nomor telepon/HP" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
                     </div>
-                    <div class="n8n-modal-footer">
-                        <button class="n8n-btn n8n-btn-ghost" id="btnCancel">Batal</button>
-                        <button class="n8n-btn n8n-btn-primary" id="btnSave">
+                    <div style="padding: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 10px;">
+                        <button id="btnCancel" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: white; border-radius: 8px; cursor: pointer; font-weight: 500;">Batal</button>
+                        <button id="btnSave" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
                             💾 Simpan & Notifikasi Telegram
                         </button>
                     </div>
                 </div>
 
                 <!-- Delete Modal -->
-                <div class="n8n-modal n8n-modal-small" id="deleteModal" style="display: none;">
-                    <div class="n8n-modal-header" style="background: linear-gradient(135deg, #ff7675 0%, #d63031 100%);">
-                        <h3>⚠️ Konfirmasi Hapus</h3>
+                <div id="deleteModal" style="display: none; background: white; border-radius: 16px; width: 90%; max-width: 400px;">
+                    <div style="padding: 20px; background: linear-gradient(135deg, #ff7675 0%, #d63031 100%); color: white; border-radius: 16px 16px 0 0;">
+                        <h3 style="margin: 0;">⚠️ Konfirmasi Hapus</h3>
                     </div>
-                    <div class="n8n-modal-body">
+                    <div style="padding: 20px;">
                         <p>Apakah Anda yakin ingin menghapus data ini?</p>
-                        <p class="delete-info" id="deleteInfo"></p>
-                        <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                            💡 Notifikasi juga akan dikirim ke Telegram.
-                        </p>
+                        <p id="deleteInfo" style="font-weight: 600; color: #d63031; padding: 10px; background: #fff5f5; border-radius: 8px; margin: 10px 0;"></p>
+                        <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">💡 Notifikasi juga akan dikirim ke Telegram.</p>
                     </div>
-                    <div class="n8n-modal-footer">
-                        <button class="n8n-btn n8n-btn-ghost" id="btnCancelDelete">Batal</button>
-                        <button class="n8n-btn n8n-btn-danger" id="btnConfirmDelete">🗑️ Hapus</button>
+                    <div style="padding: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 10px;">
+                        <button id="btnCancelDelete" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: white; border-radius: 8px; cursor: pointer; font-weight: 500;">Batal</button>
+                        <button id="btnConfirmDelete" style="padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">🗑️ Hapus</button>
                     </div>
                 </div>
             </div>
-
-            <!-- NOTIFICATION -->
-            <div class="n8n-notification" id="notification"></div>
         `;
     }
 
@@ -1351,12 +1327,9 @@ function doOptions(e) {
         attachEventListeners();
         setFormValues();
         
-        if (state.config.sheetName) {
-            generateGAS();
-        }
+        if (state.config.sheetName) generateGAS();
         
         if (state.config.botToken && !state.config.chatId) {
-            console.log('[n8nModule] Auto-detecting Chat ID...');
             setTimeout(() => getChatId(), 1500);
         }
     }
@@ -1367,18 +1340,15 @@ function doOptions(e) {
 
     return {
         init: function() {
-            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.1 Loaded');
+            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.2 Loaded');
             loadConfig();
         },
         
         renderPage: renderPage,
-        
-        // Exposed functions
         testTelegramConnection: testTelegramConnection,
         testConnection: testConnection,
         rotateProxy: function() {
             rotateProxy();
-            showNotification(`🔄 Proxy rotated [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]`, 'info');
         },
         handleSearch: handleSearch,
         handleAdd: handleAdd,
@@ -1390,12 +1360,4 @@ function doOptions(e) {
 
 })();
 
-// Auto-init hanya jika belum di-init
-if (typeof n8nModule !== 'undefined' && !window.n8nInitialized) {
-    window.n8nInitialized = true;
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => n8nModule.init());
-    } else {
-        n8nModule.init();
-    }
-}
+window.n8nModule = n8nModule;
