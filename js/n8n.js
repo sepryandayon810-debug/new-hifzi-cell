@@ -1,9 +1,7 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
+// VERSI LENGKAP FULL FEATURE
 // ============================================
-// Lokasi: js/n8n.js
-// Fungsi: CRUD Data via Telegram → Google Sheets
-// Author: Hifzi Cell POS System
 
 const n8nModule = (function() {
     'use strict';
@@ -32,12 +30,12 @@ const n8nModule = (function() {
             sheetName: 'Data Base Hifzi Cell',
             gasUrl: ''
         },
+        configVisible: false,
         isLoading: false,
         proxyMode: false,
         currentProxyIndex: 0
     };
 
-    // Daftar Proxy CORS (untuk file:// protocol)
     const PROXY_LIST = [
         'https://api.allorigins.win/get?url=',
         'https://api.codetabs.com/v1/proxy?quest=',
@@ -76,13 +74,11 @@ const n8nModule = (function() {
     }
 
     function showNotification(message, type = 'info', duration = 4000) {
-        // Coba gunakan utils.showToast jika tersedia
         if (typeof utils !== 'undefined' && utils.showToast) {
             utils.showToast(message, type);
             return;
         }
         
-        // Fallback ke toast bawaan
         const toast = document.getElementById('toast');
         if (toast) {
             toast.textContent = message;
@@ -115,14 +111,12 @@ const n8nModule = (function() {
     // ============================================
 
     function loadConfig() {
-        // Load individual keys
         state.config.botToken = localStorage.getItem(CONFIG_KEYS.BOT_TOKEN) || '';
         state.config.chatId = localStorage.getItem(CONFIG_KEYS.CHAT_ID) || '';
         state.config.sheetId = localStorage.getItem(CONFIG_KEYS.SHEET_ID) || '';
         state.config.sheetName = localStorage.getItem(CONFIG_KEYS.SHEET_NAME) || 'Data Base Hifzi Cell';
         state.config.gasUrl = localStorage.getItem(CONFIG_KEYS.GAS_URL) || '';
 
-        // Load config object (backup)
         const savedConfig = localStorage.getItem(CONFIG_KEYS.CONFIG);
         if (savedConfig) {
             try {
@@ -150,10 +144,8 @@ const n8nModule = (function() {
             gasUrl: document.getElementById('gasUrl')?.value.trim() || ''
         };
 
-        // Update state
         Object.assign(state.config, inputs);
-
-        // Save to localStorage (both individual and object)
+        
         localStorage.setItem(CONFIG_KEYS.BOT_TOKEN, inputs.botToken);
         localStorage.setItem(CONFIG_KEYS.CHAT_ID, inputs.chatId);
         localStorage.setItem(CONFIG_KEYS.SHEET_ID, inputs.sheetId);
@@ -166,38 +158,28 @@ const n8nModule = (function() {
     }
 
     function setFormValues() {
-        const fields = {
-            'botToken': state.config.botToken,
-            'chatId': state.config.chatId,
-            'sheetId': state.config.sheetId,
-            'sheetName': state.config.sheetName,
-            'gasUrl': state.config.gasUrl
-        };
-
-        for (const [id, value] of Object.entries(fields)) {
+        const fields = ['botToken', 'chatId', 'sheetId', 'sheetName', 'gasUrl'];
+        fields.forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.value = value;
-        }
+            if (el) el.value = state.config[id] || '';
+        });
     }
 
     // ============================================
-    // FETCH WITH CORS PROXY HANDLER
+    // FETCH WITH CORS PROXY
     // ============================================
 
-    async function fetchWithProxy(url, options = {}, retryCount = 0) {
+    async function fetchWithProxy(url, retryCount = 0) {
         const MAX_RETRIES = PROXY_LIST.length;
 
-        // Jika http/https, fetch langsung
         if (!isFileProtocol()) {
-            return fetch(url, options);
+            return fetch(url);
         }
 
-        // Untuk file:// protocol, gunakan proxy
         const proxyUrl = getProxyUrl();
-        const encodedUrl = encodeURIComponent(url);
-        const fullUrl = `${proxyUrl}${encodedUrl}`;
+        const fullUrl = `${proxyUrl}${encodeURIComponent(url)}`;
 
-        console.log(`[n8nModule] Using proxy [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]: ${proxyUrl.split('?')[0]}`);
+        console.log(`[n8nModule] Using proxy [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]`);
 
         try {
             const response = await fetch(fullUrl, {
@@ -210,23 +192,18 @@ const n8nModule = (function() {
             }
 
             const proxyData = await response.json();
-            
-            // Parse berbagai format proxy response
             let finalData;
+            
             if (proxyData.contents) {
-                // allorigins format
                 finalData = JSON.parse(proxyData.contents);
             } else if (proxyData.body) {
-                // codetabs format
                 finalData = JSON.parse(proxyData.body);
             } else if (proxyData.data) {
-                // corsproxy format
                 finalData = typeof proxyData.data === 'string' ? JSON.parse(proxyData.data) : proxyData.data;
             } else {
                 finalData = proxyData;
             }
 
-            // Return synthetic Response object
             return {
                 ok: true,
                 status: 200,
@@ -239,71 +216,44 @@ const n8nModule = (function() {
             
             if (retryCount < MAX_RETRIES - 1) {
                 rotateProxy();
-                console.log(`[n8nModule] Retrying with next proxy...`);
-                return fetchWithProxy(url, options, retryCount + 1);
+                console.log('[n8nModule] Retrying with next proxy...');
+                return fetchWithProxy(url, retryCount + 1);
             }
             
-            throw new Error('Semua proxy gagal. Coba gunakan Live Server atau upload ke web server.');
+            throw new Error('Semua proxy gagal. Gunakan Live Server atau upload ke web server.');
         }
     }
 
     // ============================================
-    // TELEGRAM API FUNCTIONS
+    // TELEGRAM API - FIX WEBHOOK CONFLICT
     // ============================================
 
-    async function sendTelegramMessage(text, options = {}) {
-        const { botToken, chatId } = state.config;
-        
-        if (!botToken || !chatId) {
-            console.warn('[n8nModule] Telegram not configured');
-            return null;
-        }
+    async function deleteWebhook() {
+        const { botToken } = state.config;
+        if (!botToken) return false;
 
         try {
-            const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-            const params = new URLSearchParams({
-                chat_id: chatId,
-                text: text,
-                parse_mode: 'Markdown',
-                ...options
-            });
-
-            const fullUrl = `${apiUrl}?${params.toString()}`;
-            const response = await fetchWithProxy(fullUrl);
+            const url = `https://api.telegram.org/bot${botToken}/deleteWebhook`;
+            const response = await fetchWithProxy(url);
             const result = await response.json();
-
-            if (result.ok) {
-                console.log('[n8nModule] Telegram message sent');
-                return result;
-            } else {
-                console.error('[n8nModule] Telegram API error:', result.description);
-                return null;
-            }
-
+            console.log('[n8nModule] Delete webhook result:', result);
+            return result.ok;
         } catch (error) {
-            console.error('[n8nModule] Send message error:', error);
-            return null;
+            console.error('[n8nModule] Delete webhook error:', error);
+            return false;
         }
     }
 
     async function getTelegramUpdates() {
         const { botToken } = state.config;
-        
-        if (!botToken) {
-            showNotification('⚠️ Bot Token belum diisi!', 'warning');
-            return null;
-        }
-
-        setStatus('🟡', 'Mengambil updates dari Telegram...');
+        if (!botToken) return null;
 
         try {
-            const apiUrl = `https://api.telegram.org/bot${botToken}/getUpdates?limit=10`;
-            const response = await fetchWithProxy(apiUrl);
+            const url = `https://api.telegram.org/bot${botToken}/getUpdates?limit=10`;
+            const response = await fetchWithProxy(url);
             return await response.json();
-
         } catch (error) {
             console.error('[n8nModule] Get updates error:', error);
-            setStatus('🔴', 'Error koneksi Telegram');
             return null;
         }
     }
@@ -316,13 +266,19 @@ const n8nModule = (function() {
             return;
         }
 
+        setStatus('🟡', 'Menghapus webhook lama...');
+        
+        // FIX: Delete webhook dulu sebelum getUpdates!
+        await deleteWebhook();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         setStatus('🟡', 'Mendeteksi Chat ID...');
 
         try {
             const result = await getTelegramUpdates();
             
             if (!result) {
-                throw new Error('Gagal mengambil updates');
+                throw new Error('Gagal mengambil updates dari Telegram');
             }
 
             if (!result.ok) {
@@ -335,7 +291,6 @@ const n8nModule = (function() {
                 return;
             }
 
-            // Get latest message
             const latest = result.result[result.result.length - 1];
             const chatId = latest.message?.chat?.id || 
                            latest.callback_query?.message?.chat?.id ||
@@ -346,13 +301,11 @@ const n8nModule = (function() {
                 const chatInput = document.getElementById('chatId');
                 if (chatInput) chatInput.value = chatId;
                 
-                // Auto save
                 localStorage.setItem(CONFIG_KEYS.CHAT_ID, chatId);
                 
-                showNotification(`✅ Chat ID terdeteksi: ${chatId}`, 'success');
                 setStatus('🟢', 'Terhubung ke Telegram');
+                showNotification(`✅ Chat ID terdeteksi: ${chatId}`, 'success');
                 
-                // Kirim pesan konfirmasi
                 await sendTelegramMessage(
                     `✅ *KONEKSI BERHASIL*\n\n` +
                     `Web POS Hifzi Cell telah terhubung ke Telegram.\n` +
@@ -372,6 +325,40 @@ const n8nModule = (function() {
         }
     }
 
+    async function sendTelegramMessage(text, options = {}) {
+        const { botToken, chatId } = state.config;
+        
+        if (!botToken || !chatId) {
+            console.warn('[n8nModule] Telegram not configured');
+            return null;
+        }
+
+        try {
+            const params = new URLSearchParams({
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'Markdown',
+                ...options
+            });
+
+            const url = `https://api.telegram.org/bot${botToken}/sendMessage?${params.toString()}`;
+            const response = await fetchWithProxy(url);
+            const result = await response.json();
+
+            if (result.ok) {
+                console.log('[n8nModule] Telegram message sent');
+                return result;
+            } else {
+                console.error('[n8nModule] Telegram API error:', result.description);
+                return null;
+            }
+
+        } catch (error) {
+            console.error('[n8nModule] Send message error:', error);
+            return null;
+        }
+    }
+
     // ============================================
     // GOOGLE APPS SCRIPT API
     // ============================================
@@ -384,16 +371,15 @@ const n8nModule = (function() {
             return null;
         }
 
-        // Build URL dengan query params
         const url = new URL(gasUrl);
         url.searchParams.append('action', action);
         url.searchParams.append('sheetId', sheetId);
-
-        for (let key in params) {
-            if (params[key] !== undefined && params[key] !== null) {
-                url.searchParams.append(key, params[key]);
+        
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                url.searchParams.append(key, value);
             }
-        }
+        });
 
         console.log('[n8nModule] API Request:', { action, sheetId });
 
@@ -421,16 +407,16 @@ const n8nModule = (function() {
             let solution = '';
 
             if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
-                errorMsg = 'CORS Error';
+                errorMsg = 'CORS Error - GAS tidak bisa diakses';
                 solution = isFileProtocol() 
-                    ? 'Gunakan Live Server di VS Code atau upload ke web server'
-                    : 'Cek GAS URL dan pastikan Access: ANYONE';
+                    ? '\n\n💡 Solusi:\n1. Gunakan Live Server di VS Code\n2. Atau upload ke GitHub Pages/Netlify'
+                    : '\n\n💡 Solusi:\n1. Pastikan GAS Deploy dengan "Access: ANYONE"\n2. Cek URL GAS benar\n3. Deploy ulang GAS';
             } else if (error.message.includes('404')) {
-                errorMsg = 'GAS URL tidak ditemukan';
-                solution = 'Deploy ulang GAS dan copy URL baru';
+                errorMsg = 'GAS URL tidak ditemukan (404)';
+                solution = '\n\n💡 Deploy ulang GAS dan copy URL baru';
             }
 
-            showNotification(`❌ ${errorMsg}\n💡 ${solution}`, 'error', 6000);
+            showNotification(`❌ ${errorMsg}${solution}`, 'error', 8000);
             return null;
             
         } finally {
@@ -446,7 +432,6 @@ const n8nModule = (function() {
         const keywordInput = document.getElementById('searchInput');
         const keyword = keywordInput?.value.toLowerCase().trim() || '';
         
-        // Notifikasi ke Telegram
         await sendTelegramMessage(
             `🔍 *PENCARIAN DATA*\n\n` +
             `Keyword: ${keyword || 'Semua data'}\n` +
@@ -463,7 +448,6 @@ const n8nModule = (function() {
 
         state.data = result.data || [];
 
-        // Filter data
         if (keyword) {
             state.filteredData = state.data.filter(item => 
                 (item.nama && item.nama.toLowerCase().includes(keyword)) || 
@@ -475,7 +459,6 @@ const n8nModule = (function() {
 
         renderTable();
 
-        // Kirim hasil ke Telegram
         const count = state.filteredData.length;
         let message = `✅ *PENCARIAN SELESAI*\n\n`;
         message += `Ditemukan: *${count} data*\n`;
@@ -555,7 +538,6 @@ const n8nModule = (function() {
             return;
         }
 
-        // Konfirmasi via Telegram
         const confirmMsg = `🗑️ *KONFIRMASI HAPUS*\n\n` +
             `Nama: *${item.nama || 'N/A'}*\n` +
             `Nomor: *${item.nomor || 'N/A'}*\n\n` +
@@ -590,7 +572,6 @@ const n8nModule = (function() {
         const params = { nama, nomor };
         if (row) params.row = row;
 
-        // Notifikasi ke Telegram
         await sendTelegramMessage(
             `${row ? '✏️' : '➕'} *${row ? 'EDIT' : 'TAMBAH'} DATA*\n\n` +
             `Nama: *${nama}*\n` +
@@ -603,7 +584,6 @@ const n8nModule = (function() {
         if (result && result.success) {
             closeModal();
             
-            // Notifikasi sukses ke Telegram
             await sendTelegramMessage(
                 `✅ *BERHASIL*\n\n` +
                 `Data berhasil ${row ? 'diupdate' : 'ditambahkan'}!\n\n` +
@@ -614,7 +594,6 @@ const n8nModule = (function() {
                 `🕐 Waktu: ${new Date().toLocaleString('id-ID')}`
             );
 
-            // Refresh data
             await handleSearch();
             showNotification(result.message || '✅ Data berhasil disimpan', 'success');
             
@@ -630,7 +609,6 @@ const n8nModule = (function() {
         const result = await makeRequest('deleteData', { row });
         
         if (result && result.success) {
-            // Notifikasi ke Telegram
             await sendTelegramMessage(
                 `🗑️ *DATA BERHASIL DIHAPUS*\n\n` +
                 `Row: ${row}\n` +
@@ -688,7 +666,6 @@ const n8nModule = (function() {
             `;
         }).join('');
 
-        // Event listeners untuk row
         tbody.querySelectorAll('.n8n-data-row').forEach(row => {
             row.addEventListener('click', (e) => {
                 if (e.target.closest('.n8n-btn-select')) return;
@@ -696,7 +673,6 @@ const n8nModule = (function() {
             });
         });
 
-        // Event listeners untuk select button
         tbody.querySelectorAll('.n8n-btn-select').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -734,7 +710,6 @@ const n8nModule = (function() {
         if (overlay) overlay.style.display = 'flex';
         if (modal) {
             modal.style.display = 'block';
-            // Focus ke input pertama
             const firstInput = modal.querySelector('input:not([type="hidden"])');
             if (firstInput) setTimeout(() => firstInput.focus(), 100);
         }
@@ -775,7 +750,7 @@ function doGet(e) {
   };
 
   try {
-    // Validasi
+    // Validasi parameter
     if (!sheetId) throw new Error('Parameter sheetId diperlukan');
     if (!action) throw new Error('Parameter action diperlukan');
 
@@ -964,7 +939,6 @@ function jsonResponse(data, headers) {
             const msg = `✅ ${result.message}\n📊 Sheets: ${(result.sheets || []).join(', ')}`;
             showNotification(msg, 'success');
             
-            // Update UI status
             const statusInfo = document.getElementById('gasStatusInfo');
             if (statusInfo) {
                 statusInfo.innerHTML = `
@@ -982,7 +956,7 @@ function jsonResponse(data, headers) {
     }
 
     // ============================================
-    // TOGGLE CONFIG SECTION
+    // TOGGLE CONFIG
     // ============================================
 
     function toggleConfig() {
@@ -994,7 +968,6 @@ function jsonResponse(data, headers) {
         if (section.style.display === 'none') {
             section.style.display = 'block';
             arrow.textContent = '▲';
-            // Auto generate GAS code jika belum ada
             const editor = document.getElementById('gasCodeEditor');
             if (editor && !editor.value.trim()) {
                 generateGAS();
@@ -1010,7 +983,7 @@ function jsonResponse(data, headers) {
     // ============================================
 
     function attachEventListeners() {
-        // CRUD Buttons
+        // CRUD
         document.getElementById('btnSearch')?.addEventListener('click', handleSearch);
         document.getElementById('btnExecuteSearch')?.addEventListener('click', handleSearch);
         document.getElementById('btnAdd')?.addEventListener('click', handleAdd);
@@ -1047,7 +1020,7 @@ function jsonResponse(data, headers) {
             if (e.target.id === 'modalOverlay') closeModal();
         });
 
-        // Escape key to close modal
+        // Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
@@ -1335,7 +1308,7 @@ function jsonResponse(data, headers) {
     }
 
     // ============================================
-    // MAIN RENDER FUNCTION
+    // MAIN RENDER
     // ============================================
 
     function renderPage() {
@@ -1347,30 +1320,22 @@ function jsonResponse(data, headers) {
             return;
         }
 
-        // Check protocol
         if (isFileProtocol()) {
             console.warn('[n8nModule] Running from file:// protocol - CORS proxy enabled');
             state.proxyMode = true;
         }
 
-        // Render HTML
         mainContent.innerHTML = getHTML();
-        
-        // Attach events
         attachEventListeners();
-        
-        // Set form values dari config
         setFormValues();
         
-        // Auto generate GAS code jika config sudah ada
         if (state.config.sheetName) {
             generateGAS();
         }
         
-        // Auto get chat ID jika token ada tapi chat ID kosong
         if (state.config.botToken && !state.config.chatId) {
             console.log('[n8nModule] Auto-detecting Chat ID...');
-            setTimeout(() => getChatId(), 1000);
+            setTimeout(() => getChatId(), 1500);
         }
     }
 
@@ -1379,49 +1344,34 @@ function jsonResponse(data, headers) {
     // ============================================
 
     return {
-        // Initialization
         init: function() {
             console.log('[n8nModule] ✅ N8N Telegram Bridge v2.0 Loaded');
             loadConfig();
             renderPage();
         },
         
-        // Re-render (untuk navigation)
         renderPage: renderPage,
         
-        // Exposed functions untuk onclick handlers
+        // Exposed functions
         testTelegramConnection: testTelegramConnection,
         testConnection: testConnection,
         rotateProxy: function() {
             rotateProxy();
             showNotification(`🔄 Proxy rotated [${state.currentProxyIndex + 1}/${PROXY_LIST.length}]`, 'info');
         },
-        
-        // CRUD operations (exposed untuk external access jika diperlukan)
         handleSearch: handleSearch,
         handleAdd: handleAdd,
         handleEdit: handleEdit,
         handleDelete: handleDelete,
-        
-        // Config
         getConfig: function() { return state.config; },
         saveConfig: saveConfig
     };
 
 })();
 
-// ============================================
-// AUTO-INITIALIZATION
-// ============================================
-
-// Tunggu DOM ready
+// Auto-init
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('[n8nModule] DOM loaded, initializing...');
-        n8nModule.init();
-    });
+    document.addEventListener('DOMContentLoaded', () => n8nModule.init());
 } else {
-    // DOM sudah ready
-    console.log('[n8nModule] DOM already ready, initializing...');
     n8nModule.init();
 }
