@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.3 FINAL)
-// FIXED: Bypass fetch error, Complete data backup
+// BACKUP MODULE - HIFZI CELL (COMPLETE v3.4 FINAL)
+// FIXED: CORS, Excel View for GAS, Toggle Arrow
 // ============================================
 
 const backupModule = {
@@ -21,11 +21,11 @@ const backupModule = {
     currentUser: null,
     firebaseBackupData: null,
     
+    // ✅ UNTUK GAS: Simpan data yang di-fetch untuk Excel view
+    gasBackupData: null,
+    
     gasUrl: '',
     sheetId: '',
-    
-    // ✅ BYPASS: Tidak fetch dari external, pakai embedded code saja
-    useEmbeddedGAS: true,
     
     deviceId: 'device_' + Date.now(),
     deviceName: navigator.userAgent.split(' ')[0],
@@ -45,7 +45,6 @@ const backupModule = {
         FB_USER: 'hifzi_fb_user',
         FB_AUTH_EMAIL: 'hifzi_fb_auth_email',
         FB_AUTH_PASSWORD: 'hifzi_fb_auth_password',
-        GAS_CODE_CACHE: 'hifzi_gas_code_cache',
         BACKUP_SETTINGS: 'hifzi_backup_settings'
     },
 
@@ -57,7 +56,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.3 FINAL...');
+        console.log('[Backup] Initializing v3.4 FINAL...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -195,35 +194,16 @@ const backupModule = {
         return { valid: true, cleaned, message: 'Valid (44 karakter)' };
     },
 
-    // ✅ BYPASS FETCH - Langsung return embedded code
-    async fetchGASCodeFromExternal(forceRefresh = false) {
-        // Selalu gunakan embedded code, tidak fetch dari external
-        console.log('[Backup] Using embedded GAS code (bypass fetch)');
-        return { 
-            success: true, 
-            code: this.getDefaultGASCode(), 
-            version: 'embedded-v3.3-final',
-            fromCache: false 
-        };
-    },
-
     getBackupData() {
-        // ✅ PASTIKAN ambil data lengkap dari dataManager
         let allData = {};
         
         if (typeof dataManager !== 'undefined') {
             if (dataManager.getAllData) {
                 allData = dataManager.getAllData();
-                console.log('[Backup] Data from getAllData:', Object.keys(allData));
             } else if (dataManager.data) {
                 allData = dataManager.data;
-                console.log('[Backup] Data from dataManager.data:', Object.keys(allData));
             }
         }
-        
-        // ✅ Log untuk debug
-        console.log('[Backup] Products count:', (allData.products || []).length);
-        console.log('[Backup] Transactions count:', (allData.transactions || []).length);
         
         return {
             products: allData.products || [],
@@ -239,7 +219,7 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             currentUser: allData.currentUser || null,
             _backupMeta: {
-                version: '3.3-final',
+                version: '3.4-final',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -493,7 +473,7 @@ const backupModule = {
         
         return this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set({
             ...data,
-            _syncMeta: { lastModified: new Date().toISOString(), deviceId: this.deviceId, version: '3.3' }
+            _syncMeta: { lastModified: new Date().toISOString(), deviceId: this.deviceId, version: '3.4' }
         }).then(() => {
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
@@ -541,136 +521,6 @@ const backupModule = {
             });
     },
 
-    showFirebaseExcelView() {
-        if (!this.firebaseBackupData && this.currentUser) {
-            this.showToast('⬇️ Mengambil data...');
-            this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value')
-                .then((snapshot) => {
-                    this.firebaseBackupData = snapshot.val();
-                    this.renderFirebaseExcelModal();
-                });
-        } else {
-            this.renderFirebaseExcelModal();
-        }
-    },
-
-    renderFirebaseExcelModal() {
-        const data = this.firebaseBackupData;
-        if (!data) {
-            this.showToast('ℹ️ Tidak ada data');
-            return;
-        }
-
-        const modal = document.createElement('div');
-        modal.id = 'firebase-excel-modal';
-        modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;`;
-
-        const tabs = [
-            { id: 'products', label: '📦 Produk', data: data.products || [] },
-            { id: 'transactions', label: '📝 Transaksi', data: data.transactions || [] },
-            { id: 'cashTransactions', label: '💰 Cash Flow', data: data.cashTransactions || [] },
-            { id: 'dailyClosing', label: '📊 Tutup Kas', data: data.dailyClosing || [] },
-            { id: 'debts', label: '💳 Hutang', data: data.debts || [] },
-            { id: 'users', label: '👥 Users', data: data.users || [] },
-            { id: 'categories', label: '🏷️ Kategori', data: data.categories || [] },
-            { id: 'shifts', label: '⏰ Shift', data: data.shifts || [] }
-        ];
-
-        const generateTable = (tabData) => {
-            if (!tabData || tabData.length === 0) {
-                return `<div style="text-align:center;padding:40px;color:#718096;"><div style="font-size:48px;margin-bottom:16px;">📭</div>Tidak ada data</div>`;
-            }
-            const keys = Object.keys(tabData[0]).filter(k => !k.startsWith('_'));
-            const headerStyle = 'background:#ff6b35;color:white;padding:12px;text-align:left;font-weight:600;font-size:12px;position:sticky;top:0;';
-            const cellStyle = 'padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            
-            const rows = tabData.map((row, idx) => {
-                const cells = keys.map(key => {
-                    let value = row[key];
-                    if (typeof value === 'object') value = JSON.stringify(value);
-                    if (key.toLowerCase().includes('price') || key.toLowerCase().includes('amount')) {
-                        value = typeof value === 'number' ? 'Rp ' + value.toLocaleString('id-ID') : value;
-                    }
-                    return `<td style="${cellStyle} ${idx % 2 === 0 ? 'background:white;' : 'background:#f7fafc;'}">${value || '-'}</td>`;
-                }).join('');
-                return `<tr>${cells}</tr>`;
-            }).join('');
-
-            const headers = keys.map(key => `<th style="${headerStyle}">${key.replace(/_/g, ' ').toUpperCase()}</th>`).join('');
-
-            return `<div style="overflow-x:auto;border-radius:8px;border:1px solid #e2e8f0;"><table style="width:100%;border-collapse:collapse;font-family:'Segoe UI',sans-serif;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
-        };
-
-        const tabButtons = tabs.map(tab => `
-            <button onclick="backupModule.switchExcelTab('${tab.id}')" id="tab-btn-${tab.id}" style="padding:10px 16px;border:none;background:#fed7d7;color:#c53030;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;">${tab.label} (${tab.data.length})</button>
-        `).join('');
-
-        const tabContents = tabs.map(tab => `
-            <div id="tab-content-${tab.id}" style="display:none;">${generateTable(tab.data)}</div>
-        `).join('');
-
-        modal.innerHTML = `
-            <div style="background:white;border-radius:16px;width:100%;max-width:1200px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;margin-top:20px;">
-                <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:white;">
-                    <div>
-                        <div style="font-size:20px;font-weight:700;">🔥 Data Firebase</div>
-                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">${this.currentUser?.email || 'Not logged in'}</div>
-                    </div>
-                    <div style="display:flex;gap:8px;">
-                        <button onclick="backupModule.downloadFirebaseAsExcel()" style="padding:10px 16px;background:white;color:#ff6b35;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">📥 Download Excel</button>
-                        <button onclick="document.getElementById('firebase-excel-modal').remove()" style="padding:10px 16px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">✕ Tutup</button>
-                    </div>
-                </div>
-                <div style="padding:16px;background:#fff5f5;border-bottom:1px solid #fed7d7;">
-                    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">${tabButtons}</div>
-                </div>
-                <div style="padding:20px;overflow-y:auto;flex:1;">${tabContents}</div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        const firstTabWithData = tabs.find(t => t.data.length > 0) || tabs[0];
-        this.switchExcelTab(firstTabWithData.id);
-    },
-
-    switchExcelTab(tabId) {
-        document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.style.display = 'none');
-        document.querySelectorAll('[id^="tab-btn-"]').forEach(el => {
-            el.style.background = '#fed7d7'; el.style.color = '#c53030';
-        });
-        const content = document.getElementById(`tab-content-${tabId}`);
-        const btn = document.getElementById(`tab-btn-${tabId}`);
-        if (content) content.style.display = 'block';
-        if (btn) { btn.style.background = '#ff6b35'; btn.style.color = 'white'; }
-    },
-
-    downloadFirebaseAsExcel() {
-        if (!this.firebaseBackupData) return;
-        const data = this.firebaseBackupData;
-        const wb = XLSX.utils.book_new();
-        
-        const sheets = [
-            { name: 'Produk', data: data.products || [] },
-            { name: 'Transaksi', data: data.transactions || [] },
-            { name: 'CashTrans', data: data.cashTransactions || [] },
-            { name: 'TutupKas', data: data.dailyClosing || [] },
-            { name: 'Hutang', data: data.debts || [] },
-            { name: 'Users', data: data.users || [] },
-            { name: 'Kategori', data: data.categories || [] },
-            { name: 'Shift', data: data.shifts || [] }
-        ];
-        
-        sheets.forEach(sheet => {
-            if (sheet.data.length > 0) {
-                const ws = XLSX.utils.json_to_sheet(sheet.data);
-                XLSX.utils.book_append_sheet(wb, ws, sheet.name);
-            }
-        });
-        
-        XLSX.writeFile(wb, `firebase_backup_${new Date().toISOString().split('T')[0]}.xlsx`);
-        this.showToast('✅ File Excel didownload!');
-    },
-
     // ============================================
     // GOOGLE SHEETS
     // ============================================
@@ -700,6 +550,7 @@ const backupModule = {
 
         this.showToast('🧪 Testing koneksi...');
         
+        // ✅ PERBAIKAN: Gunakan text/plain untuk menghindari preflight CORS
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
@@ -720,6 +571,7 @@ const backupModule = {
             }
         })
         .catch((err) => {
+            console.error('[GAS Test Error]', err);
             this.showToast('❌ Koneksi gagal: ' + err.message);
             throw err;
         });
@@ -737,18 +589,11 @@ const backupModule = {
             return Promise.reject('Sheet ID empty');
         }
         
-        // ✅ PENTING: Pastikan data lengkap
-        console.log('[Backup] Uploading data:', {
-            products: (data.products || []).length,
-            transactions: (data.transactions || []).length,
-            categories: (data.categories || []).length
-        });
-        
         if (!silent) this.showToast('⬆️ Uploading...');
         
         const payload = {
             action: 'sync',
-            data: data, // ✅ Kirim seluruh data object
+            data: data,
             deviceId: this.deviceId,
             deviceName: this.deviceName,
             sheetId: cleanSheetId,
@@ -764,7 +609,6 @@ const backupModule = {
         })
         .then(async (r) => {
             const text = await r.text();
-            console.log('[Backup] Upload response:', text.substring(0, 200));
             try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON: ' + text.substring(0, 100)); }
         })
         .then(result => {
@@ -812,8 +656,6 @@ const backupModule = {
             timestamp: new Date().toISOString()
         };
 
-        console.log('[Backup] Download payload:', JSON.stringify(payload));
-
         return fetch(this.gasUrl, {
             method: 'POST',
             mode: 'cors',
@@ -822,31 +664,14 @@ const backupModule = {
             body: JSON.stringify(payload)
         })
         .then(async (r) => {
-            console.log('[Backup] Download status:', r.status);
             const text = await r.text();
-            console.log('[Backup] Download response:', text.substring(0, 500));
-            
             if (!r.ok) throw new Error('HTTP ' + r.status);
-            
-            try {
-                return JSON.parse(text);
-            } catch (e) {
-                throw new Error('Invalid JSON: ' + text.substring(0, 200));
-            }
+            try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON: ' + text.substring(0, 200)); }
         })
         .then(result => {
-            console.log('[Backup] Download result:', result);
-            
             if (result?.success && result.data) {
-                // ✅ Validasi data
-                if (typeof result.data !== 'object') {
-                    throw new Error('Data format invalid');
-                }
-                
-                console.log('[Backup] Restored data:', {
-                    products: (result.data.products || []).length,
-                    transactions: (result.data.transactions || []).length
-                });
+                // ✅ Simpan untuk Excel view
+                this.gasBackupData = result.data;
                 
                 this.saveBackupData(result.data);
                 this.lastSyncTime = new Date().toISOString();
@@ -870,11 +695,173 @@ const backupModule = {
     },
 
     // ============================================
-    // GAS CODE GENERATOR - BYPASS FETCH
+    // EXCEL VIEW UNTUK GAS - BARU!
+    // ============================================
+    
+    // ✅ FETCH data dari GAS untuk Excel view (tanpa download ke local)
+    async fetchGASDataForView() {
+        if (!this._gasConfigValid) {
+            this.showToast('❌ Konfigurasi GAS tidak lengkap');
+            return;
+        }
+        
+        this.showToast('⬇️ Mengambil data dari Sheets...');
+        
+        try {
+            const payload = {
+                action: 'restore',
+                sheetId: this.cleanSheetId(this.sheetId),
+                deviceId: this.deviceId,
+                timestamp: new Date().toISOString()
+            };
+
+            const response = await fetch(this.gasUrl, {
+                method: 'POST',
+                mode: 'cors',
+                cache: 'no-cache',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+            
+            const text = await response.text();
+            const result = JSON.parse(text);
+            
+            if (result?.success && result.data) {
+                this.gasBackupData = result.data;
+                this.showToast('✅ Data berhasil diambil!');
+                this.renderGASExcelView();
+            } else {
+                throw new Error(result?.message || 'No data');
+            }
+        } catch (err) {
+            console.error('[GAS View Error]', err);
+            this.showToast('❌ Gagal mengambil data: ' + err.message);
+        }
+    },
+
+    // ✅ RENDER Excel view untuk GAS dengan toggle arrow
+    renderGASExcelView() {
+        const data = this.gasBackupData;
+        if (!data) {
+            this.showToast('ℹ️ Tidak ada data untuk ditampilkan');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'gas-excel-modal';
+        modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;`;
+
+        const tabs = [
+            { id: 'products', label: '📦 Produk', data: data.products || [] },
+            { id: 'transactions', label: '📝 Transaksi', data: data.transactions || [] },
+            { id: 'cashTransactions', label: '💰 Cash Flow', data: data.cashTransactions || [] },
+            { id: 'dailyClosing', label: '📊 Tutup Kas', data: data.dailyClosing || [] },
+            { id: 'debts', label: '💳 Hutang', data: data.debts || [] },
+            { id: 'users', label: '👥 Users', data: data.users || [] },
+            { id: 'categories', label: '🏷️ Kategori', data: data.categories || [] },
+            { id: 'shifts', label: '⏰ Shift', data: data.shifts || [] }
+        ];
+
+        const generateTable = (tabData) => {
+            if (!tabData || tabData.length === 0) {
+                return `<div style="text-align:center;padding:40px;color:#718096;"><div style="font-size:48px;margin-bottom:16px;">📭</div>Tidak ada data</div>`;
+            }
+            const keys = Object.keys(tabData[0]).filter(k => !k.startsWith('_'));
+            const headerStyle = 'background:#34a853;color:white;padding:12px;text-align:left;font-weight:600;font-size:12px;position:sticky;top:0;';
+            const cellStyle = 'padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            
+            const rows = tabData.map((row, idx) => {
+                const cells = keys.map(key => {
+                    let value = row[key];
+                    if (typeof value === 'object') value = JSON.stringify(value);
+                    if (key.toLowerCase().includes('price') || key.toLowerCase().includes('amount')) {
+                        value = typeof value === 'number' ? 'Rp ' + value.toLocaleString('id-ID') : value;
+                    }
+                    return `<td style="${cellStyle} ${idx % 2 === 0 ? 'background:white;' : 'background:#f0fff4;'}">${value || '-'}</td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+
+            const headers = keys.map(key => `<th style="${headerStyle}">${key.replace(/_/g, ' ').toUpperCase()}</th>`).join('');
+
+            return `<div style="overflow-x:auto;border-radius:8px;border:1px solid #e2e8f0;"><table style="width:100%;border-collapse:collapse;font-family:'Segoe UI',sans-serif;"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
+        };
+
+        const tabButtons = tabs.map(tab => `
+            <button onclick="backupModule.switchGASTab('${tab.id}')" id="gas-tab-btn-${tab.id}" style="padding:10px 16px;border:none;background:#c6f6d5;color:#22543d;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;">${tab.label} (${tab.data.length})</button>
+        `).join('');
+
+        const tabContents = tabs.map(tab => `
+            <div id="gas-tab-content-${tab.id}" style="display:none;">${generateTable(tab.data)}</div>
+        `).join('');
+
+        modal.innerHTML = `
+            <div style="background:white;border-radius:16px;width:100%;max-width:1200px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;margin-top:20px;">
+                <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;">
+                    <div>
+                        <div style="font-size:20px;font-weight:700;">📊 Data Google Sheets (Excel View)</div>
+                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">Sheet: ${this.sheetId.substring(0, 20)}...</div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="backupModule.downloadGASAsExcel()" style="padding:10px 16px;background:white;color:#34a853;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">📥 Download Excel</button>
+                        <button onclick="document.getElementById('gas-excel-modal').remove()" style="padding:10px 16px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">✕ Tutup</button>
+                    </div>
+                </div>
+                <div style="padding:16px;background:#f0fff4;border-bottom:1px solid #9ae6b4;">
+                    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">${tabButtons}</div>
+                </div>
+                <div style="padding:20px;overflow-y:auto;flex:1;">${tabContents}</div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        const firstTabWithData = tabs.find(t => t.data.length > 0) || tabs[0];
+        this.switchGASTab(firstTabWithData.id);
+    },
+
+    switchGASTab(tabId) {
+        document.querySelectorAll('[id^="gas-tab-content-"]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[id^="gas-tab-btn-"]').forEach(el => {
+            el.style.background = '#c6f6d5'; el.style.color = '#22543d';
+        });
+        const content = document.getElementById(`gas-tab-content-${tabId}`);
+        const btn = document.getElementById(`gas-tab-btn-${tabId}`);
+        if (content) content.style.display = 'block';
+        if (btn) { btn.style.background = '#34a853'; btn.style.color = 'white'; }
+    },
+
+    downloadGASAsExcel() {
+        if (!this.gasBackupData) return;
+        const data = this.gasBackupData;
+        const wb = XLSX.utils.book_new();
+        
+        const sheets = [
+            { name: 'Produk', data: data.products || [] },
+            { name: 'Transaksi', data: data.transactions || [] },
+            { name: 'CashTrans', data: data.cashTransactions || [] },
+            { name: 'TutupKas', data: data.dailyClosing || [] },
+            { name: 'Hutang', data: data.debts || [] },
+            { name: 'Users', data: data.users || [] },
+            { name: 'Kategori', data: data.categories || [] },
+            { name: 'Shift', data: data.shifts || [] }
+        ];
+        
+        sheets.forEach(sheet => {
+            if (sheet.data.length > 0) {
+                const ws = XLSX.utils.json_to_sheet(sheet.data);
+                XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+            }
+        });
+        
+        XLSX.writeFile(wb, `gas_backup_${new Date().toISOString().split('T')[0]}.xlsx`);
+        this.showToast('✅ File Excel didownload!');
+    },
+
+    // ============================================
+    // GAS CODE GENERATOR
     // ============================================
 
     async showGASGenerator() {
-        // ✅ Langsung gunakan embedded code, tidak fetch
         const gasCode = this.getDefaultGASCode();
         
         const modal = document.createElement('div');
@@ -886,22 +873,21 @@ const backupModule = {
                 <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;">
                     <div>
                         <div style="font-size:18px;font-weight:700;">📋 Google Apps Script Code</div>
-                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">v3.3 Final - Copy ke script.google.com</div>
+                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">v3.4 FINAL - CORS Fixed</div>
                     </div>
                     <button onclick="document.getElementById('gas-generator-modal').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:white;">×</button>
                 </div>
                 
                 <div style="padding:20px;overflow-y:auto;flex:1;">
-                    <div style="background:#ebf8ff;border:1px solid #90cdf4;border-radius:8px;padding:12px;margin-bottom:16px;">
-                        <div style="font-size:12px;color:#2c5282;">
-                            <strong>🚀 Cara Setup:</strong>
+                    <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:8px;padding:12px;margin-bottom:16px;">
+                        <div style="font-size:12px;color:#c53030;">
+                            <strong>⚠️ PENTING - CORS Fix:</strong>
                             <ol style="margin:8px 0;padding-left:20px;line-height:1.8;">
-                                <li>Buka <a href="https://script.google.com" target="_blank" style="color:#2b6cb0;font-weight:600;">script.google.com</a></li>
-                                <li>Klik "New Project"</li>
-                                <li>Hapus semua code default</li>
-                                <li>Copy code di bawah, paste ke editor</li>
-                                <li>Klik "Deploy" → "New Deployment"</li>
-                                <li>Pilih "Web app", Access: "Anyone"</li>
+                                <li>Paste code ini ke <a href="https://script.google.com" target="_blank" style="color:#c53030;font-weight:600;">script.google.com</a></li>
+                                <li>Klik <strong>Deploy</strong> → <strong>New Deployment</strong></li>
+                                <li>Pilih <strong>Web app</strong></li>
+                                <li><strong>Execute as:</strong> Me</li>
+                                <li><strong>Who has access:</strong> ANYONE (penting!)</li>
                                 <li>Copy URL deployment ke field di atas</li>
                             </ol>
                         </div>
@@ -940,7 +926,7 @@ const backupModule = {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `hifzi_gas_v3.3.gs`;
+        a.download = `hifzi_gas_v3.4.gs`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -949,16 +935,25 @@ const backupModule = {
     },
 
     // ============================================
-    // EMBEDDED GAS CODE - LENGKAP
+    // EMBEDDED GAS CODE - CORS FIXED
     // ============================================
     getDefaultGASCode() {
-        return `// GAS CODE v3.3 FINAL - HIFZI CELL BACKUP
-// Paste di script.google.com, Deploy as Web App, Access: Anyone
+        return `// GAS CODE v3.4 FINAL - HIFZI CELL BACKUP
+// CORS FIXED - Paste di script.google.com
+// Deploy: Web App, Execute as: Me, Access: ANYONE
 
 function doPost(e) {
+  // ✅ CORS HEADERS - Wajib untuk semua response
+  var corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  
   try {
+    // Parse JSON dari postData.contents (bukan e.parameter)
     if (!e.postData || !e.postData.contents) {
-      return jsonResponse({ success: false, message: 'No post data' });
+      return createResponse({ success: false, message: 'No post data' }, corsHeaders);
     }
     
     var data = JSON.parse(e.postData.contents);
@@ -967,154 +962,130 @@ function doPost(e) {
     
     // Validasi Sheet ID
     if (!sheetId || sheetId.length !== 44) {
-      return jsonResponse({ success: false, message: 'Sheet ID invalid (must be 44 chars)' });
+      return createResponse({ success: false, message: 'Sheet ID invalid (must be 44 chars)' }, corsHeaders);
     }
     
     var ss;
     try {
       ss = SpreadsheetApp.openById(sheetId);
     } catch (err) {
-      return jsonResponse({ success: false, message: 'Cannot open spreadsheet: ' + err.toString() });
+      return createResponse({ success: false, message: 'Cannot open spreadsheet: ' + err.toString() }, corsHeaders);
     }
     
     if (action === 'test') {
-      return jsonResponse({ 
+      return createResponse({ 
         success: true, 
         message: 'Connected to: ' + ss.getName(),
         sheetName: ss.getName()
-      });
+      }, corsHeaders);
     }
     
     if (action === 'sync') {
-      return handleSync(ss, data);
+      return handleSync(ss, data, corsHeaders);
     }
     
     if (action === 'restore') {
-      return handleRestore(ss);
+      return handleRestore(ss, corsHeaders);
     }
     
-    return jsonResponse({ success: false, message: 'Unknown action: ' + action });
+    return createResponse({ success: false, message: 'Unknown action: ' + action }, corsHeaders);
     
   } catch (err) {
-    return jsonResponse({ success: false, message: 'Error: ' + err.toString() });
+    return createResponse({ success: false, message: 'Error: ' + err.toString() }, corsHeaders);
   }
 }
 
-function handleSync(ss, data) {
+// ✅ HANDLE PREFLIGHT OPTIONS REQUEST
+function doOptions(e) {
+  var corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  return createResponse({}, corsHeaders);
+}
+
+function handleSync(ss, data, corsHeaders) {
   try {
-    // Get or create Backup sheet
     var sheet = ss.getSheetByName('Backup');
     if (!sheet) {
       sheet = ss.insertSheet('Backup');
     }
     
-    // Clear sheet
     sheet.clear();
-    
-    // Row 1: Metadata header
     sheet.getRange(1, 1).setValue('HIFZI_BACKUP_DATA');
     sheet.getRange(1, 2).setValue(new Date().toISOString());
     sheet.getRange(1, 3).setValue(data.deviceId || 'unknown');
     sheet.getRange(1, 4).setValue(data.deviceName || 'unknown');
     
-    // Row 2: Empty (spacer)
-    
-    // Row 3: Actual JSON data
     var jsonString = JSON.stringify(data.data);
     sheet.getRange(3, 1).setValue(jsonString);
-    
-    // Auto resize
     sheet.autoResizeColumn(1);
     
-    // Log sync
-    logSync(ss, data, 'upload');
-    
-    return jsonResponse({ 
+    return createResponse({ 
       success: true, 
       message: 'Data synced successfully',
       sheetName: ss.getName(),
       dataSize: jsonString.length
-    });
+    }, corsHeaders);
     
   } catch (err) {
-    return jsonResponse({ success: false, message: 'Sync error: ' + err.toString() });
+    return createResponse({ success: false, message: 'Sync error: ' + err.toString() }, corsHeaders);
   }
 }
 
-function handleRestore(ss) {
+function handleRestore(ss, corsHeaders) {
   try {
     var sheet = ss.getSheetByName('Backup');
     if (!sheet) {
-      return jsonResponse({ success: false, message: 'Backup sheet not found. Please upload first.' });
+      return createResponse({ success: false, message: 'Backup sheet not found' }, corsHeaders);
     }
     
-    // Get JSON from row 3, column 1
     var jsonData = sheet.getRange(3, 1).getValue();
-    
     if (!jsonData || jsonData === '') {
-      return jsonResponse({ success: false, message: 'No data in backup sheet' });
+      return createResponse({ success: false, message: 'No data in backup sheet' }, corsHeaders);
     }
     
-    // Parse JSON
     var parsedData;
     try {
       parsedData = JSON.parse(jsonData);
     } catch (e) {
-      return jsonResponse({ success: false, message: 'Data corrupted: ' + e.toString() });
+      return createResponse({ success: false, message: 'Data corrupted: ' + e.toString() }, corsHeaders);
     }
     
-    // Log restore
-    logSync(ss, { deviceId: 'restore', deviceName: 'restore' }, 'download');
-    
-    return jsonResponse({ 
+    return createResponse({ 
       success: true, 
       data: parsedData,
-      message: 'Data restored successfully',
-      restoredAt: new Date().toISOString()
-    });
+      message: 'Data restored successfully'
+    }, corsHeaders);
     
   } catch (err) {
-    return jsonResponse({ success: false, message: 'Restore error: ' + err.toString() });
+    return createResponse({ success: false, message: 'Restore error: ' + err.toString() }, corsHeaders);
   }
 }
 
-function logSync(ss, data, type) {
-  try {
-    var logSheet = ss.getSheetByName('SyncLog');
-    if (!logSheet) {
-      logSheet = ss.insertSheet('SyncLog');
-      logSheet.appendRow(['Timestamp', 'Type', 'Device ID', 'Device Name', 'Status']);
-    }
-    logSheet.appendRow([
-      new Date().toISOString(),
-      type,
-      data.deviceId || 'unknown',
-      data.deviceName || 'unknown',
-      'success'
-    ]);
-  } catch (e) {
-    // Silent fail for logging
-  }
-}
-
-function jsonResponse(data) {
+// ✅ HELPER: Create response with CORS headers
+function createResponse(data, headers) {
   var output = ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
   
-  output.setHeaders({
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  });
+  // Set CORS headers
+  for (var key in headers) {
+    output.setHeader(key, headers[key]);
+  }
   
   return output;
 }
 
-// For backward compatibility
+// Backward compatibility
 function doGet(e) {
-  return jsonResponse({ 
+  return createResponse({ 
     success: true, 
-    message: 'Hifzi Backup API v3.3 - Use POST method' 
+    message: 'Hifzi Backup API v3.4 - Use POST method' 
+  }, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
   });
 }`;
     },
@@ -1197,6 +1168,7 @@ function doGet(e) {
         this.saveBackupSettings();
         this.stopAutoSync();
         this.firebaseBackupData = null;
+        this.gasBackupData = null;
         
         if (provider === 'firebase') {
             this.initFirebase(true);
@@ -1342,6 +1314,9 @@ function doGet(e) {
         }
     },
 
+    // ============================================
+    // RENDER - DENGAN TOGGLE ARROW UNTUK GAS EXCEL VIEW
+    // ============================================
     render() {
         if (!this.isInitialized) {
             this.init();
@@ -1375,6 +1350,35 @@ function doGet(e) {
         };
 
         const loginHistory = this.getLoginHistory();
+
+        // ✅ HTML untuk GAS section dengan toggle arrow
+        const gasExcelViewToggle = isGASConfigured ? `
+            <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
+                <div onclick="backupModule.toggleGASExcelSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:12px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:20px;">📊</span>
+                        <div>
+                            <div style="font-weight:600;color:#2d3748;">Lihat Data di Sheets</div>
+                            <div style="font-size:12px;color:#718096;">Excel View & Download</div>
+                        </div>
+                    </div>
+                    <span id="gas-arrow-icon" style="font-size:20px;transition:transform 0.3s;">▼</span>
+                </div>
+                <div id="gas-excel-section" style="display:none;margin-top:12px;padding:16px;background:#f7fafc;border-radius:8px;">
+                    <div style="font-size:13px;color:#4a5568;margin-bottom:12px;">
+                        💡 Klik tombol di bawah untuk mengambil dan melihat data dari Google Sheets dalam format Excel.
+                    </div>
+                    <button onclick="backupModule.fetchGASDataForView()" style="width:100%;padding:12px;background:#34a853;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <span>👁️</span> Fetch & View Data dari Sheets
+                    </button>
+                    ${this.gasBackupData ? `
+                        <button onclick="backupModule.renderGASExcelView()" style="width:100%;margin-top:8px;padding:12px;background:#4299e1;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">
+                            📋 Tampilkan Data Terakhir
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        ` : '';
 
         const html = `
             <div class="backup-container" style="padding:20px;max-width:900px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif;">
@@ -1449,7 +1453,7 @@ function doGet(e) {
                 </div>
 
                 ${isFirebase ? this.renderFirebaseSection(isFBConfigured, isFBLoggedIn) : ''}
-                ${isGAS ? this.renderGASSection(isGASConfigured) : ''}
+                ${isGAS ? this.renderGASSection(isGASConfigured, gasExcelViewToggle) : ''}
 
                 <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#fc8181' : '#667eea'};">
                     <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">🔄 Sinkronisasi Manual</div>
@@ -1496,6 +1500,21 @@ function doGet(e) {
         `;
 
         container.innerHTML = html;
+    },
+
+    // ✅ TOGGLE arrow untuk GAS Excel section
+    toggleGASExcelSection() {
+        const section = document.getElementById('gas-excel-section');
+        const arrow = document.getElementById('gas-arrow-icon');
+        if (section && arrow) {
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                section.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
     },
 
     renderFirebaseSection(isConfigured, isLoggedIn) {
@@ -1552,16 +1571,16 @@ function doGet(e) {
         `;
     },
 
-    renderGASSection(isConfigured) {
+    renderGASSection(isConfigured, gasExcelViewToggle) {
         const hasUrl = this.gasUrl.length > 10;
         const validation = this.validateSheetId(this.sheetId);
         const hasSheetId = validation.valid;
         
         return `
             <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #34a853;">
-                <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">📊 Google Sheets (v3.3 Final)</div>
+                <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">📊 Google Sheets (v3.4 FINAL)</div>
                 
-                <button onclick="backupModule.showGASGenerator()" style="width:100%;padding:14px;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;margin-bottom:16px;">📋 Generate GAS Code</button>
+                <button onclick="backupModule.showGASGenerator()" style="width:100%;padding:14px;background:linear-gradient(135deg,#34a853 0%,#0f9d58 100%);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;margin-bottom:16px;">📋 Generate GAS Code (CORS Fixed)</button>
                 
                 <div style="margin-bottom:12px;">
                     <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">🔗 GAS Web App URL</label>
@@ -1585,7 +1604,7 @@ function doGet(e) {
                 </div>
                 
                 ${isConfigured ? `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f0fff4;border-radius:10px;border:1px solid #9ae6b4;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f0fff4;border-radius:10px;border:1px solid #9ae6b4;margin-bottom:16px;">
                         <div>
                             <div style="font-weight:600;color:#2d3748;">✅ Ready</div>
                             <div style="font-size:12px;color:#718096;">${this.sheetId.substring(0, 15)}...</div>
@@ -1595,10 +1614,12 @@ function doGet(e) {
                         </div>
                     </div>
                 ` : `
-                    <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:10px;padding:16px;text-align:center;">
+                    <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;">
                         <div style="font-size:13px;color:#c53030;">⚠️ Konfigurasi belum lengkap</div>
                     </div>
                 `}
+                
+                ${gasExcelViewToggle}
             </div>
         `;
     }
@@ -1612,4 +1633,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v3.3 FINAL loaded - BYPASS FETCH MODE');
+console.log('[Backup] v3.4 FINAL loaded - CORS FIXED + GAS Excel View');
