@@ -256,6 +256,7 @@
 .cash-btn.tarik-tunai { background: #eff6ff; color: var(--cash-info); border-color: #bfdbfe; }
 .cash-btn.topup { background: #faf5ff; color: var(--cash-purple); border-color: #e9d5ff; }
 .cash-btn.modal-awal { background: #fffbeb; color: var(--cash-warning); border-color: #fde68a; border-style: dashed; }
+.cash-btn.atur-modal-kasir { background: #f0fdf4; color: #15803d; border-color: #86efac; }
 .cash-btn.history { background: #f1f5f9; color: var(--cash-text-secondary); border-color: #cbd5e1; }
 
 /* HISTORY SECTION */
@@ -394,6 +395,83 @@
     border-top: 2px solid var(--cash-border);
 }
 
+/* USER SHIFT CARDS */
+.cash-user-shift-card {
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    border: 2px solid #c8e6c9;
+    transition: all 0.2s;
+}
+
+.cash-user-shift-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.cash-user-shift-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.cash-user-shift-name {
+    font-weight: 700;
+    font-size: 15px;
+    color: #333;
+}
+
+.cash-user-shift-role {
+    background: #4caf50;
+    color: white;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.cash-user-shift-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.cash-user-shift-stat {
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.cash-user-shift-stat.modal {
+    background: #fff8e1;
+}
+
+.cash-user-shift-stat.cash {
+    background: #e3f2fd;
+}
+
+.cash-user-shift-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.cash-user-shift-stat-value {
+    font-weight: 700;
+    font-size: 14px;
+    color: #333;
+}
+
+.cash-user-shift-time {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+}
+
 /* ANIMATIONS */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -410,4 +488,5 @@
     .cash-filter-bar { flex-direction: column; }
     .cash-profit-grid { grid-template-columns: 1fr; }
     .cash-transaction-delete { opacity: 1; }
+    .cash-user-shift-stats { grid-template-columns: 1fr; }
 }
