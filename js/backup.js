@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.1)
-// FIX: Excel-style Preview Table, Error Handling
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.2)
+// FIX: Remove undefined values for Firebase compatibility
 // ============================================
 
 const backupModule = {
@@ -16,20 +16,17 @@ const backupModule = {
     isSyncing: false,
     syncStatus: 'idle',
     
-    // Sync detection
     hasCheckedCloudOnLoad: false,
     cloudDataHash: null,
     localDataHash: null,
     lastCloudCheck: null,
     cloudCheckCount: 0,
     
-    // Real-time sync properties
     dataChangeObserver: null,
     syncDebounceTimer: null,
     lastLocalDataHash: null,
     lastCloudDataHash: null,
     
-    // Preview data storage
     previewData: null,
     
     firebaseConfig: {},
@@ -49,14 +46,13 @@ const backupModule = {
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
     
-    // Config yang akan disync ke cloud
     syncedConfig: {
         provider: 'local',
         gasUrl: '',
         sheetId: '',
         firebaseConfig: {},
         autoSync: false,
-        version: '4.0.1'
+        version: '4.0.2'
     },
     
     SYNC_STATUS: {
@@ -91,10 +87,6 @@ const backupModule = {
         CONFIG_SYNCED_AT: 'hifzi_config_synced_at'
     },
 
-    // ============================================
-    // INITIALIZATION
-    // ============================================
-
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
@@ -103,7 +95,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.0.1 - Excel Preview Ready...');
+        console.log('[Backup] Initializing v4.0.2 - Firebase Fix Ready...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -156,6 +148,30 @@ const backupModule = {
     },
 
     // ============================================
+    // HELPER: Remove undefined values recursively
+    // ============================================
+    
+    cleanUndefined(obj) {
+        if (obj === null || obj === undefined) return null;
+        
+        if (Array.isArray(obj)) {
+            return obj.map(item => this.cleanUndefined(item)).filter(item => item !== undefined);
+        }
+        
+        if (typeof obj === 'object') {
+            const cleaned = {};
+            for (const [key, value] of Object.entries(obj)) {
+                if (value !== undefined) {
+                    cleaned[key] = this.cleanUndefined(value);
+                }
+            }
+            return cleaned;
+        }
+        
+        return obj;
+    },
+
+    // ============================================
     // CONFIG SYNC
     // ============================================
     
@@ -168,20 +184,22 @@ const backupModule = {
             sheetId: this.sheetId,
             firebaseConfig: this.firebaseConfig,
             autoSync: this.isAutoSyncEnabled,
-            version: '4.0.1',
+            version: '4.0.2',
             syncedAt: new Date().toISOString(),
             syncedBy: this.deviceId
         };
         
         try {
             if (this.currentProvider === 'firebase' && this.database && this.currentUser) {
-                await this.database.ref('users/' + this.currentUser.uid + '/hifzi_config').set({
+                const cleanConfig = this.cleanUndefined({
                     ...this.syncedConfig,
                     _meta: {
                         lastModified: new Date().toISOString(),
                         deviceId: this.deviceId
                     }
                 });
+                
+                await this.database.ref('users/' + this.currentUser.uid + '/hifzi_config').set(cleanConfig);
                 console.log('[Backup] Config synced to Firebase');
             } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
                 const payload = {
@@ -369,7 +387,6 @@ const backupModule = {
             font-family: system-ui, -apple-system, sans-serif;
         `;
         
-        // Generate tables for each data type
         const productsTable = this.generateProductsTable(data.products || []);
         const transactionsTable = this.generateTransactionsTable(data.transactions || []);
         const cashFlowTable = this.generateCashFlowTable(data.cashTransactions || []);
@@ -389,7 +406,6 @@ const backupModule = {
                 flex-direction: column;
                 animation: slideUp 0.3s ease;
             ">
-                <!-- Header -->
                 <div style="
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     color: white;
@@ -414,7 +430,6 @@ const backupModule = {
                     </div>
                 </div>
                 
-                <!-- Tabs Navigation -->
                 <div style="
                     background: #f7fafc;
                     padding: 12px 20px;
@@ -486,40 +501,26 @@ const backupModule = {
                     ">👥 Users (${data.users?.length || 0})</button>
                 </div>
                 
-                <!-- Content Area -->
                 <div style="padding: 20px; overflow-y: auto; flex: 1; background: #f7fafc;">
-                    
-                    <!-- Products Table -->
                     <div id="content-products" class="preview-content" style="display: block;">
                         ${productsTable}
                     </div>
-                    
-                    <!-- Transactions Table -->
                     <div id="content-transactions" class="preview-content" style="display: none;">
                         ${transactionsTable}
                     </div>
-                    
-                    <!-- Cash Flow Table -->
                     <div id="content-cashflow" class="preview-content" style="display: none;">
                         ${cashFlowTable}
                     </div>
-                    
-                    <!-- Debts Table -->
                     <div id="content-debts" class="preview-content" style="display: none;">
                         ${debtsTable}
                     </div>
-                    
-                    <!-- Categories Table -->
                     <div id="content-categories" class="preview-content" style="display: none;">
                         ${categoriesTable}
                     </div>
-                    
-                    <!-- Users Table -->
                     <div id="content-users" class="preview-content" style="display: none;">
                         ${usersTable}
                     </div>
                     
-                    <!-- Telegram Config -->
                     ${data.telegram ? `
                     <div style="background: #e6fffa; border: 2px solid #81e6d9; border-radius: 10px; padding: 16px; margin-top: 20px;">
                         <div style="font-weight: 600; color: #234e52; margin-bottom: 8px;">📱 Telegram Config</div>
@@ -531,7 +532,6 @@ const backupModule = {
                     </div>
                     ` : ''}
                     
-                    <!-- Search History -->
                     <div style="background: #fffaf0; border: 2px solid #fbd38d; border-radius: 10px; padding: 16px; margin-top: 12px;">
                         <div style="font-weight: 600; color: #744210; margin-bottom: 8px;">🔍 Search History</div>
                         <div style="font-size: 13px; color: #744210;">
@@ -540,7 +540,6 @@ const backupModule = {
                     </div>
                 </div>
                 
-                <!-- Footer -->
                 <div style="
                     padding: 20px;
                     border-top: 1px solid #e2e8f0;
@@ -621,10 +620,6 @@ const backupModule = {
         
         document.body.appendChild(modal);
     },
-
-    // ============================================
-    // EXCEL-STYLE TABLE GENERATORS
-    // ============================================
 
     generateProductsTable(products) {
         if (products.length === 0) {
@@ -868,22 +863,18 @@ const backupModule = {
     },
 
     switchPreviewTab(tabName) {
-        // Hide all content
         document.querySelectorAll('.preview-content').forEach(el => {
             el.style.display = 'none';
         });
         
-        // Reset all tabs
         document.querySelectorAll('.preview-tab').forEach(el => {
             el.style.background = '#e2e8f0';
             el.style.color = '#4a5568';
         });
         
-        // Show selected content
         const contentEl = document.getElementById('content-' + tabName);
         if (contentEl) contentEl.style.display = 'block';
         
-        // Highlight selected tab
         const tabEl = document.getElementById('tab-' + tabName);
         if (tabEl) {
             tabEl.style.background = '#667eea';
@@ -1189,7 +1180,7 @@ const backupModule = {
             telegram: cloudData.telegram || localData.telegram || { botToken: '', chatId: '', enabled: false },
             searchHistory: this.mergeArrays(localData.searchHistory || [], cloudData.searchHistory || [], 'id', 'timestamp'),
             _backupMeta: {
-                version: '4.0.1',
+                version: '4.0.2',
                 deviceId: this.deviceId,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider,
@@ -1364,6 +1355,10 @@ const backupModule = {
         }
     },
 
+    // ============================================
+    // FIXED: getBackupData dengan cleanUndefined
+    // ============================================
+
     getBackupData() {
         let allData = {};
         if (typeof dataManager !== 'undefined') {
@@ -1371,47 +1366,192 @@ const backupModule = {
             else if (dataManager.data) allData = dataManager.data;
         }
         
-        const cashTransactions = (allData.cashTransactions || []).map(t => ({
-            id: t.id,
-            type: t.type,
-            category: t.category,
-            amount: t.amount,
-            description: t.description,
-            date: t.date,
-            timestamp: t.timestamp,
-            userId: t.userId,
-            userName: t.userName,
-            paymentMethod: t.paymentMethod,
-            details: t.details || { adminFee: 0, provider: '', phoneNumber: '', recipientName: '', bankName: '', accountNumber: '' },
-            shiftId: t.shiftId
+        // Helper untuk membersihkan undefined
+        const clean = (val) => {
+            if (val === undefined) return null;
+            if (val === null) return null;
+            if (typeof val === 'string') return val;
+            if (typeof val === 'number') return val;
+            if (typeof val === 'boolean') return val;
+            if (val instanceof Date) return val.toISOString();
+            if (Array.isArray(val)) return val.map(clean).filter(v => v !== undefined);
+            if (typeof val === 'object') {
+                const cleaned = {};
+                for (const [k, v] of Object.entries(val)) {
+                    if (v !== undefined) cleaned[k] = clean(v);
+                }
+                return cleaned;
+            }
+            return val;
+        };
+
+        const cashTransactions = (allData.cashTransactions || []).map(t => clean({
+            id: t.id || 'cash_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            type: t.type || 'expense',
+            category: t.category || '',
+            amount: t.amount || 0,
+            description: t.description || '',
+            date: t.date || new Date().toISOString(),
+            timestamp: t.timestamp || new Date().toISOString(),
+            userId: t.userId || '',
+            userName: t.userName || '',
+            paymentMethod: t.paymentMethod || 'cash',
+            details: {
+                adminFee: t.details?.adminFee || 0,
+                provider: t.details?.provider || '',
+                phoneNumber: t.details?.phoneNumber || '',
+                recipientName: t.details?.recipientName || '',
+                bankName: t.details?.bankName || '',
+                accountNumber: t.details?.accountNumber || ''
+            },
+            shiftId: t.shiftId || ''
         }));
-        
-        const telegram = allData.telegram || { botToken: '', chatId: '', enabled: false, lastTest: null };
-        const searchHistory = allData.searchHistory || [];
-        
-        return {
-            products: allData.products || [],
-            categories: allData.categories || [],
-            transactions: allData.transactions || [],
+
+        const telegram = clean(allData.telegram || {
+            botToken: '',
+            chatId: '',
+            enabled: false,
+            lastTest: null
+        });
+
+        const searchHistory = (allData.searchHistory || []).map(item => clean({
+            id: item.id || '',
+            query: item.query || '',
+            timestamp: item.timestamp || new Date().toISOString(),
+            userId: item.userId || '',
+            resultCount: item.resultCount || 0
+        }));
+
+        const products = (allData.products || []).map(p => clean({
+            id: p.id || '',
+            name: p.name || '',
+            category: p.category || '',
+            price: p.price || 0,
+            stock: p.stock || 0,
+            barcode: p.barcode || '',
+            description: p.description || '',
+            createdAt: p.createdAt || new Date().toISOString(),
+            updatedAt: p.updatedAt || new Date().toISOString()
+        }));
+
+        const transactions = (allData.transactions || []).map(t => clean({
+            id: t.id || '',
+            date: t.date || new Date().toISOString(),
+            customerName: t.customerName || 'Umum',
+            items: (t.items || []).map(item => clean({
+                id: item.id || '',
+                name: item.name || '',
+                price: item.price || 0,
+                quantity: item.quantity || 1,
+                total: item.total || 0
+            })),
+            total: t.total || 0,
+            paymentMethod: t.paymentMethod || 'cash',
+            discount: t.discount || 0,
+            tax: t.tax || 0,
+            finalTotal: t.finalTotal || t.total || 0,
+            userId: t.userId || '',
+            userName: t.userName || '',
+            shiftId: t.shiftId || ''
+        }));
+
+        const debts = (allData.debts || []).map(d => clean({
+            id: d.id || '',
+            customerName: d.customerName || '',
+            customerPhone: d.customerPhone || '',
+            totalAmount: d.totalAmount || 0,
+            paidAmount: d.paidAmount || 0,
+            status: d.status || 'unpaid',
+            createdAt: d.createdAt || new Date().toISOString(),
+            updatedAt: d.updatedAt || new Date().toISOString(),
+            items: d.items || []
+        }));
+
+        const categories = (allData.categories || []).map(c => clean({
+            id: c.id || '',
+            name: c.name || '',
+            description: c.description || '',
+            productCount: c.productCount || 0
+        }));
+
+        const users = (allData.users || []).map(u => clean({
+            id: u.id || '',
+            name: u.name || u.username || '',
+            username: u.username || '',
+            email: u.email || '',
+            role: u.role || 'user',
+            isActive: u.isActive !== undefined ? u.isActive : true,
+            lastLogin: u.lastLogin || null,
+            createdAt: u.createdAt || new Date().toISOString()
+        }));
+
+        const kasir = clean(allData.kasir || {
+            isOpen: false,
+            activeShifts: [],
+            date: new Date().toDateString(),
+            lastCheckDate: new Date().toDateString()
+        });
+
+        const settings = clean(allData.settings || {
+            currentCash: 0,
+            storeName: '',
+            storeAddress: '',
+            storePhone: '',
+            taxRate: 0,
+            currency: 'IDR'
+        });
+
+        const shiftHistory = (allData.shiftHistory || []).map(s => clean({
+            date: s.date || '',
+            openTime: s.openTime || '',
+            closeTime: s.closeTime || '',
+            userId: s.userId || '',
+            userName: s.userName || '',
+            openingCash: s.openingCash || 0,
+            closingCash: s.closingCash || 0,
+            totalSales: s.totalSales || 0,
+            totalTransactions: s.totalTransactions || 0
+        }));
+
+        const loginHistory = (allData.loginHistory || []).map(l => clean({
+            id: l.id || '',
+            userId: l.userId || '',
+            userName: l.userName || '',
+            timestamp: l.timestamp || new Date().toISOString(),
+            ip: l.ip || '',
+            device: l.device || ''
+        }));
+
+        const pendingModals = clean(allData.pendingModals || {});
+
+        const currentUser = clean(allData.currentUser || null);
+
+        const backupData = {
+            products: products,
+            categories: categories,
+            transactions: transactions,
             cashTransactions: cashTransactions,
-            debts: allData.debts || [],
-            kasir: allData.kasir || { isOpen: false, activeShifts: [], date: null, lastCheckDate: null },
-            settings: allData.settings || {},
-            shiftHistory: allData.shiftHistory || [],
-            loginHistory: allData.loginHistory || [],
-            pendingModals: allData.pendingModals || {},
-            currentUser: allData.currentUser || null,
+            debts: debts,
+            kasir: kasir,
+            settings: settings,
+            shiftHistory: shiftHistory,
+            loginHistory: loginHistory,
+            pendingModals: pendingModals,
+            currentUser: currentUser,
             telegram: telegram,
             searchHistory: searchHistory,
-            users: allData.users || [],
+            users: users,
             _backupMeta: {
-                version: '4.0.1',
+                version: '4.0.2',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider
             }
         };
+
+        // Final cleaning untuk memastikan tidak ada undefined
+        return this.cleanUndefined(backupData);
     },
 
     saveBackupData(backupData) {
@@ -1829,21 +1969,26 @@ const backupModule = {
         this.render();
     },
 
+    // ============================================
+    // FIXED: uploadToFirebase dengan cleanUndefined
+    // ============================================
+
     async uploadToFirebase(data, silent = false) {
         if (!this.database || !this.currentUser) throw new Error('Not authenticated');
         
-        const payload = {
+        // Bersihkan data dari undefined sebelum upload
+        const cleanData = this.cleanUndefined({
             ...data,
             _syncMeta: {
                 lastModified: new Date().toISOString(),
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 hash: this.generateDataHash(data),
-                version: '4.0.1'
+                version: '4.0.2'
             }
-        };
+        });
         
-        await this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set(payload);
+        await this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set(cleanData);
         
         if (!silent) {
             this.lastSyncTime = new Date().toISOString();
@@ -2392,4 +2537,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v4.0.1 loaded - Excel Preview Ready');
+console.log('[Backup] v4.0.2 loaded - Firebase Undefined Fix Ready');
