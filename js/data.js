@@ -20,6 +20,9 @@ const dataManager = {
         shiftHistory: [],
         loginHistory: [],
         
+        // ✅ BARU: Pending modal untuk kasir (diatur owner)
+        pendingModals: {},
+        
         settings: {
             storeName: 'Hifzi Cell',
             address: '',
@@ -115,6 +118,11 @@ const dataManager = {
             };
         }
 
+        // ✅ BARU: Inisialisasi pendingModals
+        if (!this.data.pendingModals) {
+            this.data.pendingModals = {};
+        }
+
         if (!this.data.loginHistory) this.data.loginHistory = [];
         if (!this.data.settings.phone) this.data.settings.phone = '';
         if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
@@ -178,6 +186,7 @@ const dataManager = {
             cashTransactions: [],
             debts: [],
             shiftHistory: [],
+            pendingModals: {},
             settings: this.data.settings,
             kasir: {
                 isOpen: false,
@@ -253,12 +262,13 @@ const dataManager = {
             debts: this.data.debts || [],
             shiftHistory: this.data.shiftHistory || [],
             loginHistory: this.data.loginHistory || [],
+            pendingModals: this.data.pendingModals || {},
             settings: this.data.settings || {},
             kasir: this.data.kasir || {},
             _meta: { 
                 lastModified: new Date().toISOString(), 
                 deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', 
-                version: '2.0' // ✅ Updated version for multi-user
+                version: '2.1' // ✅ Updated version for pendingModals feature
             }
         };
     },
@@ -273,6 +283,7 @@ const dataManager = {
         if (cleanData.debts) this.data.debts = cleanData.debts;
         if (cleanData.shiftHistory) this.data.shiftHistory = cleanData.shiftHistory;
         if (cleanData.loginHistory) this.data.loginHistory = cleanData.loginHistory;
+        if (cleanData.pendingModals) this.data.pendingModals = cleanData.pendingModals;
         if (cleanData.settings) this.data.settings = { ...this.data.settings, ...cleanData.settings };
         
         // ✅ PERUBAHAN: Handle struktur kasir baru
@@ -621,7 +632,7 @@ const dataManager = {
         };
     },
 
-    // ✅ PERUBAHAN: Buka kasir untuk user tertentu
+    // ✅ PERUBAHAN: Buka kasir untuk user tertentu dengan pending modal support
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
@@ -651,6 +662,14 @@ const dataManager = {
             }
         }
         
+        // ✅ BARU: Cek pending modal dari owner
+        let modalAwal = 0;
+        if (this.data.pendingModals && this.data.pendingModals[userId]) {
+            modalAwal = this.data.pendingModals[userId];
+            // Hapus pending modal setelah diterapkan
+            delete this.data.pendingModals[userId];
+        }
+        
         // Buat shift baru
         const newShift = {
             userId: userId,
@@ -658,8 +677,8 @@ const dataManager = {
             userRole: user.role,
             openTime: new Date().toISOString(),
             lastActive: new Date().toISOString(),
-            modalAwal: 0,
-            currentCash: 0,
+            modalAwal: modalAwal,
+            currentCash: modalAwal, // ✅ Set currentCash sama dengan modalAwal
             transactionCount: 0,
             totalSales: 0
         };
@@ -673,7 +692,9 @@ const dataManager = {
         return { 
             success: true, 
             reset: true, 
-            message: 'Kasir dibuka! Shift baru dimulai.' 
+            message: modalAwal > 0 
+                ? `Kasir dibuka! Modal awal: Rp ${modalAwal.toLocaleString('id-ID')}` 
+                : 'Kasir dibuka! Shift baru dimulai.' 
         };
     },
 
