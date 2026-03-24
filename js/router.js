@@ -1,18 +1,16 @@
 /**
  * Router System - Hifzi Cell POS
- * Menangani navigasi dan kontrol akses antar modul
+ * Menangani navigasi dan kontrol akses antar modul - Multi-User Edition
  */
 
 const router = {
     currentPage: null,
 
-    // Menu yang bisa diakses saat kasir TUTUP (tanpa membuka kasir baru)
-    allowedWhenClosed: ['backup', 'users', 'reports', 'transactions', 'receipt', 'cloud', 'telegram', 'pencarian'],
+    // ✅ PERUBAHAN: Semua menu bisa diakses tanpa batasan kasir terbuka
+    // Hanya butuh konfirmasi buka kasir untuk menu operasional jika belum buka
+    requiresKasirOpen: [], // Kosongkan - tidak ada blocking
 
-    // Menu yang butuh kasir BUKA
-    requiresKasirOpen: ['pos', 'products', 'cash', 'debt'],
-
-    // Definisi akses menu berdasarkan role
+    // Definisi akses menu berdasarkan role tetap sama
     menuAccess: {
         'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
         'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
@@ -62,9 +60,7 @@ const router = {
     navigate(page, element) {
         console.log(`[Router] Navigating to: ${page}`);
 
-        const isKasirOpen = app.data && app.data.kasir && app.data.kasir.isOpen;
         const currentUser = dataManager.getCurrentUser();
-        const kasirCurrentUser = app.data && app.data.kasir ? app.data.kasir.currentUser : null;
 
         // Cek apakah user sudah login
         if (!currentUser) {
@@ -81,28 +77,15 @@ const router = {
             return;
         }
 
-        // Cek apakah kasir sudah dibuka untuk menu yang memerlukannya
-        if (!isKasirOpen && this.requiresKasirOpen.includes(page)) {
-            this.showKasirClosedModal();
+        // ✅ PERUBAHAN: Tidak ada blocking kasir, tapi tanya untuk buka kasir jika belum
+        // untuk menu operasional (POS, Cash, Debt)
+        const operationalMenus = ['pos', 'cash', 'debt'];
+        const userShift = dataManager.getUserShift(currentUser.userId);
+        
+        if (operationalMenus.includes(page) && !userShift) {
+            // Tanya user apakah mau buka kasir dulu
+            this.showOpenKasirFirstModal(page, element);
             return;
-        }
-
-        // Cek apakah user saat ini adalah yang membuka kasir (untuk menu operasional)
-        if (isKasirOpen && this.requiresKasirOpen.includes(page)) {
-            // Owner dan Admin bisa override (mengambil alih kasir)
-            if (currentUser.role === 'owner' || currentUser.role === 'admin') {
-                if (kasirCurrentUser !== currentUser.userId) {
-                    // Tanya apakah ingin mengambil alih kasir
-                    this.showTakeOverKasirModal(kasirCurrentUser, page, element);
-                    return;
-                }
-            } else {
-                // Kasir biasa hanya bisa akses jika dia yang buka
-                if (kasirCurrentUser !== currentUser.userId) {
-                    this.showKasirUsedByOtherModal(kasirCurrentUser);
-                    return;
-                }
-            }
         }
 
         // Update UI - Hapus active dari semua tab
@@ -151,14 +134,12 @@ const router = {
                     usersModule.init();
                     break;
                 case 'telegram':
-                    // PERBAIKAN: Inisialisasi dan render TelegramModule
                     if (typeof TelegramModule !== 'undefined') {
                         TelegramModule.init();
                         TelegramModule.renderPage();
                     }
                     break;
                 case 'pencarian':
-                    // PERBAIKAN: Inisialisasi dan render n8nModule
                     if (typeof n8nModule !== 'undefined') {
                         n8nModule.init();
                         n8nModule.renderPage();
@@ -166,10 +147,8 @@ const router = {
                     break;
                 case 'cloud':
                 case 'backup':
-                    // PERBAIKAN: Pastikan backupModule di-init dengan benar
                     if (typeof backupModule !== 'undefined') {
                         backupModule.init();
-                        // Delay render untuk memastikan DOM siap
                         setTimeout(() => {
                             backupModule.render();
                         }, 50);
@@ -189,68 +168,49 @@ const router = {
         window.scrollTo(0, 0);
     },
 
-    /**
-     * Owner/Admin mengambil alih kasir
-     */
-    takeOverKasir(page, element) {
-        const currentUser = dataManager.getCurrentUser();
-
-        if (!app.data.kasir) {
-            app.data.kasir = {};
-        }
-
-        app.data.kasir.currentUser = currentUser.userId;
-        app.data.kasir.userName = currentUser.name;
-        app.data.kasir.userRole = currentUser.role;
-
-        if (typeof dataManager !== 'undefined') {
-            dataManager.save();
-        }
-
-        app.showToast(`✅ Kasir diambil alih oleh ${currentUser.name}`);
-        app.updateHeader();
-        app.updateKasirStatus();
-
-        const modal = document.getElementById('takeOverModal');
-        if (modal) modal.remove();
-
-        this.navigate(page, element);
-    },
-
-    showTakeOverKasirModal(currentKasirUserId, page, element) {
-        const users = dataManager.getUsers();
-        const currentKasirUser = users.find(u => u.id === currentKasirUserId);
-        const userName = currentKasirUser ? currentKasirUser.name : 'User lain';
-        const currentUser = dataManager.getCurrentUser();
-
+    // ✅ BARU: Modal untuk buka kasir terlebih dahulu
+    showOpenKasirFirstModal(page, element) {
+        const pageName = this.menuLabels[page] || page;
+        
         const modalHTML = `
-            <div class="modal active" id="takeOverModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
+            <div class="modal active" id="openKasirFirstModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 380px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">👑</div>
+                    <div style="font-size: 48px; margin-bottom: 15px;">🔒</div>
                     <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Ambil Alih Kasir</span>
+                        <span class="modal-title" style="font-size: 16px;">Buka Kasir Terlebih Dahulu</span>
                     </div>
                     <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Kasir saat ini digunakan oleh:<br>
-                        <b>${userName}</b><br><br>
-                        Sebagai <b>${currentUser.role.toUpperCase()}</b>, Anda dapat mengambil alih kasir untuk melanjutkan operasional.
+                        Untuk mengakses menu <b>${pageName}</b>,<br>
+                        Anda perlu membuka kasir terlebih dahulu.
                     </p>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <button class="btn btn-secondary" onclick="router.closeTakeOverModal()">Batal</button>
-                        <button class="btn btn-primary" onclick="router.takeOverKasir('${page}', this)" style="background: #ff9800;">
-                            👑 Ambil Alih
+                        <button class="btn btn-secondary" onclick="document.getElementById('openKasirFirstModal').remove()">Batal</button>
+                        <button class="btn btn-primary" onclick="router.openKasirAndNavigate('${page}')" style="background: #4caf50;">
+                            🔓 Buka Kasir
                         </button>
                     </div>
                 </div>
             </div>
         `;
-        this.removeExistingModal('takeOverModal');
+        this.removeExistingModal('openKasirFirstModal');
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    closeTakeOverModal() {
-        const modal = document.getElementById('takeOverModal');
+    // ✅ BARU: Buka kasir lalu navigasi
+    openKasirAndNavigate(page) {
+        const modal = document.getElementById('openKasirFirstModal');
         if (modal) modal.remove();
+        
+        const result = dataManager.openKasir(app.currentUser.userId, true);
+        if (result.success) {
+            app.showToast(result.message);
+            app.updateHeader();
+            app.updateKasirStatus();
+            
+            // Navigasi ke halaman yang diminta
+            const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
+            this.navigate(page, navTab);
+        }
     },
 
     /**
@@ -293,7 +253,7 @@ const router = {
                             ❌ Anda tidak memiliki akses ke menu ini
                         </div>
                         <div style="font-size: 13px; color: #666; line-height: 1.5;">
-                            Menu <strong>${menuName}</strong> hanya dapat diakses oleh Owner dan Admin.
+                            Menu <strong>${menuName}</strong> hanya dapat diakses oleh role tertentu.
                         </div>
                     </div>
 
@@ -318,66 +278,6 @@ const router = {
 
     closeAccessDeniedModal() {
         const modal = document.getElementById('accessDeniedModal');
-        if (modal) modal.remove();
-    },
-
-    showKasirClosedModal() {
-        const modalHTML = `
-            <div class="modal active" id="kasirClosedModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">🔒</div>
-                    <div class="modal-header" style="justify-content: center; margin-bottom: 10px;">
-                        <span class="modal-title" style="font-size: 18px;">Kasir Sedang Tutup</span>
-                    </div>
-                    <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                        <div style="color: #c62828; font-weight: 600; margin-bottom: 8px; font-size: 14px;">⚠️ Akses Ditolak</div>
-                        <div style="font-size: 13px; color: #666; line-height: 1.5;">
-                            Menu ini tidak dapat diakses saat kasir tutup.<br>
-                            Silakan login dan buka kasir terlebih dahulu.
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="router.closeKasirClosedModal();" style="background: #4caf50; padding: 10px 30px;">
-                        Tutup
-                    </button>
-                </div>
-            </div>
-        `;
-        this.removeExistingModal('kasirClosedModal');
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    closeKasirClosedModal() {
-        const modal = document.getElementById('kasirClosedModal');
-        if (modal) modal.remove();
-    },
-
-    showKasirUsedByOtherModal(kasirUserId) {
-        const users = dataManager.getUsers();
-        const userInfo = users.find(u => u.id === kasirUserId);
-        const userName = userInfo ? userInfo.name : 'User lain';
-
-        const modalHTML = `
-            <div class="modal active" id="kasirUsedModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
-                    <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Kasir Sedang Digunakan</span>
-                    </div>
-                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Kasir saat ini sedang digunakan oleh:<br>
-                        <b>${userName}</b><br><br>
-                        Silakan tunggu atau hubungi admin/owner.
-                    </p>
-                    <button class="btn btn-secondary" onclick="router.closeKasirUsedByOtherModal()" style="width: 100%;">Tutup</button>
-                </div>
-            </div>
-        `;
-        this.removeExistingModal('kasirUsedModal');
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    closeKasirUsedByOtherModal() {
-        const modal = document.getElementById('kasirUsedModal');
         if (modal) modal.remove();
     },
 
@@ -508,4 +408,4 @@ const router = {
 // Expose ke window
 window.router = router;
 
-console.log('[Router] Router system loaded v1.1');
+console.log('[Router] Router system loaded v2.0 - Multi-User Edition');
