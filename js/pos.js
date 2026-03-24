@@ -157,11 +157,18 @@ const posModule = {
         this.renderProducts();
     },
 
-    // INPUT MANUAL PRODUCT - TIDAK MASUK DATABASE
+    // ✅ PERUBAHAN: Check kasir status berdasarkan user shift
     openManualProductModal() {
-        // Check kasir status
-        if (!dataManager.data.kasir || !dataManager.data.kasir.isOpen) {
-            app.showToast('⚠️ Kasir belum dibuka! Silakan buka kasir terlebih dahulu di menu Pengaturan (⚙️)');
+        // ✅ PERUBAHAN: Check apakah user ini punya shift aktif
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        if (!userShift) {
+            app.showToast('⚠️ Kasir belum dibuka! Silakan buka kasir terlebih dahulu.');
+            // Tanya apakah mau buka kasir
+            if (typeof router !== 'undefined') {
+                router.showOpenKasirFirstModal('pos', null);
+            }
             return;
         }
 
@@ -253,7 +260,6 @@ const posModule = {
         }
     },
 
-    // PERBAIKAN: Manual product hanya masuk keranjang, TIDAK masuk database
     saveManualProduct() {
         const nameInput = document.getElementById('manualProdName');
         const priceInput = document.getElementById('manualProdPrice');
@@ -267,7 +273,6 @@ const posModule = {
         const qty = parseInt(qtyInput?.value) || 1;
         const category = categoryInput?.value || 'lainnya';
 
-        // Validasi
         if (!name) {
             app.showToast('❌ Nama produk wajib diisi!');
             nameInput?.focus();
@@ -285,15 +290,13 @@ const posModule = {
             return;
         }
 
-        // PERBAIKAN: Buat ID unik untuk item manual (negatif agar tidak bentrok dengan produk database)
         const manualId = -Date.now();
 
-        // Tambahkan langsung ke keranjang, TIDAK ke database produk
         this.cart.push({
-            id: manualId, // ID negatif menandakan item manual
+            id: manualId,
             name: name,
             price: price,
-            originalPrice: price, // Simpan harga asli
+            originalPrice: price,
             cost: cost || Math.floor(price * 0.7),
             qty: qty,
             isManual: true,
@@ -308,10 +311,18 @@ const posModule = {
         app.showToast(`✅ ${name} (${qty}x) ditambahkan! Subtotal: Rp ${utils.formatNumber(subtotal)}`);
     },
 
+    // ✅ PERUBAHAN: Check kasir status berdasarkan user shift
     addToCart(productId) {
-        // Check kasir status
-        if (!dataManager.data.kasir || !dataManager.data.kasir.isOpen) {
-            app.showToast('⚠️ Kasir belum dibuka! Buka kasir di Pengaturan (⚙️)');
+        // ✅ PERUBAHAN: Check apakah user ini punya shift aktif
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        if (!userShift) {
+            app.showToast('⚠️ Kasir belum dibuka! Buka kasir terlebih dahulu.');
+            // Tanya apakah mau buka kasir
+            if (typeof router !== 'undefined') {
+                router.showOpenKasirFirstModal('pos', null);
+            }
             return;
         }
 
@@ -335,7 +346,7 @@ const posModule = {
                 id: product.id,
                 name: product.name,
                 price: product.price,
-                originalPrice: product.price, // Simpan harga asli untuk referensi
+                originalPrice: product.price,
                 cost: product.cost || 0,
                 qty: 1,
                 priceEdited: false
@@ -373,7 +384,6 @@ const posModule = {
         }
     },
 
-    // FITUR BARU: Edit harga item di keranjang
     openEditPriceModal(productId) {
         const item = this.cart.find(c => c.id === productId);
         if (!item) return;
@@ -423,7 +433,6 @@ const posModule = {
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
 
-        // Focus ke input harga baru
         setTimeout(() => {
             const input = document.getElementById('newPriceInput');
             if (input) {
@@ -455,7 +464,6 @@ const posModule = {
             }
         }
 
-        // Update harga
         item.price = newPrice;
         item.priceEdited = newPrice !== item.originalPrice;
 
@@ -546,7 +554,6 @@ const posModule = {
         document.getElementById('cartCardTotal').textContent = 'Rp ' + utils.formatNumber(total);
     },
 
-    // PERBAIKAN: Tambah tombol "Uang Pas"
     openCheckout() {
         if (this.cart.length === 0) return;
 
@@ -580,7 +587,6 @@ const posModule = {
                             <label>Uang Diterima (Rp)</label>
                             <input type="number" id="cashReceived" placeholder="0" onkeyup="posModule.calculateChange()">
 
-                            <!-- TOMBOL UANG PAS -->
                             <button onclick="posModule.setUangPas()" 
                                     style="position: absolute; right: 5px; top: 32px; 
                                            background: var(--success); color: white; 
@@ -617,7 +623,6 @@ const posModule = {
         if (modal) modal.remove();
     },
 
-    // PERBAIKAN: Tombol Uang Pas
     setUangPas() {
         const total = this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
         const input = document.getElementById('cashReceived');
@@ -636,7 +641,6 @@ const posModule = {
             cashSection.style.display = isCash ? 'block' : 'none';
         }
 
-        // Reset change display
         const changeGroup = document.getElementById('changeGroup');
         if (changeGroup) {
             changeGroup.style.display = 'none';
@@ -660,7 +664,7 @@ const posModule = {
         }
     },
 
-    // ✅ PERBAIKAN UTAMA: Process Payment - Hanya tambah kas untuk CASH
+    // ✅ PERUBAHAN UTAMA: Process Payment dengan user tracking
     processPayment() {
         const total = this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
         const received = parseInt(document.getElementById('cashReceived').value) || 0;
@@ -672,9 +676,17 @@ const posModule = {
             return;
         }
 
-        // Create transaction
+        // ✅ PERUBAHAN: Ambil current user
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+
+        // Create transaction dengan user info
         const transaction = {
             id: Date.now(),
+            // ✅ PERUBAHAN: Tambahkan user info
+            userId: currentUser ? currentUser.userId : 'unknown',
+            userName: currentUser ? currentUser.name : 'Unknown',
+            userRole: currentUser ? currentUser.role : 'unknown',
             date: new Date().toISOString(),
             items: [...this.cart],
             total: total,
@@ -691,42 +703,48 @@ const posModule = {
 
         // Update stock hanya untuk produk dari database (ID positif)
         this.cart.forEach(item => {
-            if (item.id > 0) { // ID positif = produk database
+            if (item.id > 0) {
                 const product = dataManager.data.products.find(p => p.id === item.id);
                 if (product) product.stock -= item.qty;
             }
         });
 
-        // ✅ PERBAIKAN: Hanya tambah kas untuk pembayaran CASH
-        if (method === 'cash') {
-            // Tambah ke currentCash
-            dataManager.data.settings.currentCash += total;
+        // ✅ PERUBAHAN: Update user shift jika ada
+        if (userShift) {
+            userShift.transactionCount = (userShift.transactionCount || 0) + 1;
+            userShift.totalSales = (userShift.totalSales || 0) + total;
+            userShift.currentCash = (userShift.currentCash || 0) + (method === 'cash' ? total : 0);
+            userShift.lastActive = new Date().toISOString();
             
-            // Simpan juga ke cashTransactions untuk tracking & recalculate
+            // Update di dataManager
+            dataManager.updateUserShift(currentUser.userId, userShift);
+        }
+
+        // ✅ PERUBAHAN: Hanya tambah kas global untuk CASH
+        if (method === 'cash') {
+            dataManager.data.settings.currentCash = (dataManager.data.settings.currentCash || 0) + total;
+            
             dataManager.data.cashTransactions.push({
                 id: Date.now(),
                 date: transaction.date,
                 type: 'pos_sale',
                 amount: total,
                 category: 'penjualan_pos',
-                note: `Penjualan POS - ${transaction.transactionNumber}`,
+                note: `Penjualan POS - ${transaction.transactionNumber} (${currentUser ? currentUser.name : 'Unknown'})`,
                 source: 'pos_sale',
                 transactionId: transaction.id,
-                paymentMethod: 'cash'
+                paymentMethod: 'cash',
+                userId: currentUser ? currentUser.userId : 'unknown'
             });
         }
-        // ❌ Non-cash (debit/qris/transfer) TIDAK menambah kas fisik!
-        // Uang masuk ke rekening digital, bukan kasir
 
         dataManager.save();
 
-        // Print if requested - via Bluetooth atau Window Print
+        // Print if requested
         if (shouldPrint) {
-            // Coba print via Bluetooth dulu
             if (typeof bluetoothModule !== 'undefined' && bluetoothModule.isConnected) {
                 bluetoothModule.printCurrentPos();
             } else {
-                // Fallback ke window print
                 this.printReceipt(transaction);
             }
         }
@@ -741,7 +759,6 @@ const posModule = {
         app.showToast('✅ Pembayaran berhasil! 🎉');
     },
 
-    // Print via Window (fallback)
     printReceipt(transaction) {
         const header = dataManager.data.settings.receiptHeader || {};
 
@@ -753,12 +770,12 @@ const posModule = {
             '================================',
             'No: ' + transaction.transactionNumber,
             'Tgl: ' + new Date(transaction.date).toLocaleString('id-ID'),
+            'Kasir: ' + (transaction.userName || 'Unknown'),
             '--------------------------------'
         ];
 
         transaction.items.forEach(item => {
             receiptLines.push(item.name);
-            // Tampilkan indikator jika harga diubah
             const priceIndicator = item.priceEdited || item.price !== item.originalPrice ? '*' : '';
             receiptLines.push(item.qty + ' x Rp ' + utils.formatNumber(item.price) + priceIndicator + ' = Rp ' + utils.formatNumber(item.qty * item.price));
         });
@@ -773,7 +790,6 @@ const posModule = {
             receiptLines.push('Metode:     ' + transaction.paymentMethod.toUpperCase());
         }
 
-        // Tambahkan keterangan jika ada harga yang diubah
         const hasEditedPrice = transaction.items.some(item => item.priceEdited || item.price !== item.originalPrice);
         if (hasEditedPrice) {
             receiptLines.push('--------------------------------');
@@ -811,11 +827,6 @@ const posModule = {
         w.print();
     },
 
-    // ==========================================
-    // BLUETOOTH PRINT METHODS
-    // ==========================================
-    
-    // Method untuk dipanggil dari bluetoothModule
     getCurrentCartForPrint() {
         if (this.cart.length === 0) return null;
         
