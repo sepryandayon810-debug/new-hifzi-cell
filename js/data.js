@@ -90,6 +90,12 @@ const dataManager = {
             };
         }
         
+        // ✅ PERBAIKAN: Pastikan struktur activeShifts benar
+        if (!Array.isArray(this.data.kasir.activeShifts)) {
+            this.data.kasir.activeShifts = [];
+        }
+        
+        // ✅ PERBAIKAN: Konversi format lama ke format baru jika perlu
         if (this.data.kasir.currentUser !== undefined && !this.data.kasir.activeShifts) {
             const oldKasir = { ...this.data.kasir };
             this.data.kasir = {
@@ -115,6 +121,7 @@ const dataManager = {
         if (!this.data.settings.phone) this.data.settings.phone = '';
         if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
 
+        // ✅ PERBAIKAN: Cek auto close hanya jika hari berbeda
         this.checkAutoCloseMidnight();
         
         this.initUsers();
@@ -189,10 +196,11 @@ const dataManager = {
         const now = new Date();
         const today = now.toDateString();
         
+        // ✅ PERBAIKAN: Hanya tutup shift jika hari benar-benar berbeda
         if (this.data.kasir.activeShifts && this.data.kasir.activeShifts.length > 0) {
             const shiftsToClose = this.data.kasir.activeShifts.filter(shift => {
                 const shiftDate = new Date(shift.openTime).toDateString();
-                return shiftDate !== today;
+                return shiftDate !== today; // Hanya tutup jika hari berbeda
             });
             
             if (shiftsToClose.length > 0) {
@@ -599,7 +607,7 @@ const dataManager = {
         };
     },
 
-    // ✅ PERBAIKAN: openKasir - jangan reset modal yang sudah diatur
+    // ✅ PERBAIKAN: openKasir - jangan reset modal yang sudah diatur, jangan buat shift baru jika masih hari yang sama
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
@@ -610,19 +618,22 @@ const dataManager = {
             return { success: false, message: 'User tidak ditemukan!' };
         }
         
-        // Jika shift hari ini masih aktif, lanjutkan saja
-        if (status.isContinue) {
+        // ✅ PERBAIKAN: Jika shift hari ini masih aktif, lanjutkan saja tanpa reset
+        if (status.isContinue && !forceReset) {
             const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
             if (existingShiftIndex !== -1) {
+                // Update lastActive saja, jangan reset apa-apa
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 this.save();
+                
+                const shift = this.data.kasir.activeShifts[existingShiftIndex];
+                return { 
+                    success: true, 
+                    reset: false, 
+                    isContinue: true,
+                    message: `Shift dilanjutkan. Modal: Rp ${(shift.modalAwal || 0).toLocaleString('id-ID')}` 
+                };
             }
-            return { 
-                success: true, 
-                reset: false, 
-                isContinue: true,
-                message: 'Shift hari ini dilanjutkan.' 
-            };
         }
         
         // Cek apakah user sudah punya shift aktif (hari sebelumnya)
@@ -632,7 +643,7 @@ const dataManager = {
             const existingShift = this.data.kasir.activeShifts[existingShiftIndex];
             const shiftDate = new Date(existingShift.openTime).toDateString();
             
-            // Jika hari yang sama dan dipaksa reset
+            // ✅ PERBAIKAN: Jika hari yang sama dan tidak dipaksa reset, lanjutkan
             if (shiftDate === today && !forceReset) {
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 this.save();
@@ -640,12 +651,14 @@ const dataManager = {
                     success: true, 
                     reset: false, 
                     isContinue: true,
-                    message: 'Shift dilanjutkan.' 
+                    message: `Shift dilanjutkan. Modal: Rp ${(existingShift.modalAwal || 0).toLocaleString('id-ID')}` 
                 };
             }
             
-            // Simpan history shift lama sebelum ganti
-            this.saveShiftHistory(existingShift);
+            // Simpan history shift lama sebelum ganti (hanya jika hari berbeda)
+            if (shiftDate !== today) {
+                this.saveShiftHistory(existingShift);
+            }
             
             // Hapus shift lama
             this.data.kasir.activeShifts.splice(existingShiftIndex, 1);
@@ -659,11 +672,8 @@ const dataManager = {
             delete this.data.pendingModals[userId];
         }
         
-        // ✅ PERBAIKAN: Jika tidak ada pending modal, gunakan modal dari settings (untuk owner/admin)
-        // atau 0 untuk kasir (akan diatur nanti)
-        if (modalAwal === 0 && (user.role === 'owner' || user.role === 'admin')) {
-            modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
-        }
+        // ✅ PERBAIKAN: Jika tidak ada pending modal, gunakan 0 untuk kasir
+        // (Owner akan atur nanti via "Atur Modal Kasir")
         
         // Buat shift baru
         const newShift = {
@@ -690,7 +700,7 @@ const dataManager = {
             isContinue: false,
             message: modalAwal > 0 
                 ? `Kasir dibuka! Modal awal: Rp ${modalAwal.toLocaleString('id-ID')}` 
-                : 'Kasir dibuka! Shift baru dimulai.' 
+                : 'Kasir dibuka! Modal belum diatur. Hubungi owner untuk mengatur modal.' 
         };
     },
 
