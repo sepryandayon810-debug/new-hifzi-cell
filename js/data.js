@@ -473,7 +473,8 @@ const dataManager = {
     logout() {
         const currentUser = this.getCurrentUser();
         if (currentUser) {
-            this.closeKasir(currentUser.userId);
+            // ✅ JANGAN tutup kasir saat logout, biarkan shift tetap aktif
+            // this.closeKasir(currentUser.userId);
         }
         this.save();
         localStorage.removeItem(this.CURRENT_USER_KEY);
@@ -611,7 +612,7 @@ const dataManager = {
         };
     },
 
-    // ✅ PERBAIKAN: openKasir - simpan modal ke settings untuk owner/admin
+    // ✅ PERBAIKAN: openKasir - Pertahankan modal dan transaksi saat shift dilanjutkan
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
@@ -622,14 +623,25 @@ const dataManager = {
             return { success: false, message: 'User tidak ditemukan!' };
         }
         
-        // Jika shift hari ini masih aktif, lanjutkan saja tanpa reset
+        // ✅ PERBAIKAN: Jika shift hari ini masih aktif, lanjutkan dengan data yang ada
         if (status.isContinue && !forceReset) {
             const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
             if (existingShiftIndex !== -1) {
+                // Update lastActive saja, jangan ubah modal atau currentCash
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 this.save();
                 
                 const shift = this.data.kasir.activeShifts[existingShiftIndex];
+                
+                // ✅ Hitung ulang currentCash dari modal + transaksi hari ini
+                const recalculatedCash = this.calculateShiftCash(userId, shift.modalAwal);
+                
+                // Update currentCash jika berbeda (untuk sinkronisasi)
+                if (recalculatedCash !== shift.currentCash) {
+                    this.data.kasir.activeShifts[existingShiftIndex].currentCash = recalculatedCash;
+                    this.save();
+                }
+                
                 return { 
                     success: true, 
                     reset: false, 
@@ -646,8 +658,14 @@ const dataManager = {
             const existingShift = this.data.kasir.activeShifts[existingShiftIndex];
             const shiftDate = new Date(existingShift.openTime).toDateString();
             
+            // ✅ Jika hari sama dan tidak force reset, lanjutkan shift
             if (shiftDate === today && !forceReset) {
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
+                
+                // ✅ Hitung ulang currentCash dari transaksi
+                const recalculatedCash = this.calculateShiftCash(userId, existingShift.modalAwal);
+                this.data.kasir.activeShifts[existingShiftIndex].currentCash = recalculatedCash;
+                
                 this.save();
                 return { 
                     success: true, 
@@ -657,6 +675,7 @@ const dataManager = {
                 };
             }
             
+            // Jika hari berbeda, simpan history
             if (shiftDate !== today) {
                 this.saveShiftHistory(existingShift);
             }
@@ -664,7 +683,7 @@ const dataManager = {
             this.data.kasir.activeShifts.splice(existingShiftIndex, 1);
         }
         
-        // ✅ PERBAIKAN: Untuk owner/admin, simpan modal ke settings
+        // Buat shift baru
         let modalAwal = 0;
         
         if (user.role === 'owner' || user.role === 'admin') {
@@ -678,6 +697,9 @@ const dataManager = {
             }
         }
         
+        // ✅ Hitung currentCash awal = modal + transaksi hari ini (jika ada)
+        const initialCash = this.calculateShiftCash(userId, modalAwal);
+        
         // Buat shift baru
         const newShift = {
             userId: userId,
@@ -686,7 +708,7 @@ const dataManager = {
             openTime: new Date().toISOString(),
             lastActive: new Date().toISOString(),
             modalAwal: modalAwal,
-            currentCash: modalAwal,
+            currentCash: initialCash, // ✅ Gunakan hasil perhitungan, bukan hanya modal
             transactionCount: 0,
             totalSales: 0
         };
@@ -695,9 +717,9 @@ const dataManager = {
         this.data.kasir.isOpen = true;
         this.data.kasir.date = today;
         
-        // ✅ PERBAIKAN: Update settings.currentCash juga untuk owner/admin
+        // Update settings.currentCash untuk owner/admin
         if (user.role === 'owner' || user.role === 'admin') {
-            this.data.settings.currentCash = modalAwal;
+            this.data.settings.currentCash = initialCash;
         }
         
         this.save();
@@ -710,6 +732,44 @@ const dataManager = {
                 ? `Kasir dibuka! Modal awal: Rp ${modalAwal.toLocaleString('id-ID')}` 
                 : 'Kasir dibuka! Modal belum diatur.' 
         };
+    },
+
+    // ✅ FUNGSI BARU: Hitung cash shift dari modal + transaksi hari ini
+    calculateShiftCash(userId, modalAwal) {
+        const today = new Date().toDateString();
+        let cash = parseInt(modalAwal) || 0;
+        
+        // Ambil semua transaksi kas hari ini untuk user ini
+        const todayCashTrans = this.data.cashTransactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === today && t.userId === userId;
+        });
+        
+        // Hitung dari transaksi kas
+        todayCashTrans.forEach(t => {
+            const amount = parseInt(t.amount) || 0;
+            if (t.type === 'in' || t.type === 'modal_in' || t.type === 'topup') {
+                cash += amount;
+            } else if (t.type === 'out') {
+                cash -= amount;
+            }
+        });
+        
+        // Ambil transaksi POS hari ini untuk user ini
+        const todayPosTrans = this.data.transactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === today && 
+                   t.userId === userId && 
+                   t.status !== 'voided' &&
+                   t.paymentMethod === 'cash';
+        });
+        
+        // Tambahkan penjualan tunai
+        todayPosTrans.forEach(t => {
+            cash += parseInt(t.total) || 0;
+        });
+        
+        return cash;
     },
 
     closeKasir(userId) {
