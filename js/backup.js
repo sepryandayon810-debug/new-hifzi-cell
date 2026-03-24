@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.3)
-// FIX: Sync config (Firebase/GAS/Telegram) to cloud
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.4)
+// FIX: substring error on non-string IDs
 // ============================================
 
 const backupModule = {
@@ -46,7 +46,6 @@ const backupModule = {
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
     
-    // Telegram config disimpan di sini juga untuk kemudahan akses
     telegramConfig: {
         botToken: '',
         chatId: '',
@@ -92,7 +91,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.0.3 - Config Sync Ready...');
+        console.log('[Backup] Initializing v4.0.4 - Substring Fix Ready...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -101,7 +100,6 @@ const backupModule = {
         this.lastCloudCheck = localStorage.getItem(this.KEYS.LAST_CLOUD_CHECK) || null;
         this.cloudCheckCount = parseInt(localStorage.getItem(this.KEYS.CLOUD_CHECK_COUNT) || '0');
         
-        // Load Telegram config
         const savedTelegram = localStorage.getItem(this.KEYS.TELEGRAM_CONFIG);
         if (savedTelegram) {
             this.telegramConfig = JSON.parse(savedTelegram);
@@ -148,10 +146,6 @@ const backupModule = {
         return this;
     },
 
-    // ============================================
-    // HELPER: Remove undefined values recursively
-    // ============================================
-    
     cleanUndefined(obj) {
         if (obj === null || obj === undefined) return null;
         
@@ -172,12 +166,7 @@ const backupModule = {
         return obj;
     },
 
-    // ============================================
-    // CONFIG SYNC - BARU: Simpan config ke cloud
-    // ============================================
-    
     getConfigForBackup() {
-        // Ambil config lengkap untuk disimpan ke cloud
         return {
             provider: this.currentProvider,
             gasUrl: this.gasUrl,
@@ -185,7 +174,7 @@ const backupModule = {
             firebaseConfig: this.firebaseConfig,
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
-            version: '4.0.3',
+            version: '4.0.4',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -198,14 +187,12 @@ const backupModule = {
         
         let hasChanges = false;
         
-        // Apply provider jika berbeda
         if (cloudConfig.provider && cloudConfig.provider !== this.currentProvider) {
             this.currentProvider = cloudConfig.provider;
             localStorage.setItem(this.KEYS.PROVIDER, this.currentProvider);
             hasChanges = true;
         }
         
-        // Apply GAS config
         if (cloudConfig.gasUrl && cloudConfig.gasUrl !== this.gasUrl) {
             this.gasUrl = cloudConfig.gasUrl;
             localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
@@ -218,7 +205,6 @@ const backupModule = {
             hasChanges = true;
         }
         
-        // Apply Firebase config
         if (cloudConfig.firebaseConfig && cloudConfig.firebaseConfig.apiKey) {
             const newConfig = JSON.stringify(cloudConfig.firebaseConfig);
             const oldConfig = JSON.stringify(this.firebaseConfig);
@@ -229,7 +215,6 @@ const backupModule = {
             }
         }
         
-        // Apply Telegram config
         if (cloudConfig.telegram) {
             this.telegramConfig = {
                 ...this.telegramConfig,
@@ -238,13 +223,11 @@ const backupModule = {
             localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.telegramConfig));
             hasChanges = true;
             
-            // Update juga ke dataManager jika ada
             if (typeof dataManager !== 'undefined' && dataManager.data) {
                 dataManager.data.telegram = this.telegramConfig;
             }
         }
         
-        // Apply auto sync setting
         if (cloudConfig.autoSync !== undefined && cloudConfig.autoSync !== this.isAutoSyncEnabled) {
             this.isAutoSyncEnabled = cloudConfig.autoSync;
             localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
@@ -257,10 +240,6 @@ const backupModule = {
         return hasChanges;
     },
 
-    // ============================================
-    // PREVIEW & DOWNLOAD FEATURES
-    // ============================================
-    
     async previewCloudData() {
         if (!this.isOnline) {
             this.showToast('📴 Offline - Tidak bisa preview');
@@ -330,7 +309,6 @@ const backupModule = {
         const categoriesTable = this.generateCategoriesTable(data.categories || []);
         const usersTable = this.generateUsersTable(data.users || []);
         
-        // Tampilkan juga config yang tersimpan
         const configInfo = data._configMeta ? `
         <div style="background: #e6fffa; border: 2px solid #81e6d9; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
             <div style="font-weight: 600; color: #234e52; margin-bottom: 8px;">⚙️ Config Tersimpan di Cloud</div>
@@ -577,7 +555,7 @@ const backupModule = {
     },
 
     generateProductsTable(products) {
-        if (products.length === 0) {
+        if (!products || products.length === 0) {
             return '<div style="text-align: center; padding: 40px; color: #718096;">📦 Tidak ada data produk</div>';
         }
         
@@ -613,18 +591,26 @@ const backupModule = {
         `;
     },
 
+    // ============================================
+    // FIX: generateTransactionsTable dengan safe string conversion
+    // ============================================
     generateTransactionsTable(transactions) {
-        if (transactions.length === 0) {
+        if (!transactions || transactions.length === 0) {
             return '<div style="text-align: center; padding: 40px; color: #718096;">📝 Tidak ada data transaksi</div>';
         }
         
-        const rows = transactions.slice(0, 100).map((t, i) => `
+        const rows = transactions.slice(0, 100).map((t, i) => {
+            // FIX: Pastikan id adalah string sebelum menggunakan substring
+            const idStr = t.id ? String(t.id) : '-';
+            const displayId = idStr.length > 8 ? idStr.substring(0, 8) : idStr;
+            
+            return `
             <tr>
                 <td class="text-center">${i + 1}</td>
-                <td>${t.id?.substring(0, 8) || '-'}</td>
+                <td>${displayId}</td>
                 <td>${new Date(t.date).toLocaleDateString('id-ID')}</td>
                 <td>${t.customerName || 'Umum'}</td>
-                <td class="text-right">${t.items?.length || 0} item</td>
+                <td class="text-right">${(t.items || []).length} item</td>
                 <td class="text-right"><strong>Rp ${(t.total || 0).toLocaleString('id-ID')}</strong></td>
                 <td class="text-center">
                     <span class="badge ${t.paymentMethod === 'cash' ? 'badge-success' : 'badge-info'}">
@@ -632,7 +618,7 @@ const backupModule = {
                     </span>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
         
         const moreRow = transactions.length > 100 ? 
             `<tr><td colspan="7" class="text-center" style="background: #edf2f7; font-style: italic;">... dan ${transactions.length - 100} transaksi lainnya</td></tr>` : '';
@@ -656,7 +642,7 @@ const backupModule = {
     },
 
     generateCashFlowTable(transactions) {
-        if (transactions.length === 0) {
+        if (!transactions || transactions.length === 0) {
             return '<div style="text-align: center; padding: 40px; color: #718096;">💸 Tidak ada data cash flow</div>';
         }
         
@@ -703,7 +689,7 @@ const backupModule = {
     },
 
     generateDebtsTable(debts) {
-        if (debts.length === 0) {
+        if (!debts || debts.length === 0) {
             return '<div style="text-align: center; padding: 40px; color: #718096;">💳 Tidak ada data hutang</div>';
         }
         
@@ -748,21 +734,24 @@ const backupModule = {
     },
 
     generateCategoriesTable(categories) {
-        if (categories.length === 0) {
+        if (!categories || categories.length === 0) {
             return '<div style="text-align: center; padding: 40px; color: #718096;">📁 Tidak ada data kategori</div>';
         }
         
-        const rows = categories.map((c, i) => `
+        const rows = categories.map((c, i) => {
+            // FIX: Pastikan id adalah string
+            const idStr = c.id ? String(c.id) : '-';
+            return `
             <tr>
                 <td class="text-center">${i + 1}</td>
                 <td><strong>${c.name || '-'}</strong></td>
                 <td>${c.description || '-'}</td>
                 <td class="text-center">${c.productCount || 0}</td>
                 <td class="text-center">
-                    <span class="badge badge-info">${c.id?.substring(0, 8) || '-'}</span>
+                    <span class="badge badge-info">${idStr.substring(0, 8)}</span>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
         
         return `
             <table class="preview-table">
@@ -781,7 +770,7 @@ const backupModule = {
     },
 
     generateUsersTable(users) {
-        if (users.length === 0) {
+        if (!users || users.length === 0) {
             return '<div style="text-align: center; padding: 40px; color: #718096;">👥 Tidak ada data user</div>';
         }
         
@@ -857,10 +846,6 @@ const backupModule = {
         this.showToast('✅ Data cloud didownload!');
     },
 
-    // ============================================
-    // MANUAL CHECK UPDATE
-    // ============================================
-    
     async manualCheckUpdate() {
         if (!this.isOnline) {
             this.showToast('📴 Offline - Tidak bisa cek update');
@@ -890,10 +875,6 @@ const backupModule = {
         await this.checkCloudDataOnLoad(true);
     },
 
-    // ============================================
-    // AUTO CHECK CLOUD DATA - DENGAN CONFIG SYNC
-    // ============================================
-    
     async checkCloudDataOnLoad(force = false) {
         if (!force && this.hasCheckedCloudOnLoad) return;
         if (!this.isOnline) {
@@ -961,13 +942,11 @@ const backupModule = {
                 return;
             }
             
-            // BARU: Apply config dari cloud terlebih dahulu
             if (cloudData && cloudData._configMeta) {
                 console.log('[Backup] Config found in cloud data');
                 const configChanged = this.applyConfigFromCloud(cloudData._configMeta);
                 if (configChanged) {
                     this.showToast('✅ Config diperbarui dari cloud!');
-                    // Re-init jika provider berubah
                     if (cloudData._configMeta.provider === 'firebase' && !this.firebaseApp) {
                         this.initFirebase(true);
                     }
@@ -1037,7 +1016,6 @@ const backupModule = {
         const cloudDate = new Date(cloudTime).toLocaleString('id-ID');
         const localDate = this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah sync';
         
-        // Cek apakah ada config baru di cloud
         const hasNewConfig = cloudData && cloudData._configMeta;
         const configNotice = hasNewConfig ? `
         <div style="background: #e6fffa; border-left: 4px solid #38b2ac; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
@@ -1139,7 +1117,6 @@ const backupModule = {
     async smartMergeData(cloudData) {
         const localData = this.getBackupData();
         
-        // BARU: Merge config juga
         if (cloudData._configMeta) {
             this.applyConfigFromCloud(cloudData._configMeta);
         }
@@ -1159,7 +1136,7 @@ const backupModule = {
             telegram: cloudData.telegram || localData.telegram || { botToken: '', chatId: '', enabled: false },
             searchHistory: this.mergeArrays(localData.searchHistory || [], cloudData.searchHistory || [], 'id', 'timestamp'),
             _backupMeta: {
-                version: '4.0.3',
+                version: '4.0.4',
                 deviceId: this.deviceId,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider,
@@ -1232,7 +1209,6 @@ const backupModule = {
         try {
             this.updateSyncStatus(this.SYNC_STATUS.SYNCING);
             
-            // BARU: Apply config dari cloud
             if (cloudData._configMeta) {
                 this.applyConfigFromCloud(cloudData._configMeta);
             }
@@ -1339,10 +1315,6 @@ const backupModule = {
         }
     },
 
-    // ============================================
-    // FIXED: getBackupData dengan config
-    // ============================================
-
     getBackupData() {
         let allData = {};
         if (typeof dataManager !== 'undefined') {
@@ -1350,7 +1322,6 @@ const backupModule = {
             else if (dataManager.data) allData = dataManager.data;
         }
         
-        // Update telegram config dari dataManager
         if (allData.telegram) {
             this.telegramConfig = {
                 ...this.telegramConfig,
@@ -1359,7 +1330,6 @@ const backupModule = {
             localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.telegramConfig));
         }
         
-        // Helper untuk membersihkan undefined
         const clean = (val) => {
             if (val === undefined) return null;
             if (val === null) return null;
@@ -1530,17 +1500,15 @@ const backupModule = {
             searchHistory: searchHistory,
             users: users,
             _backupMeta: {
-                version: '4.0.3',
+                version: '4.0.4',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider
             },
-            // BARU: Simpan config ke dalam data
             _configMeta: this.getConfigForBackup()
         };
 
-        // Final cleaning untuk memastikan tidak ada undefined
         return this.cleanUndefined(backupData);
     },
 
@@ -1558,10 +1526,6 @@ const backupModule = {
         }
     },
 
-    // ============================================
-    // RENDER
-    // ============================================
-    
     render() {
         if (!this.isInitialized) { this.init(); }
         else { this.reloadAllConfig(); this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44; }
@@ -1831,10 +1795,6 @@ const backupModule = {
         `;
     },
 
-    // ============================================
-    // FIREBASE METHODS
-    // ============================================
-    
     initFirebase(attemptAutoLogin = false) {
         if (typeof firebase === 'undefined') return;
         if (!this.firebaseConfig.apiKey) return;
@@ -1952,14 +1912,9 @@ const backupModule = {
         this.render();
     },
 
-    // ============================================
-    // FIXED: uploadToFirebase dengan config
-    // ============================================
-
     async uploadToFirebase(data, silent = false) {
         if (!this.database || !this.currentUser) throw new Error('Not authenticated');
         
-        // Bersihkan data dari undefined sebelum upload
         const cleanData = this.cleanUndefined({
             ...data,
             _syncMeta: {
@@ -1967,7 +1922,7 @@ const backupModule = {
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 hash: this.generateDataHash(data),
-                version: '4.0.3'
+                version: '4.0.4'
             }
         });
         
@@ -1988,7 +1943,6 @@ const backupModule = {
         
         if (!data) throw new Error('No data in Firebase');
         
-        // BARU: Apply config dari cloud
         if (data._configMeta) {
             this.applyConfigFromCloud(data._configMeta);
         }
@@ -2007,10 +1961,6 @@ const backupModule = {
         return cleanData;
     },
 
-    // ============================================
-    // GOOGLE SHEETS METHODS
-    // ============================================
-    
     validateSheetId(sheetId) {
         if (!sheetId) return { valid: false, message: 'Sheet ID kosong', cleaned: '' };
         const cleaned = sheetId.trim();
@@ -2129,7 +2079,6 @@ const backupModule = {
         if (!result.success) throw new Error(result.message || 'Download failed');
         
         if (!previewOnly && result.data) {
-            // BARU: Apply config dari cloud
             if (result.data._configMeta) {
                 this.applyConfigFromCloud(result.data._configMeta);
             }
@@ -2192,10 +2141,6 @@ const backupModule = {
         }
     },
 
-    // ============================================
-    // UTILITY METHODS
-    // ============================================
-    
     setProvider(provider) {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
@@ -2345,7 +2290,6 @@ const backupModule = {
             this.firebaseConfig = JSON.parse(localStorage.getItem(this.KEYS.FIREBASE_CONFIG) || '{}');
         }
         
-        // Load Telegram config
         const savedTelegram = localStorage.getItem(this.KEYS.TELEGRAM_CONFIG);
         if (savedTelegram) {
             this.telegramConfig = JSON.parse(savedTelegram);
@@ -2398,7 +2342,6 @@ const backupModule = {
             try {
                 const data = JSON.parse(e.target.result);
                 
-                // BARU: Apply config dari file import juga
                 if (data._configMeta) {
                     this.applyConfigFromCloud(data._configMeta);
                 }
@@ -2539,4 +2482,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v4.0.3 loaded - Config Sync Ready');
+console.log('[Backup] v4.0.4 loaded - Substring Fix Ready');
