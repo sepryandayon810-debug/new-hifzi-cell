@@ -1,3 +1,7 @@
+// ============================================
+// DATA MANAGER - Hifzi Cell POS
+// ============================================
+
 const dataManager = {
     STORAGE_KEY: 'hifzi_data',
     USERS_KEY: 'hifzi_users',
@@ -90,12 +94,12 @@ const dataManager = {
             };
         }
         
-        // ✅ PERBAIKAN: Pastikan struktur activeShifts benar
+        // Pastikan struktur activeShifts benar
         if (!Array.isArray(this.data.kasir.activeShifts)) {
             this.data.kasir.activeShifts = [];
         }
         
-        // ✅ PERBAIKAN: Konversi format lama ke format baru jika perlu
+        // Konversi format lama ke format baru jika perlu
         if (this.data.kasir.currentUser !== undefined && !this.data.kasir.activeShifts) {
             const oldKasir = { ...this.data.kasir };
             this.data.kasir = {
@@ -121,7 +125,7 @@ const dataManager = {
         if (!this.data.settings.phone) this.data.settings.phone = '';
         if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
 
-        // ✅ PERBAIKAN: Cek auto close hanya jika hari berbeda
+        // Cek auto close hanya jika hari berbeda
         this.checkAutoCloseMidnight();
         
         this.initUsers();
@@ -196,7 +200,7 @@ const dataManager = {
         const now = new Date();
         const today = now.toDateString();
         
-        // ✅ PERBAIKAN: Hanya tutup shift jika hari benar-benar berbeda
+        // Hanya tutup shift jika hari benar-benar berbeda
         if (this.data.kasir.activeShifts && this.data.kasir.activeShifts.length > 0) {
             const shiftsToClose = this.data.kasir.activeShifts.filter(shift => {
                 const shiftDate = new Date(shift.openTime).toDateString();
@@ -607,7 +611,7 @@ const dataManager = {
         };
     },
 
-    // ✅ PERBAIKAN: openKasir - jangan reset modal yang sudah diatur, jangan buat shift baru jika masih hari yang sama
+    // ✅ PERBAIKAN: openKasir - simpan modal ke settings untuk owner/admin
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
@@ -618,11 +622,10 @@ const dataManager = {
             return { success: false, message: 'User tidak ditemukan!' };
         }
         
-        // ✅ PERBAIKAN: Jika shift hari ini masih aktif, lanjutkan saja tanpa reset
+        // Jika shift hari ini masih aktif, lanjutkan saja tanpa reset
         if (status.isContinue && !forceReset) {
             const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
             if (existingShiftIndex !== -1) {
-                // Update lastActive saja, jangan reset apa-apa
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 this.save();
                 
@@ -643,7 +646,6 @@ const dataManager = {
             const existingShift = this.data.kasir.activeShifts[existingShiftIndex];
             const shiftDate = new Date(existingShift.openTime).toDateString();
             
-            // ✅ PERBAIKAN: Jika hari yang sama dan tidak dipaksa reset, lanjutkan
             if (shiftDate === today && !forceReset) {
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 this.save();
@@ -655,25 +657,26 @@ const dataManager = {
                 };
             }
             
-            // Simpan history shift lama sebelum ganti (hanya jika hari berbeda)
             if (shiftDate !== today) {
                 this.saveShiftHistory(existingShift);
             }
             
-            // Hapus shift lama
             this.data.kasir.activeShifts.splice(existingShiftIndex, 1);
         }
         
-        // ✅ PERBAIKAN: Cek pending modal dari owner
+        // ✅ PERBAIKAN: Untuk owner/admin, simpan modal ke settings
         let modalAwal = 0;
-        if (this.data.pendingModals && this.data.pendingModals[userId]) {
-            modalAwal = this.data.pendingModals[userId];
-            // Hapus pending modal setelah diterapkan
-            delete this.data.pendingModals[userId];
-        }
         
-        // ✅ PERBAIKAN: Jika tidak ada pending modal, gunakan 0 untuk kasir
-        // (Owner akan atur nanti via "Atur Modal Kasir")
+        if (user.role === 'owner' || user.role === 'admin') {
+            // Owner/Admin: gunakan modal dari settings
+            modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
+        } else {
+            // Kasir: cek pending modal dari owner
+            if (this.data.pendingModals && this.data.pendingModals[userId]) {
+                modalAwal = this.data.pendingModals[userId];
+                delete this.data.pendingModals[userId];
+            }
+        }
         
         // Buat shift baru
         const newShift = {
@@ -683,7 +686,7 @@ const dataManager = {
             openTime: new Date().toISOString(),
             lastActive: new Date().toISOString(),
             modalAwal: modalAwal,
-            currentCash: modalAwal, // ✅ Set currentCash sama dengan modalAwal
+            currentCash: modalAwal,
             transactionCount: 0,
             totalSales: 0
         };
@@ -691,6 +694,11 @@ const dataManager = {
         this.data.kasir.activeShifts.push(newShift);
         this.data.kasir.isOpen = true;
         this.data.kasir.date = today;
+        
+        // ✅ PERBAIKAN: Update settings.currentCash juga untuk owner/admin
+        if (user.role === 'owner' || user.role === 'admin') {
+            this.data.settings.currentCash = modalAwal;
+        }
         
         this.save();
         
@@ -700,7 +708,7 @@ const dataManager = {
             isContinue: false,
             message: modalAwal > 0 
                 ? `Kasir dibuka! Modal awal: Rp ${modalAwal.toLocaleString('id-ID')}` 
-                : 'Kasir dibuka! Modal belum diatur. Hubungi owner untuk mengatur modal.' 
+                : 'Kasir dibuka! Modal belum diatur.' 
         };
     },
 
@@ -843,6 +851,7 @@ const dataManager = {
     }
 };
 
+// Initialize
 if (typeof dataManager !== 'undefined') {
     try {
         dataManager.init();
@@ -851,3 +860,6 @@ if (typeof dataManager !== 'undefined') {
         console.error('[DataManager] Initialization error:', e);
     }
 }
+
+// Expose to window
+window.dataManager = dataManager;
