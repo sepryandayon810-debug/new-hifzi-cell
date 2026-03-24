@@ -214,9 +214,11 @@ const cashModule = {
         let totalModal = 0;
         
         activeShifts.forEach(shift => {
-            const shiftCash = dataManager.calculateShiftCash(shift.userId, shift.modalAwal);
+            // ✅ Hitung total modal (modalAwal + extraModal)
+            const totalModalShift = (parseInt(shift.modalAwal) || 0) + (parseInt(shift.extraModal) || 0);
+            const shiftCash = dataManager.calculateShiftCash(shift.userId, totalModalShift);
             totalCash += shiftCash;
-            totalModal += parseInt(shift.modalAwal) || 0;
+            totalModal += totalModalShift;
         });
         
         return {
@@ -240,17 +242,31 @@ const cashModule = {
         const isOwner = currentUser && currentUser.role === 'owner';
         const isAdmin = currentUser && currentUser.role === 'admin';
         
+        // ✅ PERBAIKAN: Hitung kas global dari semua shift
         const globalCash = this.calculateGlobalCash();
         
         let currentCash = 0;
         let modalAwal = 0;
         
-        if (isOwner || isAdmin) {
+        if (isOwner) {
+            // Owner lihat total kas gabungan dari semua shift
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
+        } else if (isAdmin) {
+            // ✅ Admin lihat kas dan modal sendiri (bukan global)
+            if (userShift) {
+                const totalModal = (userShift.modalAwal || 0) + (userShift.extraModal || 0);
+                currentCash = dataManager.calculateShiftCash(currentUser.userId, totalModal);
+                modalAwal = totalModal;
+            } else {
+                currentCash = 0;
+                modalAwal = 0;
+            }
         } else if (userShift) {
-            currentCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
-            modalAwal = userShift.modalAwal || 0;
+            // Kasir lihat kas shift sendiri
+            const totalModal = (userShift.modalAwal || 0) + (userShift.extraModal || 0);
+            currentCash = dataManager.calculateShiftCash(currentUser.userId, totalModal);
+            modalAwal = totalModal;
         }
         
         const calculatedCash = this.calculateActualCash();
@@ -294,7 +310,6 @@ const cashModule = {
         ` : '';
 
         // ✅ PERBAIKAN: Tombol Modal Awal - hanya untuk Owner dan Admin (bukan Kasir)
-        // Kasir tidak boleh set modal sendiri, hanya Owner yang bisa atur modal untuk semua user
         const modalAwalButtonHtml = (isOwner || isAdmin) ? `
             <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()">
                 <span class="cash-btn-icon">💰</span>
@@ -310,7 +325,7 @@ const cashModule = {
             </button>
         ` : '';
 
-        // ✅ PERBAIKAN: Tombol bagi modal untuk Admin (bagi modal tambahan ke kasir, bukan set ulang)
+        // ✅ PERBAIKAN: Tombol bagi modal untuk Admin (bagi modal tambahan ke kasir)
         const bagiModalButtonHtml = isAdmin ? `
             <button class="cash-btn atur-modal-kasir" onclick="cashModule.showBagiModalKasir()">
                 <span class="cash-btn-icon">🔄</span>
@@ -338,10 +353,10 @@ const cashModule = {
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
                     ${activeShifts.map(s => {
-                        const shiftCash = dataManager.calculateShiftCash(s.userId, s.modalAwal);
-                        // ✅ Tampilkan juga modal tambahan dari admin jika ada
+                        const mainModal = s.modalAwal || 0;
                         const extraModal = s.extraModal || 0;
-                        const totalModalDisplay = (s.modalAwal || 0) + extraModal;
+                        const totalModal = mainModal + extraModal;
+                        const shiftCash = dataManager.calculateShiftCash(s.userId, totalModal);
                         
                         return `
                         <div class="cash-user-shift-card">
@@ -353,8 +368,8 @@ const cashModule = {
                                 <div class="cash-user-shift-stat modal">
                                     <div class="cash-user-shift-stat-label" style="color: #f57f17;">💰 Modal</div>
                                     <div class="cash-user-shift-stat-value">
-                                        Rp ${utils.formatNumber(totalModalDisplay)}
-                                        ${extraModal > 0 ? `<div style="font-size: 11px; color: #666;">(${utils.formatNumber(s.modalAwal)} + ${utils.formatNumber(extraModal)})</div>` : ''}
+                                        Rp ${utils.formatNumber(totalModal)}
+                                        ${extraModal > 0 ? `<div style="font-size: 11px; color: #666;">(${utils.formatNumber(mainModal)} + ${utils.formatNumber(extraModal)})</div>` : ''}
                                     </div>
                                 </div>
                                 <div class="cash-user-shift-stat cash">
@@ -392,7 +407,7 @@ const cashModule = {
                 <div class="cash-hero">
                     <div class="cash-hero-header">
                         <div>
-                            <div class="cash-hero-title">💰 Kas di Tangan ${isOwner ? '(Global - Semua Shift)' : isAdmin ? '(Global View)' : '(Shift Anda)'}</div>
+                            <div class="cash-hero-title">💰 Kas di Tangan ${isOwner ? '(Global - Semua Shift)' : isAdmin ? '(Admin)' : '(Shift Anda)'}</div>
                             <div class="cash-hero-amount">Rp ${utils.formatNumber(currentCash)}</div>
                             <div style="margin-top: 12px; opacity: 0.9; font-size: 14px;">
                                 📦 Modal: Rp ${utils.formatNumber(modalAwal)} | 
@@ -589,45 +604,45 @@ const cashModule = {
 
         let userListHtml = users.map(user => {
             const shift = activeShifts.find(s => s.userId === user.id);
-            const currentModal = shift ? (shift.modalAwal || 0) : (dataManager.data.pendingModals?.[user.id] || 0);
-            const currentCash = shift ? dataManager.calculateShiftCash(user.id, shift.modalAwal) : 0;
+            const mainModal = shift ? (shift.modalAwal || 0) : (dataManager.data.pendingModals?.[user.id] || 0);
+            const extraModal = shift ? (shift.extraModal || 0) : (dataManager.data.pendingExtraModals?.[user.id] || 0);
+            const totalModal = mainModal + extraModal;
+            const currentCash = shift ? dataManager.calculateShiftCash(user.id, totalModal) : 0;
             const isActive = !!shift;
             
             return `
-                <div class="modal-kasir-card ${isActive ? 'active' : ''}" data-user-id="${user.id}">
-                    <div class="modal-kasir-header">
+                <div class="modal-kasir-card ${isActive ? 'active' : ''}" data-user-id="${user.id}" style="border: 2px solid ${isActive ? '#86efac' : '#e5e7eb'}; border-radius: 12px; padding: 16px; background: white;">
+                    <div class="modal-kasir-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
                         <div>
-                            <div class="modal-kasir-name">${user.name}</div>
-                            <div class="modal-kasir-username">@${user.username}</div>
-                            <span class="modal-kasir-role-badge" style="background: ${user.role === 'admin' ? '#dbeafe' : '#dcfce7'}; color: ${user.role === 'admin' ? '#1e40af' : '#15803d'}; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-top: 4px; display: inline-block;">
+                            <div class="modal-kasir-name" style="font-weight: 700; font-size: 16px; color: #1f2937;">${user.name}</div>
+                            <div class="modal-kasir-username" style="font-size: 13px; color: #6b7280;">@${user.username}</div>
+                            <span style="background: ${user.role === 'admin' ? '#dbeafe' : '#dcfce7'}; color: ${user.role === 'admin' ? '#1e40af' : '#15803d'}; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-top: 4px; display: inline-block;">
                                 ${user.role}
                             </span>
                         </div>
-                        <span class="modal-kasir-status ${isActive ? 'online' : 'offline'}">
+                        <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; ${isActive ? 'background: #dcfce7; color: #15803d;' : 'background: #f3f4f6; color: #6b7280;'}">
                             ${isActive ? '🟢 Aktif' : '⚪ Offline'}
                         </span>
                     </div>
                     
-                    <div class="modal-kasir-stats">
-                        <div class="modal-kasir-stat">
-                            <div class="modal-kasir-stat-label">💰 Modal Saat Ini</div>
-                            <div class="modal-kasir-stat-value" id="displayModal_${user.id}">Rp ${utils.formatNumber(currentModal)}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                        <div style="background: #fef3c7; padding: 12px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 11px; color: #92400e; margin-bottom: 4px;">💰 Modal Utama</div>
+                            <div style="font-size: 16px; font-weight: 700; color: #92400e;" id="displayMainModal_${user.id}">Rp ${utils.formatNumber(mainModal)}</div>
                         </div>
-                        <div class="modal-kasir-stat">
-                            <div class="modal-kasir-stat-label">💵 Kas Saat Ini</div>
-                            <div class="modal-kasir-stat-value" style="color: ${currentCash >= 0 ? 'var(--cash-success)' : 'var(--cash-danger)'};">
-                                Rp ${utils.formatNumber(currentCash)}
-                            </div>
+                        <div style="background: #dbeafe; padding: 12px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 11px; color: #1e40af; margin-bottom: 4px;">💵 Kas</div>
+                            <div style="font-size: 16px; font-weight: 700; color: #1e40af;">Rp ${utils.formatNumber(currentCash)}</div>
                         </div>
                     </div>
                     
-                    <div class="modal-kasir-input-group">
-                        <label style="font-size: 12px; color: #64748b; margin-bottom: 4px; display: block;">Modal Baru (Rp)</label>
+                    <div style="margin-bottom: 8px;">
+                        <label style="font-size: 12px; color: #64748b; margin-bottom: 4px; display: block; font-weight: 600;">Modal Utama Baru (Rp)</label>
                         <input type="number" 
                                id="modalInput_${user.id}" 
-                               class="modal-kasir-input" 
-                               placeholder="Masukkan modal baru..." 
-                               value="${currentModal > 0 ? currentModal : ''}"
+                               style="width: 100%; padding: 10px 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" 
+                               placeholder="Masukkan modal utama..." 
+                               value="${mainModal > 0 ? mainModal : ''}"
                                onchange="cashModule.updatePendingModal('${user.id}')">
                     </div>
                 </div>
@@ -636,23 +651,22 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="aturModalKasirModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
-                <div class="modal-content" style="max-width: 700px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
+                <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
                     <div class="modal-header" style="padding: 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);">
-                        <span class="modal-title" style="color: #15803d; font-size: 18px; font-weight: 700;">👥 Atur Modal Per User (Owner)</span>
+                        <span class="modal-title" style="color: #15803d; font-size: 18px; font-weight: 700;">👥 Atur Modal Utama Per User (Owner)</span>
                         <button class="close-btn" onclick="cashModule.closeModal('aturModalKasirModal')" style="color: #15803d; font-size: 28px;">×</button>
                     </div>
                     
                     <div style="padding: 24px;">
-                        <div style="background: #dbeafe; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #1e40af; display: flex; align-items: center; gap: 12px;">
-                            <span style="font-size: 20px;">ℹ️</span>
-                            <span>Masukkan modal untuk <strong>Admin</strong> dan <strong>Kasir</strong>. Ini adalah <strong>modal utama</strong> yang akan ditambah dengan modal tambahan dari admin (jika ada).</span>
+                        <div style="background: #dbeafe; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #1e40af;">
+                            <strong>ℹ️ Informasi:</strong> Masukkan <strong>modal utama</strong> untuk Admin dan Kasir. Modal ini adalah modal dasar yang nantinya bisa ditambah dengan modal tambahan dari Admin (jika ada).
                         </div>
 
-                        <div class="modal-kasir-grid">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
                             ${userListHtml}
                         </div>
 
-                        <button class="modal-kasir-save-all" onclick="cashModule.saveAllModalKasir()">
+                        <button onclick="cashModule.saveAllModalKasir()" style="width: 100%; margin-top: 24px; padding: 16px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">
                             💾 Simpan Semua Modal
                         </button>
                     </div>
@@ -667,7 +681,7 @@ const cashModule = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    // ✅ PERBAIKAN: Modal untuk Admin membagi modal TAMBAHAN ke kasir (bukan set ulang)
+    // ✅ PERBAIKAN: Modal untuk Admin membagi modal TAMBAHAN ke kasir (perbaiki tampilan)
     showBagiModalKasir() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser || currentUser.role !== 'admin') {
@@ -678,7 +692,9 @@ const cashModule = {
         // Ambil modal admin saat ini
         const adminShift = dataManager.getUserShift(currentUser.userId);
         const adminModal = adminShift ? (adminShift.modalAwal || 0) : 0;
-        const adminCash = adminShift ? dataManager.calculateShiftCash(currentUser.userId, adminShift.modalAwal) : 0;
+        const adminExtraModal = adminShift ? (adminShift.extraModal || 0) : 0;
+        const adminTotalModal = adminModal + adminExtraModal;
+        const adminCash = adminShift ? dataManager.calculateShiftCash(currentUser.userId, adminTotalModal) : 0;
 
         // ✅ Ambil hanya kasir (bukan admin lain)
         const users = dataManager.getUsers().filter(u => u.role === 'kasir');
@@ -699,23 +715,23 @@ const cashModule = {
             const isActive = !!shift;
             
             return `
-                <div class="modal-kasir-card ${isActive ? 'active' : ''}" data-user-id="${user.id}">
-                    <div class="modal-kasir-header">
+                <div class="modal-kasir-card ${isActive ? 'active' : ''}" style="border: 2px solid ${isActive ? '#86efac' : '#e5e7eb'}; border-radius: 12px; padding: 16px; background: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
                         <div>
-                            <div class="modal-kasir-name">${user.name}</div>
-                            <div class="modal-kasir-username">@${user.username}</div>
+                            <div style="font-weight: 700; font-size: 16px; color: #1f2937;">${user.name}</div>
+                            <div style="font-size: 13px; color: #6b7280;">@${user.username}</div>
                         </div>
-                        <span class="modal-kasir-status ${isActive ? 'online' : 'offline'}">
+                        <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; ${isActive ? 'background: #dcfce7; color: #15803d;' : 'background: #f3f4f6; color: #6b7280;'}">
                             ${isActive ? '🟢 Aktif' : '⚪ Offline'}
                         </span>
                     </div>
                     
-                    <div style="background: #f0f9ff; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 13px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <div style="background: #f0f9ff; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px;">
                             <span style="color: #64748b;">Modal Utama (Owner):</span>
                             <span style="font-weight: 600; color: #0369a1;">Rp ${utils.formatNumber(mainModal)}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px;">
                             <span style="color: #64748b;">Modal Tambahan (Admin):</span>
                             <span style="font-weight: 600; color: #15803d;">Rp ${utils.formatNumber(currentExtraModal)}</span>
                         </div>
@@ -725,17 +741,16 @@ const cashModule = {
                         </div>
                     </div>
                     
-                    <div class="modal-kasir-input-group">
-                        <label style="font-size: 12px; color: #64748b; margin-bottom: 4px; display: block;">
+                    <div style="margin-bottom: 8px;">
+                        <label style="font-size: 12px; color: #64748b; margin-bottom: 4px; display: block; font-weight: 600;">
                             💰 Modal Tambahan Baru (Rp)
-                            <span style="color: #15803d; font-size: 11px;"> - akan ditambah ke modal utama</span>
                         </label>
                         <input type="number" 
                                id="extraModalInput_${user.id}" 
-                               class="modal-kasir-input" 
+                               style="width: 100%; padding: 10px 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;" 
                                placeholder="0" 
                                value=""
-                               oninput="cashModule.updateExtraModalPreview('${user.id}', ${mainModal}, ${currentExtraModal})">
+                               oninput="cashModule.updateExtraModalPreview('${user.id}', ${mainModal}, ${currentExtraModal}); cashModule.hitungTotalExtraModal(${adminTotalModal});">
                         <div id="previewTotal_${user.id}" style="font-size: 12px; color: #15803d; margin-top: 6px; font-weight: 600;">
                             Total akan menjadi: Rp ${utils.formatNumber(totalModal)}
                         </div>
@@ -746,7 +761,7 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="bagiModalKasirModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
-                <div class="modal-content" style="max-width: 700px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
+                <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
                     <div class="modal-header" style="padding: 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);">
                         <span class="modal-title" style="color: #1e40af; font-size: 18px; font-weight: 700;">🔄 Bagi Modal Tambahan ke Kasir</span>
                         <button class="close-btn" onclick="cashModule.closeModal('bagiModalKasirModal')" style="color: #1e40af; font-size: 28px;">×</button>
@@ -755,19 +770,18 @@ const cashModule = {
                     <div style="padding: 24px;">
                         <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; padding: 16px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
                             <div style="font-size: 14px; color: #92400e; margin-bottom: 8px; font-weight: 700;">
-                                💰 Modal Admin Saat Ini: Rp ${utils.formatNumber(adminModal)}
+                                💰 Modal Admin Saat Ini: Rp ${utils.formatNumber(adminTotalModal)}
                             </div>
                             <div style="font-size: 14px; color: #92400e;">
                                 💵 Kas Admin Saat Ini: Rp ${utils.formatNumber(adminCash)}
                             </div>
                         </div>
 
-                        <div style="background: #dbeafe; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #1e40af; display: flex; align-items: center; gap: 12px;">
-                            <span style="font-size: 20px;">ℹ️</span>
-                            <span>Masukkan <strong>modal tambahan</strong> untuk setiap kasir. Modal ini akan <strong>ditambahkan</strong> ke modal utama yang sudah diatur Owner. Total modal yang dibagi tidak boleh melebihi modal admin Anda.</span>
+                        <div style="background: #dbeafe; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #1e40af;">
+                            <strong>ℹ️ Informasi:</strong> Masukkan <strong>modal tambahan</strong> untuk setiap kasir. Modal ini akan <strong>ditambahkan</strong> ke modal utama yang sudah diatur Owner. Total tidak boleh melebihi modal admin Anda.
                         </div>
 
-                        <div class="modal-kasir-grid">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
                             ${kasirListHtml}
                         </div>
 
@@ -778,11 +792,11 @@ const cashModule = {
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
                                 <span style="font-size: 14px; color: #64748b;">Sisa Modal Admin:</span>
-                                <span id="sisaModalAdmin" style="font-size: 16px; font-weight: 700; color: #15803d;">Rp ${utils.formatNumber(adminModal)}</span>
+                                <span id="sisaModalAdmin" style="font-size: 16px; font-weight: 700; color: #15803d;">Rp ${utils.formatNumber(adminTotalModal)}</span>
                             </div>
                         </div>
 
-                        <button class="modal-kasir-save-all" onclick="cashModule.saveBagiModalKasir(${adminModal})">
+                        <button onclick="cashModule.saveBagiModalKasir(${adminTotalModal})" style="width: 100%; padding: 16px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">
                             🔄 Bagi Modal Tambahan ke Kasir
                         </button>
                     </div>
@@ -795,14 +809,6 @@ const cashModule = {
         `;
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
-        
-        // Hitung total saat input berubah
-        setTimeout(() => {
-            const inputs = document.querySelectorAll('[id^="extraModalInput_"]');
-            inputs.forEach(input => {
-                input.addEventListener('input', () => this.hitungTotalExtraModal(adminModal));
-            });
-        }, 100);
     },
 
     // ✅ BARU: Preview total modal setelah tambahan
@@ -876,11 +882,10 @@ const cashModule = {
             if (shift) {
                 // ✅ Tambahkan ke extraModal yang sudah ada (bukan replace)
                 shift.extraModal = (shift.extraModal || 0) + extraModal;
-                // ✅ Update total modal (modalAwal + extraModal)
-                shift.totalModal = (shift.modalAwal || 0) + shift.extraModal;
                 
                 // ✅ Hitung ulang kas dengan total modal baru
-                const newCash = dataManager.calculateShiftCash(userId, shift.totalModal);
+                const totalModal = (shift.modalAwal || 0) + shift.extraModal;
+                const newCash = dataManager.calculateShiftCash(userId, totalModal);
                 shift.currentCash = newCash;
                 
                 dataManager.updateUserShift(userId, shift);
@@ -892,13 +897,17 @@ const cashModule = {
             }
         });
 
-        // Kurangi modal admin (modal tambahan yang dibagi)
+        // Kurangi modal admin (modal utama yang dibagi)
         const adminShift = dataManager.getUserShift(currentUser.userId);
         if (adminShift) {
-            adminShift.modalAwal = adminModal - totalBagi;
+            // Kurangi dari modalAwal admin
+            adminShift.modalAwal = Math.max(0, (adminShift.modalAwal || 0) - totalBagi);
+            
             // Hitung ulang kas admin
-            const newAdminCash = dataManager.calculateShiftCash(currentUser.userId, adminShift.modalAwal);
+            const newAdminTotalModal = (adminShift.modalAwal || 0) + (adminShift.extraModal || 0);
+            const newAdminCash = dataManager.calculateShiftCash(currentUser.userId, newAdminTotalModal);
             adminShift.currentCash = newAdminCash;
+            
             dataManager.updateUserShift(currentUser.userId, adminShift);
         }
 
@@ -915,7 +924,7 @@ const cashModule = {
         const newModal = parseInt(input?.value) || 0;
         
         // Update tampilan saja, belum save ke database
-        const displayEl = document.getElementById(`displayModal_${userId}`);
+        const displayEl = document.getElementById(`displayMainModal_${userId}`);
         if (displayEl) {
             displayEl.textContent = `Rp ${utils.formatNumber(newModal)}`;
         }
@@ -943,7 +952,6 @@ const cashModule = {
             
             if (shift) {
                 // ✅ Update modal utama (modalAwal), pertahankan extraModal jika ada
-                const oldModal = shift.modalAwal || 0;
                 shift.modalAwal = newModal;
                 
                 // ✅ Hitung total modal (modalAwal + extraModal)
@@ -1438,15 +1446,16 @@ const cashModule = {
         let currentCash = 0;
         let modalAwal = 0;
         
-        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            // ✅ Gunakan calculateGlobalCash untuk owner/admin
+        if (currentUser && currentUser.role === 'owner') {
+            // Owner lihat global
             const globalCash = this.calculateGlobalCash();
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
         } else if (userShift) {
-            // ✅ Hitung real-time untuk kasir
-            currentCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
-            modalAwal = userShift.modalAwal || 0;
+            // Admin dan Kasir lihat sendiri
+            const totalModal = (userShift.modalAwal || 0) + (userShift.extraModal || 0);
+            currentCash = dataManager.calculateShiftCash(currentUser.userId, totalModal);
+            modalAwal = totalModal;
         }
         
         const currentCashEl = document.getElementById('currentCash');
@@ -1527,11 +1536,10 @@ const cashModule = {
 
         const currentUser = dataManager.getCurrentUser();
         
-        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            // Owner/Admin: recalculate global
+        if (currentUser && currentUser.role === 'owner') {
+            // Owner: recalculate global
             const activeShifts = dataManager.getActiveShifts();
             activeShifts.forEach(shift => {
-                // ✅ Hitung dengan total modal (modalAwal + extraModal)
                 const totalModal = (shift.modalAwal || 0) + (shift.extraModal || 0);
                 const newCash = dataManager.calculateShiftCash(shift.userId, totalModal);
                 dataManager.updateUserShift(shift.userId, { currentCash: newCash });
@@ -1541,7 +1549,7 @@ const cashModule = {
             const globalCash = this.calculateGlobalCash();
             dataManager.data.settings.currentCash = globalCash.cash;
         } else {
-            // Kasir: recalculate shift sendiri
+            // Admin/Kasir: recalculate shift sendiri
             const userShift = dataManager.getUserShift(currentUser.userId);
             if (userShift) {
                 const totalModal = (userShift.modalAwal || 0) + (userShift.extraModal || 0);
@@ -1640,7 +1648,6 @@ const cashModule = {
         app.showToast(`✅ Kas ${type === 'in' ? 'masuk' : 'keluar'} tersimpan!`);
     },
 
-    // ✅ PERUBAHAN: Hapus field Nomor HP dari Top Up
     openTopUp() {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
@@ -1775,7 +1782,6 @@ const cashModule = {
         document.getElementById('topUpLaba').textContent = 'Rp ' + utils.formatNumber(laba);
     },
 
-    // ✅ PERUBAHAN: Hapus validasi untuk field Nomor HP yang sudah dihapus
     saveTopUp() {
         const provider = document.getElementById('topUpProvider')?.value;
         const nominalSelect = document.getElementById('topUpNominal').value;
@@ -1813,7 +1819,6 @@ const cashModule = {
         return provider ? provider.label : value;
     },
 
-    // ✅ PERUBAHAN: Hapus field Nomor Rekening/HP dan Nama Pemilik Rekening
     openTarikTunai() {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
@@ -1910,7 +1915,6 @@ const cashModule = {
         document.getElementById('tarikLaba').textContent = 'Rp ' + utils.formatNumber(laba);
     },
 
-    // ✅ PERUBAHAN: Hapus validasi untuk field yang sudah dihapus
     saveTarikTunai() {
         const provider = document.getElementById('tarikProvider')?.value;
         const nominal = parseInt(document.getElementById('tarikNominal')?.value) || 0;
@@ -2004,7 +2008,7 @@ const cashModule = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    // ✅ PERBAIKAN: saveModalAwal - hanya untuk Owner dan Admin (bukan Kasir)
+    // ✅ PERBAIKAN: saveModalAwal - hanya untuk Owner dan Admin
     saveModalAwal() {
         const newModal = parseInt(document.getElementById('newModalAwal')?.value) || 0;
         const note = document.getElementById('modalNote')?.value;
@@ -2031,7 +2035,8 @@ const cashModule = {
             // Update shift yang sudah ada
             userShift.modalAwal = newModal;
             // ✅ Hitung ulang currentCash dari modal baru + transaksi
-            const newCash = dataManager.calculateShiftCash(currentUser.userId, newModal);
+            const totalModal = newModal + (userShift.extraModal || 0);
+            const newCash = dataManager.calculateShiftCash(currentUser.userId, totalModal);
             userShift.currentCash = newCash;
             dataManager.updateUserShift(currentUser.userId, userShift);
         } else {
@@ -2069,11 +2074,11 @@ const cashModule = {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
-        // Gunakan calculateGlobalCash untuk owner/admin
+        // Gunakan calculateGlobalCash untuk owner
         let currentCash = 0;
         let modalAwal = 0;
         
-        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+        if (currentUser && currentUser.role === 'owner') {
             const globalCash = this.calculateGlobalCash();
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
@@ -2095,7 +2100,7 @@ const cashModule = {
                     <div style="padding: 24px;">
                         <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 16px; padding: 20px; margin-bottom: 24px;">
                             <div style="font-size: 14px; color: #1e40af; margin-bottom: 12px; font-weight: 600;">
-                                📊 Status Saat Ini ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '(Global)' : '(Shift Anda)'}
+                                📊 Status Saat Ini ${currentUser && currentUser.role === 'owner' ? '(Global)' : '(Shift Anda)'}
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                                 <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -2128,7 +2133,7 @@ const cashModule = {
                                 <div style="font-size: 13px; opacity: 0.9;">Set ulang modal awal untuk shift baru</div>
                             </button>
 
-                            ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? `
+                            ${currentUser && currentUser.role === 'owner' ? `
                             <button onclick="cashModule.carryOverCash()" 
                                     style="padding: 20px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; border-radius: 16px; cursor: pointer; text-align: left; transition: all 0.2s;"
                                     onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
@@ -2171,7 +2176,7 @@ const cashModule = {
         let currentCash = 0;
         let modalAwal = 0;
         
-        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+        if (currentUser && currentUser.role === 'owner') {
             const globalCash = this.calculateGlobalCash();
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
@@ -2218,7 +2223,6 @@ const cashModule = {
             userShift.currentCash = 0;
             userShift.modalAwal = 0;
             userShift.extraModal = 0;
-            userShift.totalModal = 0;
             userShift.transactionCount = 0;
             userShift.totalSales = 0;
             dataManager.updateUserShift(currentUser.userId, userShift);
@@ -2262,7 +2266,6 @@ const cashModule = {
             userShift.currentCash = 0;
             userShift.modalAwal = 0;
             userShift.extraModal = 0;
-            userShift.totalModal = 0;
             userShift.transactionCount = 0;
             userShift.totalSales = 0;
             dataManager.updateUserShift(currentUser.userId, userShift);
