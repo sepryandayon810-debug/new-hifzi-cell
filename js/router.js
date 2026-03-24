@@ -10,11 +10,11 @@ const router = {
     // Hanya butuh konfirmasi buka kasir untuk menu operasional jika belum buka
     requiresKasirOpen: [], // Kosongkan - tidak ada blocking
 
-    // Definisi akses menu berdasarkan role tetap sama
+    // ✅ PERUBAHAN: Tambahkan 'cash' untuk kasir
     menuAccess: {
         'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
         'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
-        'kasir': ['pos', 'products', 'transactions', 'pencarian']
+        'kasir': ['pos', 'products', 'cash', 'transactions', 'pencarian'] // ✅ Tambahkan 'cash'
     },
 
     // Definisi label menu untuk pesan error
