@@ -91,7 +91,11 @@ const backupModule = {
         CONFIG_SYNCED_AT: 'hifzi_config_synced_at'
     },
 
-        init(forceReinit = false) {
+    // ============================================
+    // INITIALIZATION
+    // ============================================
+
+    init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
             this.reloadAllConfig();
@@ -298,8 +302,8 @@ const backupModule = {
             console.log('[Backup] No synced config found');
         }
     },
-
-        // ============================================
+    
+    // ============================================
     // PREVIEW & DOWNLOAD FEATURES (RESTORED)
     // ============================================
     
@@ -350,58 +354,95 @@ const backupModule = {
         const stats = this.calculateDataStats(data);
         const modal = document.createElement('div');
         modal.id = 'preview-modal';
-        modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;`;
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        `;
         
         modal.innerHTML = `
-            <div style="background:white;border-radius:16px;max-width:700px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:slideUp 0.3s ease;">
-                <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px;flex-shrink:0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="
+                background: white;
+                border-radius: 16px;
+                max-width: 700px;
+                width: 100%;
+                max-height: 90vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                animation: slideUp 0.3s ease;
+            ">
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 20px;
+                    flex-shrink: 0;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-size:20px;font-weight:700;">👁️ Preview Data Cloud</div>
-                            <div style="font-size:13px;opacity:0.9;margin-top:4px;">Sumber: ${source}</div>
+                            <div style="font-size: 20px; font-weight: 700;">👁️ Preview Data Cloud</div>
+                            <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">Sumber: ${source}</div>
                         </div>
-                        <button onclick="backupModule.closePreviewModal()" style="background:rgba(255,255,255,0.2);border:none;color:white;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:20px;">×</button>
+                        <button onclick="backupModule.closePreviewModal()" style="
+                            background: rgba(255,255,255,0.2);
+                            border: none;
+                            color: white;
+                            width: 36px;
+                            height: 36px;
+                            border-radius: 50%;
+                            cursor: pointer;
+                            font-size: 20px;
+                        ">×</button>
                     </div>
                 </div>
                 
-                <div style="padding:20px;overflow-y:auto;flex:1;">
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
-                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
-                            <div style="font-size:28px;margin-bottom:4px;">📦</div>
-                            <div style="font-size:12px;color:#718096;">Produk</div>
-                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.products}</div>
+                <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
+                        <div style="background: #f7fafc; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 28px; margin-bottom: 4px;">📦</div>
+                            <div style="font-size: 12px; color: #718096;">Produk</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.products}</div>
                         </div>
-                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
-                            <div style="font-size:28px;margin-bottom:4px;">📝</div>
-                            <div style="font-size:12px;color:#718096;">Transaksi</div>
-                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.transactions}</div>
+                        <div style="background: #f7fafc; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 28px; margin-bottom: 4px;">📝</div>
+                            <div style="font-size: 12px; color: #718096;">Transaksi</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.transactions}</div>
                         </div>
-                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
-                            <div style="font-size:28px;margin-bottom:4px;">💸</div>
-                            <div style="font-size:12px;color:#718096;">Cash Flow</div>
-                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.cashTransactions}</div>
+                        <div style="background: #f7fafc; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 28px; margin-bottom: 4px;">💸</div>
+                            <div style="font-size: 12px; color: #718096;">Cash Flow</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.cashTransactions}</div>
                         </div>
-                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
-                            <div style="font-size:28px;margin-bottom:4px;">💳</div>
-                            <div style="font-size:12px;color:#718096;">Hutang</div>
-                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.debts}</div>
+                        <div style="background: #f7fafc; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 28px; margin-bottom: 4px;">💳</div>
+                            <div style="font-size: 12px; color: #718096;">Hutang</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.debts}</div>
                         </div>
-                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
-                            <div style="font-size:28px;margin-bottom:4px;">📁</div>
-                            <div style="font-size:12px;color:#718096;">Kategori</div>
-                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.categories}</div>
+                        <div style="background: #f7fafc; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 28px; margin-bottom: 4px;">📁</div>
+                            <div style="font-size: 12px; color: #718096;">Kategori</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.categories}</div>
                         </div>
-                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
-                            <div style="font-size:28px;margin-bottom:4px;">👥</div>
-                            <div style="font-size:12px;color:#718096;">Users</div>
-                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.users}</div>
+                        <div style="background: #f7fafc; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 28px; margin-bottom: 4px;">👥</div>
+                            <div style="font-size: 12px; color: #718096;">Users</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.users}</div>
                         </div>
                     </div>
                     
                     ${data.telegram ? `
-                    <div style="background:#e6fffa;border:2px solid #81e6d9;border-radius:10px;padding:16px;margin-bottom:16px;">
-                        <div style="font-weight:600;color:#234e52;margin-bottom:8px;">📱 Telegram Config</div>
-                        <div style="font-size:13px;color:#2d3748;">
+                    <div style="background: #e6fffa; border: 2px solid #81e6d9; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #234e52; margin-bottom: 8px;">📱 Telegram Config</div>
+                        <div style="font-size: 13px; color: #2d3748;">
                             Bot Token: ${data.telegram.botToken ? '✅ Terkonfigurasi' : '❌ Tidak ada'}<br>
                             Chat ID: ${data.telegram.chatId || '-'}<br>
                             Enabled: ${data.telegram.enabled ? '✅ Aktif' : '❌ Nonaktif'}
@@ -409,29 +450,42 @@ const backupModule = {
                     </div>
                     ` : ''}
                     
-                    <div style="background:#fffaf0;border:2px solid #fbd38d;border-radius:10px;padding:16px;margin-bottom:16px;">
-                        <div style="font-weight:600;color:#744210;margin-bottom:8px;">🔍 Search History</div>
-                        <div style="font-size:13px;color:#744210;">
+                    <div style="background: #fffaf0; border: 2px solid #fbd38d; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #744210; margin-bottom: 8px;">🔍 Search History</div>
+                        <div style="font-size: 13px; color: #744210;">
                             Total Pencarian: ${stats.searchHistory} item
                         </div>
                     </div>
                     
-                    <div style="background:#f0fff4;border:2px solid #9ae6b4;border-radius:10px;padding:16px;margin-bottom:16px;">
-                        <div style="font-weight:600;color:#22543d;margin-bottom:8px;">📊 Metadata</div>
-                        <div style="font-size:13px;color:#2d3748;">
+                    <div style="background: #f0fff4; border: 2px solid #9ae6b4; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">📊 Metadata</div>
+                        <div style="font-size: 13px; color: #2d3748;">
                             Backup Date: ${data._backupMeta?.backupDate ? new Date(data._backupMeta.backupDate).toLocaleString('id-ID') : '-'}<br>
                             Device: ${data._backupMeta?.deviceName || '-'}<br>
                             Version: ${data._backupMeta?.version || '-'}
                         </div>
                     </div>
                     
-                    <div style="display:flex;gap:12px;">
-                        <button onclick="backupModule.downloadPreviewData()" style="flex:1;padding:14px;background:linear-gradient(135deg,#48bb78 0%,#38a169 100%);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">
-                            ⬇️ Download Data Ini
-                        </button>
-                        <button onclick="backupModule.closePreviewModal()" style="padding:14px 24px;background:#e2e8f0;color:#4a5568;border:none;border-radius:10px;cursor:pointer;font-weight:600;">
-                            Tutup
-                        </button>
+                    <div style="display: flex; gap: 12px;">
+                        <button onclick="backupModule.downloadPreviewData()" style="
+                            flex: 1;
+                            padding: 14px;
+                            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">⬇️ Download Data Ini</button>
+                        <button onclick="backupModule.closePreviewModal()" style="
+                            padding: 14px 24px;
+                            background: #e2e8f0;
+                            color: #4a5568;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">Tutup</button>
                     </div>
                 </div>
             </div>
@@ -478,8 +532,8 @@ const backupModule = {
         URL.revokeObjectURL(url);
         this.showToast('✅ Data cloud didownload!');
     },
-
-        // ============================================
+    
+    // ============================================
     // MANUAL CHECK UPDATE
     // ============================================
     
@@ -649,8 +703,7 @@ const backupModule = {
                 body: JSON.stringify(payload)
             });
             
-            const text = await response.text();
-            return JSON.parse(text);
+            return await response.json();
         } catch (err) {
             return { success: false, error: err.message };
         }
@@ -662,58 +715,134 @@ const backupModule = {
         
         const modal = document.createElement('div');
         modal.id = 'sync-conflict-modal';
-        modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;`;
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
         
         const deviceBadge = isFromOtherDevice ? 
-            `<span style="background:#ed8936;color:white;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;">🔄 Device Lain</span>` :
-            `<span style="background:#4299e1;color:white;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;">💾 Cloud</span>`;
+            `<span style="background: #ed8936; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">🔄 Device Lain</span>` :
+            `<span style="background: #4299e1; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">💾 Cloud</span>`;
         
         modal.innerHTML = `
-            <div style="background:white;border-radius:16px;max-width:500px;width:100%;overflow:hidden;animation:slideUp 0.3s ease;">
-                <div style="background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%);color:white;padding:20px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div style="font-size:20px;font-weight:700;">🔄 Data Baru Tersedia!</div>
+            <div style="
+                background: white;
+                border-radius: 16px;
+                max-width: 500px;
+                width: 100%;
+                overflow: hidden;
+                animation: slideUp 0.3s ease;
+            ">
+                <div style="
+                    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+                    color: white;
+                    padding: 20px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 20px; font-weight: 700;">🔄 Data Baru Tersedia!</div>
                         ${deviceBadge}
                     </div>
-                    <div style="font-size:13px;opacity:0.9;margin-top:4px;">Ada update dari device lain</div>
+                    <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">Ada update dari device lain</div>
                 </div>
                 
-                <div style="padding:20px;">
-                    <div style="background:#fff5f5;border-left:4px solid #fc8181;padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px;color:#c53030;">
+                <div style="padding: 20px;">
+                    <div style="
+                        background: #fff5f5;
+                        border-left: 4px solid #fc8181;
+                        padding: 12px;
+                        border-radius: 6px;
+                        margin-bottom: 16px;
+                        font-size: 13px;
+                        color: #c53030;
+                    ">
                         <strong>Perhatian:</strong> Data di cloud lebih baru dari data lokal Anda.
                     </div>
                     
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                        <div style="background:#f7fafc;padding:12px;border-radius:8px;border:2px solid #e2e8f0;">
-                            <div style="font-size:11px;color:#718096;margin-bottom:4px;">💾 Data Lokal (Device Ini)</div>
-                            <div style="font-weight:600;color:#2d3748;font-size:13px;">${localDate}</div>
-                            <div style="font-size:10px;color:#a0aec0;">${this.deviceName}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                        <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border: 2px solid #e2e8f0;">
+                            <div style="font-size: 11px; color: #718096; margin-bottom: 4px;">💾 Data Lokal (Device Ini)</div>
+                            <div style="font-weight: 600; color: #2d3748; font-size: 13px;">${localDate}</div>
+                            <div style="font-size: 10px; color: #a0aec0;">${this.deviceName}</div>
                         </div>
-                        <div style="background:#f0fff4;padding:12px;border-radius:8px;border:2px solid #48bb78;">
-                            <div style="font-size:11px;color:#718096;margin-bottom:4px;">☁️ Data Cloud (Device Lain)</div>
-                            <div style="font-weight:600;color:#2d3748;font-size:13px;">${cloudDate}</div>
-                            <div style="font-size:10px;color:#a0aec0;">Update terbaru</div>
+                        <div style="background: #f0fff4; padding: 12px; border-radius: 8px; border: 2px solid #48bb78;">
+                            <div style="font-size: 11px; color: #718096; margin-bottom: 4px;">☁️ Data Cloud (Device Lain)</div>
+                            <div style="font-weight: 600; color: #2d3748; font-size: 13px;">${cloudDate}</div>
+                            <div style="font-size: 10px; color: #a0aec0;">Update terbaru</div>
                         </div>
                     </div>
                     
-                    <div style="font-size:13px;color:#4a5568;margin-bottom:16px;font-weight:600;">
+                    <div style="font-size: 13px; color: #4a5568; margin-bottom: 16px; font-weight: 600;">
                         Pilih tindakan:
                     </div>
                     
-                    <div style="display:flex;flex-direction:column;gap:10px;">
-                        <button onclick="backupModule.resolveConflict('download')" style="padding:14px;background:#48bb78;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;">
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button onclick="backupModule.resolveConflict('download')" style="
+                            padding: 14px;
+                            background: #48bb78;
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 8px;
+                            font-size: 15px;
+                        ">
                             <span>⬇️</span> Download & Ganti Data Lokal (Rekomendasi)
                         </button>
                         
-                        <button onclick="backupModule.resolveConflict('merge')" style="padding:14px;background:#4299e1;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <button onclick="backupModule.resolveConflict('merge')" style="
+                            padding: 14px;
+                            background: #4299e1;
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 8px;
+                        ">
                             <span>🔄</span> Gabungkan Data (Smart Merge)
                         </button>
                         
-                        <button onclick="backupModule.resolveConflict('upload')" style="padding:12px;background:#ed8936;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <button onclick="backupModule.resolveConflict('upload')" style="
+                            padding: 12px;
+                            background: #ed8936;
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 8px;
+                        ">
                             <span>⬆️</span> Upload Lokal & Timpa Cloud
                         </button>
                         
-                        <button onclick="backupModule.closeConflictModal()" style="padding:12px;background:#e2e8f0;color:#4a5568;border:none;border-radius:10px;cursor:pointer;font-weight:500;">
+                        <button onclick="backupModule.closeConflictModal()" style="
+                            padding: 12px;
+                            background: #e2e8f0;
+                            color: #4a5568;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 500;
+                        ">
                             ❌ Batal (Tetap Pakai Data Lokal)
                         </button>
                     </div>
@@ -765,8 +894,8 @@ const backupModule = {
         
         this.pendingCloudData = null;
     },
-
-        async smartMergeData(cloudData) {
+    
+    async smartMergeData(cloudData) {
         const localData = this.getBackupData();
         
         const merged = {
@@ -784,9 +913,7 @@ const backupModule = {
             shiftHistory: this.mergeArrays(localData.shiftHistory || [], cloudData.shiftHistory || [], 'date'),
             loginHistory: this.mergeArrays(localData.loginHistory || [], cloudData.loginHistory || [], 'id', 'timestamp'),
             pendingModals: { ...(cloudData.pendingModals || {}), ...(localData.pendingModals || {}) },
-            // ✅ Telegram - priority ke cloud jika ada
             telegram: cloudData.telegram || localData.telegram || { botToken: '', chatId: '', enabled: false },
-            // ✅ Search History - merge keduanya
             searchHistory: this.mergeArrays(localData.searchHistory || [], cloudData.searchHistory || [], 'id', 'timestamp'),
             _backupMeta: {
                 version: '4.0.0',
@@ -829,7 +956,6 @@ const backupModule = {
         const localShifts = localKasir.activeShifts || [];
         const cloudShifts = cloudKasir.activeShifts || [];
         
-        const mergedShifts = [];
         const shiftMap = new Map();
         
         [...localShifts, ...cloudShifts].forEach(shift => {
@@ -941,8 +1067,8 @@ const backupModule = {
         
         if (indicator) {
             indicator.innerHTML = `
-                <span style="font-size:16px;">${config.icon}</span> 
-                <span style="color:${config.color};font-weight:600;">${config.text}</span>
+                <span style="font-size: 16px;">${config.icon}</span> 
+                <span style="color: ${config.color}; font-weight: 600;">${config.text}</span>
             `;
             indicator.style.background = config.bg;
             indicator.style.padding = '6px 16px';
@@ -962,10 +1088,10 @@ const backupModule = {
             checkUpdateBtn.style.opacity = checkUpdateBtn.disabled ? '0.6' : '1';
             
             if (this.syncStatus === this.SYNC_STATUS.CLOUD_NEWER) {
-                checkUpdateBtn.style.background = 'linear-gradient(135deg,#ed8936 0%,#dd6b20 100%)';
+                checkUpdateBtn.style.background = 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)';
                 checkUpdateBtn.style.animation = 'pulse 2s infinite';
             } else {
-                checkUpdateBtn.style.background = 'linear-gradient(135deg,#4299e1 0%,#3182ce 100%)';
+                checkUpdateBtn.style.background = 'linear-gradient(135deg, #4299e1 0%, #3182ce 100%)';
                 checkUpdateBtn.style.animation = 'none';
             }
         }
@@ -979,7 +1105,7 @@ const backupModule = {
         const hours = Math.floor(minutes / 60);
         if (hours < 24) return `${hours} jam lalu`;
         const days = Math.floor(hours / 24);
-        return `${days} hari lalu';
+        return `${days} hari lalu`;
     },
     
     // ============================================
@@ -1020,8 +1146,8 @@ const backupModule = {
             this.showToast('❌ Upload gagal: ' + err.message);
         }
     },
-
-        // ============================================
+    
+    // ============================================
     // GET BACKUP DATA - LENGKAP DENGAN TELEGRAM & SEARCH
     // ============================================
     
@@ -1035,7 +1161,6 @@ const backupModule = {
             }
         }
         
-        // Pastikan struktur cash transactions lengkap
         const cashTransactions = (allData.cashTransactions || []).map(t => ({
             id: t.id,
             type: t.type,
@@ -1058,7 +1183,6 @@ const backupModule = {
             shiftId: t.shiftId
         }));
         
-        // ✅ PENTING: Sertakan Telegram config
         const telegram = allData.telegram || {
             botToken: '',
             chatId: '',
@@ -1066,7 +1190,6 @@ const backupModule = {
             lastTest: null
         };
         
-        // ✅ PENTING: Sertakan search history
         const searchHistory = allData.searchHistory || [];
         
         return {
@@ -1086,11 +1209,8 @@ const backupModule = {
             loginHistory: allData.loginHistory || [],
             pendingModals: allData.pendingModals || {},
             currentUser: allData.currentUser || null,
-            // ✅ Telegram config
             telegram: telegram,
-            // ✅ Search history
             searchHistory: searchHistory,
-            // Users
             users: allData.users || [],
             _backupMeta: {
                 version: '4.0.0',
@@ -1116,8 +1236,8 @@ const backupModule = {
             }
         }
     },
-
-        // ============================================
+    
+    // ============================================
     // RENDER - DENGAN TOMBOL PREVIEW & DOWNLOAD
     // ============================================
     
@@ -1154,28 +1274,48 @@ const backupModule = {
         };
 
         const html = `
-            <div class="backup-container" style="padding:20px;max-width:900px;margin:0 auto;font-family:system-ui,-apple-system,sans-serif;">
+            <div class="backup-container" style="padding: 20px; max-width: 900px; margin: 0 auto; font-family: system-ui, -apple-system, sans-serif;">
                 
                 <!-- HEADER -->
-                <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px;border-radius:16px;margin-bottom:20px;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 16px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div>
-                            <div style="font-size:12px;opacity:0.9;margin-bottom:4px;">☁️ Cloud Sync Status</div>
-                            <div style="font-size:24px;font-weight:700;">${isLocal ? '💾 Local Only' : isFirebase ? '🔥 Firebase' : '📊 Google Sheets'}</div>
+                            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">☁️ Cloud Sync Status</div>
+                            <div style="font-size: 24px; font-weight: 700;">${isLocal ? '💾 Local Only' : isFirebase ? '🔥 Firebase' : '📊 Google Sheets'}</div>
                         </div>
-                        <div style="text-align:right;">
-                            <div id="sync-status-indicator" style="display:inline-block;padding:6px 16px;border-radius:20px;background:rgba(255,255,255,0.2);font-size:14px;font-weight:600;">
-                                <span style="font-size:16px;">⚪</span> Standby
+                        <div style="text-align: right;">
+                            <div id="sync-status-indicator" style="
+                                display: inline-block;
+                                padding: 6px 16px;
+                                border-radius: 20px;
+                                background: rgba(255,255,255,0.2);
+                                font-size: 14px;
+                                font-weight: 600;
+                            ">
+                                <span style="font-size: 16px;">⚪</span> Standby
                             </div>
                         </div>
                     </div>
                     
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid rgba(255,255,255,0.2);">
-                        <div style="font-size:13px;opacity:0.9;">
+                    <div style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding-top: 12px;
+                        border-top: 1px solid rgba(255,255,255,0.2);
+                    ">
+                        <div style="font-size: 13px; opacity: 0.9;">
                             ${this.isOnline ? '🟢 Online' : '🔴 Offline'} 
                             ${this.isAutoSyncEnabled ? '• Auto-sync ON' : '• Manual sync'}
                         </div>
-                        <div id="last-sync-text" style="font-size:12px;opacity:0.8;">
+                        <div id="last-sync-text" style="font-size: 12px; opacity: 0.8;">
                             ${this.lastSyncTime ? 'Sync: ' + this.getTimeAgo(new Date(this.lastSyncTime)) : 'Belum pernah sync'}
                         </div>
                     </div>
@@ -1183,16 +1323,43 @@ const backupModule = {
 
                 <!-- TOMBOL CHECK UPDATE & PREVIEW -->
                 ${!isLocal ? `
-                <div style="background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%);padding:20px;border-radius:16px;margin-bottom:20px;box-shadow:0 4px 15px rgba(237,137,54,0.3);">
-                    <div style="color:white;margin-bottom:16px;text-align:center;">
-                        <div style="font-size:16px;font-weight:600;">🔄 Sinkronisasi Data</div>
-                        <div style="font-size:13px;opacity:0.9;">Cek dan kelola data di cloud</div>
+                <div style="
+                    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+                    padding: 20px;
+                    border-radius: 16px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 15px rgba(237,137,54,0.3);
+                ">
+                    <div style="color: white; margin-bottom: 16px; text-align: center;">
+                        <div style="font-size: 16px; font-weight: 600;">🔄 Sinkronisasi Data</div>
+                        <div style="font-size: 13px; opacity: 0.9;">Cek dan kelola data di cloud</div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                        <button id="check-update-btn" onclick="backupModule.manualCheckUpdate()" style="padding:14px;background:white;color:#ed8936;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:all 0.3s;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <button id="check-update-btn" onclick="backupModule.manualCheckUpdate()" style="
+                            padding: 14px;
+                            background: white;
+                            color: #ed8936;
+                            border: none;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            font-weight: 700;
+                            font-size: 14px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                            transition: all 0.3s;
+                        ">
                             🔍 Cek Update
                         </button>
-                        <button onclick="backupModule.previewCloudData()" style="padding:14px;background:rgba(255,255,255,0.2);color:white;border:2px solid white;border-radius:12px;cursor:pointer;font-weight:700;font-size:14px;transition:all 0.3s;">
+                        <button onclick="backupModule.previewCloudData()" style="
+                            padding: 14px;
+                            background: rgba(255,255,255,0.2);
+                            color: white;
+                            border: 2px solid white;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            font-weight: 700;
+                            font-size: 14px;
+                            transition: all 0.3s;
+                        ">
                             👁️ Preview Data
                         </button>
                     </div>
@@ -1200,66 +1367,126 @@ const backupModule = {
                 ` : ''}
 
                 <!-- DEVICE INFO -->
-                <div style="background:#f7fafc;padding:16px;border-radius:12px;margin-bottom:20px;border:1px solid #e2e8f0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="
+                    background: #f7fafc;
+                    padding: 16px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    border: 1px solid #e2e8f0;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-size:12px;color:#718096;margin-bottom:2px;">Device ID</div>
-                            <div style="font-family:monospace;font-size:13px;color:#2d3748;font-weight:600;">${this.deviceId.substring(0, 20)}...</div>
+                            <div style="font-size: 12px; color: #718096; margin-bottom: 2px;">Device ID</div>
+                            <div style="font-family: monospace; font-size: 13px; color: #2d3748; font-weight: 600;">${this.deviceId.substring(0, 20)}...</div>
                         </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:12px;color:#718096;margin-bottom:2px;">Device Name</div>
-                            <div style="font-size:13px;color:#2d3748;font-weight:600;">${this.deviceName}</div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 12px; color: #718096; margin-bottom: 2px;">Device Name</div>
+                            <div style="font-size: 13px; color: #2d3748; font-weight: 600;">${this.deviceName}</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- STATS -->
-                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;">
-                    <div style="background:white;padding:16px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                        <div style="font-size:28px;margin-bottom:4px;">📦</div>
-                        <div style="font-size:12px;color:#718096;">Produk</div>
-                        <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.products}</div>
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px;">
+                    <div style="
+                        background: white;
+                        padding: 16px;
+                        border-radius: 12px;
+                        text-align: center;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    ">
+                        <div style="font-size: 28px; margin-bottom: 4px;">📦</div>
+                        <div style="font-size: 12px; color: #718096;">Produk</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.products}</div>
                     </div>
-                    <div style="background:white;padding:16px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                        <div style="font-size:28px;margin-bottom:4px;">📝</div>
-                        <div style="font-size:12px;color:#718096;">Transaksi</div>
-                        <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.transactions}</div>
+                    <div style="
+                        background: white;
+                        padding: 16px;
+                        border-radius: 12px;
+                        text-align: center;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    ">
+                        <div style="font-size: 28px; margin-bottom: 4px;">📝</div>
+                        <div style="font-size: 12px; color: #718096;">Transaksi</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.transactions}</div>
                     </div>
-                    <div style="background:white;padding:16px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                        <div style="font-size:28px;margin-bottom:4px;">💸</div>
-                        <div style="font-size:12px;color:#718096;">Cash Flow</div>
-                        <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.cashTransactions}</div>
+                    <div style="
+                        background: white;
+                        padding: 16px;
+                        border-radius: 12px;
+                        text-align: center;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    ">
+                        <div style="font-size: 28px; margin-bottom: 4px;">💸</div>
+                        <div style="font-size: 12px; color: #718096;">Cash Flow</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.cashTransactions}</div>
                     </div>
-                    <div style="background:white;padding:16px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                        <div style="font-size:28px;margin-bottom:4px;">💳</div>
-                        <div style="font-size:12px;color:#718096;">Hutang</div>
-                        <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.debts}</div>
+                    <div style="
+                        background: white;
+                        padding: 16px;
+                        border-radius: 12px;
+                        text-align: center;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    ">
+                        <div style="font-size: 28px; margin-bottom: 4px;">💳</div>
+                        <div style="font-size: 12px; color: #718096;">Hutang</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #2d3748;">${stats.debts}</div>
                     </div>
-                    <div style="background:white;padding:16px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                        <div style="font-size:28px;margin-bottom:4px;">💰</div>
-                        <div style="font-size:12px;color:#718096;">Kas</div>
-                        <div style="font-size:16px;font-weight:700;color:#2d3748;">Rp ${stats.cash.toLocaleString('id-ID')}</div>
+                    <div style="
+                        background: white;
+                        padding: 16px;
+                        border-radius: 12px;
+                        text-align: center;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    ">
+                        <div style="font-size: 28px; margin-bottom: 4px;">💰</div>
+                        <div style="font-size: 12px; color: #718096;">Kas</div>
+                        <div style="font-size: 16px; font-weight: 700; color: #2d3748;">Rp ${stats.cash.toLocaleString('id-ID')}</div>
                     </div>
                 </div>
 
                 <!-- PROVIDER SELECTION -->
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">☁️ Pilih Metode Backup</div>
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-                        <button onclick="backupModule.setProvider('local')" style="padding:16px;border:2px solid ${isLocal ? '#667eea' : '#e2e8f0'};border-radius:12px;background:${isLocal ? '#f7fafc' : 'white'};cursor:pointer;">
-                            <div style="font-size:32px;margin-bottom:8px;">💾</div>
-                            <div style="font-weight:600;color:#2d3748;">Local File</div>
-                            <div style="font-size:12px;color:#718096;margin-top:4px;">Tidak sync antar device</div>
+                <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                ">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">☁️ Pilih Metode Backup</div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                        <button onclick="backupModule.setProvider('local')" style="
+                            padding: 16px;
+                            border: 2px solid ${isLocal ? '#667eea' : '#e2e8f0'};
+                            border-radius: 12px;
+                            background: ${isLocal ? '#f7fafc' : 'white'};
+                            cursor: pointer;
+                        ">
+                            <div style="font-size: 32px; margin-bottom: 8px;">💾</div>
+                            <div style="font-weight: 600; color: #2d3748;">Local File</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">Tidak sync antar device</div>
                         </button>
-                        <button onclick="backupModule.setProvider('firebase')" style="padding:16px;border:2px solid ${isFirebase ? '#ff6b35' : '#e2e8f0'};border-radius:12px;background:${isFirebase ? '#fff5f0' : 'white'};cursor:pointer;">
-                            <div style="font-size:32px;margin-bottom:8px;">🔥</div>
-                            <div style="font-weight:600;color:#2d3748;">Firebase</div>
-                            <div style="font-size:12px;color:#718096;margin-top:4px;">${isFBLoggedIn ? '✅ Connected' : isFBConfigured ? '⚠️ Configured' : 'Real-time sync'}</div>
+                        <button onclick="backupModule.setProvider('firebase')" style="
+                            padding: 16px;
+                            border: 2px solid ${isFirebase ? '#ff6b35' : '#e2e8f0'};
+                            border-radius: 12px;
+                            background: ${isFirebase ? '#fff5f0' : 'white'};
+                            cursor: pointer;
+                        ">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🔥</div>
+                            <div style="font-weight: 600; color: #2d3748;">Firebase</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">${isFBLoggedIn ? '✅ Connected' : isFBConfigured ? '⚠️ Configured' : 'Real-time sync'}</div>
                         </button>
-                        <button onclick="backupModule.setProvider('googlesheet')" style="padding:16px;border:2px solid ${isGAS ? '#34a853' : '#e2e8f0'};border-radius:12px;background:${isGAS ? '#f0fff4' : 'white'};cursor:pointer;">
-                            <div style="font-size:32px;margin-bottom:8px;">📊</div>
-                            <div style="font-weight:600;color:#2d3748;">Google Sheets</div>
-                            <div style="font-size:12px;color:#718096;margin-top:4px;">${isGASConfigured ? '✅ Ready' : 'Setup Required'}</div>
+                        <button onclick="backupModule.setProvider('googlesheet')" style="
+                            padding: 16px;
+                            border: 2px solid ${isGAS ? '#34a853' : '#e2e8f0'};
+                            border-radius: 12px;
+                            background: ${isGAS ? '#f0fff4' : 'white'};
+                            cursor: pointer;
+                        ">
+                            <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
+                            <div style="font-weight: 600; color: #2d3748;">Google Sheets</div>
+                            <div style="font-size: 12px; color: #718096; margin-top: 4px;">${isGASConfigured ? '✅ Ready' : 'Setup Required'}</div>
                         </button>
                     </div>
                 </div>
@@ -1269,25 +1496,57 @@ const backupModule = {
                 ${isGAS ? this.renderGASSection(isGASConfigured) : ''}
 
                 <!-- SYNC ACTIONS -->
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#fc8181' : '#667eea'};">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">🔄 Sinkronisasi</div>
+                <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    border: 2px solid ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#fc8181' : '#667eea'};
+                ">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔄 Sinkronisasi</div>
                     
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                         <button onclick="backupModule.forceSyncNow()" 
-                            style="padding:16px;background:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg,#667eea 0%,#764ba2 100%)'};color:white;border:none;border-radius:10px;cursor:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'};font-weight:600;"
-                            ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}>
+                            style="
+                                padding: 16px;
+                                background: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'};
+                                color: white;
+                                border: none;
+                                border-radius: 10px;
+                                cursor: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'};
+                                font-weight: 600;
+                            "
+                            ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}
+                        >
                             <div>⬆️ Upload ke Cloud</div>
-                            <div style="font-size:11px;opacity:0.9;">Kirim data device ini</div>
+                            <div style="font-size: 11px; opacity: 0.9;">Kirim data device ini</div>
                         </button>
                         <button onclick="backupModule.manualDownload()" 
-                            style="padding:16px;background:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg,#48bb78 0%,#38a169 100%)'};color:white;border:none;border-radius:10px;cursor:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'};font-weight:600;"
-                            ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}>
+                            style="
+                                padding: 16px;
+                                background: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)'};
+                                color: white;
+                                border: none;
+                                border-radius: 10px;
+                                cursor: ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'};
+                                font-weight: 600;
+                            "
+                            ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}
+                        >
                             <div>⬇️ Download dari Cloud</div>
-                            <div style="font-size:11px;opacity:0.9;">Ambil data device lain</div>
+                            <div style="font-size: 11px; opacity: 0.9;">Ambil data device lain</div>
                         </button>
                     </div>
                     
-                    <div style="background:#e6fffa;border:1px solid #81e6d9;border-radius:8px;padding:12px;font-size:12px;color:#234e52;">
+                    <div style="
+                        background: #e6fffa;
+                        border: 1px solid #81e6d9;
+                        border-radius: 8px;
+                        padding: 12px;
+                        font-size: 12px;
+                        color: #234e52;
+                    ">
                         <strong>💡 Cara Sync:</strong><br>
                         1. <strong>Device 1</strong>: Input transaksi → Klik <strong>Upload ke Cloud</strong><br>
                         2. <strong>Device 2</strong>: Klik <strong>🔍 Cek Update</strong> → Download data baru
@@ -1295,21 +1554,70 @@ const backupModule = {
                 </div>
 
                 <!-- LOCAL BACKUP -->
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">📁 Backup File Lokal (JSON)</div>
-                    <button onclick="backupModule.downloadJSON()" style="width:100%;padding:14px;background:#4a5568;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;margin-bottom:12px;">⬇️ Download JSON</button>
-                    <label style="display:block;padding:24px;border:2px dashed #cbd5e0;border-radius:10px;text-align:center;cursor:pointer;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='#cbd5e0'">
-                        <input type="file" accept=".json" onchange="backupModule.importJSON(this)" style="display:none;">
-                        <div style="font-size:40px;margin-bottom:8px;">📤</div>
-                        <div style="font-weight:600;color:#2d3748;">Import JSON</div>
+                <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                ">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">📁 Backup File Lokal (JSON)</div>
+                    <button onclick="backupModule.downloadJSON()" style="
+                        width: 100%;
+                        padding: 14px;
+                        background: #4a5568;
+                        color: white;
+                        border: none;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        font-weight: 600;
+                        margin-bottom: 12px;
+                    ">⬇️ Download JSON</button>
+                    <label style="
+                        display: block;
+                        padding: 24px;
+                        border: 2px dashed #cbd5e0;
+                        border-radius: 10px;
+                        text-align: center;
+                        cursor: pointer;
+                    " onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='#cbd5e0'">
+                        <input type="file" accept=".json" onchange="backupModule.importJSON(this)" style="display: none;">
+                        <div style="font-size: 40px; margin-bottom: 8px;">📤</div>
+                        <div style="font-weight: 600; color: #2d3748;">Import JSON</div>
                     </label>
                 </div>
 
                 <!-- DANGER ZONE -->
-                <div style="background:#fff5f5;border:1px solid #feb2b2;padding:20px;border-radius:12px;">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#c53030;">🗑️ Zona Bahaya</div>
-                    <button onclick="backupModule.resetLocal()" style="width:100%;padding:14px;background:#fc8181;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;margin-bottom:8px;">🗑️ Hapus Data Lokal</button>
-                    ${!isLocal ? `<button onclick="backupModule.resetCloud()" style="width:100%;padding:14px;background:#f6ad55;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">☁️ Reset Cloud</button>` : ''}
+                <div style="
+                    background: #fff5f5;
+                    border: 1px solid #feb2b2;
+                    padding: 20px;
+                    border-radius: 12px;
+                ">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #c53030;">🗑️ Zona Bahaya</div>
+                    <button onclick="backupModule.resetLocal()" style="
+                        width: 100%;
+                        padding: 14px;
+                        background: #fc8181;
+                        color: white;
+                        border: none;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        font-weight: 600;
+                        margin-bottom: 8px;
+                    ">🗑️ Hapus Data Lokal</button>
+                    ${!isLocal ? `
+                    <button onclick="backupModule.resetCloud()" style="
+                        width: 100%;
+                        padding: 14px;
+                        background: #f6ad55;
+                        color: white;
+                        border: none;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        font-weight: 600;
+                    ">☁️ Reset Cloud</button>
+                    ` : ''}
                 </div>
 
             </div>
@@ -1322,58 +1630,151 @@ const backupModule = {
     renderFirebaseSection(isConfigured, isLoggedIn) {
         if (!isConfigured) {
             return `
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
-                    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:#2d3748;">🔥 Konfigurasi Firebase</div>
-                    <div style="display:grid;gap:12px;margin-bottom:16px;">
-                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="text" id="fb_projectId" placeholder="Project ID" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    border: 2px solid #ff6b35;
+                ">
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #2d3748;">🔥 Konfigurasi Firebase</div>
+                    <div style="display: grid; gap: 12px; margin-bottom: 16px;">
+                        <input type="text" id="fb_apiKey" placeholder="API Key *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_authDomain" placeholder="Auth Domain *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_databaseURL" placeholder="Database URL *" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="fb_projectId" placeholder="Project ID" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                     </div>
-                    <button onclick="backupModule.saveFirebaseConfig()" style="width:100%;padding:14px;background:#ff6b35;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">💾 Simpan & Connect</button>
+                    <button onclick="backupModule.saveFirebaseConfig()" style="
+                        width: 100%;
+                        padding: 14px;
+                        background: #ff6b35;
+                        color: white;
+                        border: none;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        font-weight: 600;
+                    ">💾 Simpan & Connect</button>
                 </div>
             `;
         }
         
         if (!isLoggedIn) {
             return `
-                <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                        <div style="font-size:16px;font-weight:600;color:#2d3748;">🔥 Login Firebase</div>
-                        <button onclick="backupModule.clearFirebaseConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;">🗑️ Hapus Config</button>
+                <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    border: 2px solid #ff6b35;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div style="font-size: 16px; font-weight: 600; color: #2d3748;">🔥 Login Firebase</div>
+                        <button onclick="backupModule.clearFirebaseConfig()" style="
+                            padding: 8px 16px;
+                            background: #fc8181;
+                            color: white;
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 12px;
+                        ">🗑️ Hapus Config</button>
                     </div>
-                    <div style="display:grid;gap:12px;margin-bottom:16px;">
-                        <input type="email" id="fb_email" placeholder="Email" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-                        <input type="password" id="fb_password" placeholder="Password" style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+                    <div style="display: grid; gap: 12px; margin-bottom: 16px;">
+                        <input type="email" id="fb_email" placeholder="Email" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
+                        <input type="password" id="fb_password" placeholder="Password" style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;">
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                        <button onclick="backupModule.firebaseLogin(document.getElementById('fb_email').value,document.getElementById('fb_password').value)" style="padding:14px;background:#ff6b35;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Login</button>
-                        <button onclick="backupModule.firebaseRegister(document.getElementById('fb_email').value,document.getElementById('fb_password').value)" style="padding:14px;background:#48bb78;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">Daftar</button>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <button onclick="backupModule.firebaseLogin(document.getElementById('fb_email').value, document.getElementById('fb_password').value)" style="
+                            padding: 14px;
+                            background: #ff6b35;
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">Login</button>
+                        <button onclick="backupModule.firebaseRegister(document.getElementById('fb_email').value, document.getElementById('fb_password').value)" style="
+                            padding: 14px;
+                            background: #48bb78;
+                            color: white;
+                            border: none;
+                            border-radius: 10px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">Daftar</button>
                     </div>
                 </div>
             `;
         }
         
         return `
-            <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #ff6b35;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div style="
+                background: white;
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                border: 2px solid #ff6b35;
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <div>
-                        <div style="font-weight:600;color:#2d3748;">🔥 Firebase Connected</div>
-                        <div style="font-size:13px;color:#38a169;margin-top:4px;">✅ ${this.currentUser?.email}</div>
+                        <div style="font-weight: 600; color: #2d3748;">🔥 Firebase Connected</div>
+                        <div style="font-size: 13px; color: #38a169; margin-top: 4px;">✅ ${this.currentUser?.email}</div>
                     </div>
-                    <div style="display:flex;gap:8px;">
-                        <button onclick="backupModule.firebaseLogout()" style="padding:8px 16px;background:#ed8936;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🚪 Logout</button>
-                        <button onclick="backupModule.clearFirebaseConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🗑️ Hapus Config</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="backupModule.firebaseLogout()" style="
+                            padding: 8px 16px;
+                            background: #ed8936;
+                            color: white;
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 13px;
+                        ">🚪 Logout</button>
+                        <button onclick="backupModule.clearFirebaseConfig()" style="
+                            padding: 8px 16px;
+                            background: #fc8181;
+                            color: white;
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 13px;
+                        ">🗑️ Hapus Config</button>
                     </div>
                 </div>
                 
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f7fafc;border-radius:10px;">
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px;
+                    background: #f7fafc;
+                    border-radius: 10px;
+                ">
                     <div>
-                        <div style="font-weight:600;color:#2d3748;">Auto-sync</div>
-                        <div style="font-size:12px;color:#718096;">Sinkron otomatis</div>
+                        <div style="font-weight: 600; color: #2d3748;">Auto-sync</div>
+                        <div style="font-size: 12px; color: #718096;">Sinkron otomatis</div>
                     </div>
-                    <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
-                        <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
+                    <div onclick="backupModule.toggleAutoSync()" style="
+                        width: 50px;
+                        height: 28px;
+                        background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};
+                        border-radius: 14px;
+                        position: relative;
+                        cursor: pointer;
+                    ">
+                        <div style="
+                            width: 24px;
+                            height: 24px;
+                            background: white;
+                            border-radius: 50%;
+                            position: absolute;
+                            top: 2px;
+                            ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'};
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        "></div>
                     </div>
                 </div>
             </div>
@@ -1386,53 +1787,136 @@ const backupModule = {
         const hasSheetId = validation.valid;
         
         return `
-            <div style="background:white;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);border:2px solid #34a853;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <div style="font-size:16px;font-weight:600;color:#2d3748;">📊 Google Sheets Setup</div>
-                    ${isConfigured ? `<button onclick="backupModule.clearGASConfig()" style="padding:8px 16px;background:#fc8181;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;">🗑️ Hapus Config</button>` : ''}
+            <div style="
+                background: white;
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                border: 2px solid #34a853;
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div style="font-size: 16px; font-weight: 600; color: #2d3748;">📊 Google Sheets Setup</div>
+                    ${isConfigured ? `
+                    <button onclick="backupModule.clearGASConfig()" style="
+                        padding: 8px 16px;
+                        background: #fc8181;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-size: 12px;
+                    ">🗑️ Hapus Config</button>
+                    ` : ''}
                 </div>
                 
-                <div style="margin-bottom:12px;">
-                    <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">🔗 GAS Web App URL</label>
-                    <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:12px;border:1px solid ${hasUrl ? '#48bb78' : '#e2e8f0'};border-radius:8px;font-size:14px;">
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">🔗 GAS Web App URL</label>
+                    <input type="text" id="gasUrlInput" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/.../exec" style="
+                        width: 100%;
+                        padding: 12px;
+                        border: 1px solid ${hasUrl ? '#48bb78' : '#e2e8f0'};
+                        border-radius: 8px;
+                        font-size: 14px;
+                    ">
                 </div>
 
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:13px;font-weight:600;color:#2d3748;margin-bottom:6px;">📄 Google Sheet ID <span style="color:#e53e3e;">*WAJIB*</span></label>
-                    <div style="display:flex;gap:8px;">
-                        <input type="text" id="sheetIdInput" value="${this.sheetId || ''}" placeholder="44 karakter dari URL spreadsheet" style="flex:1;padding:12px;border:2px solid ${hasSheetId ? '#48bb78' : '#fc8181'};border-radius:8px;font-size:14px;font-family:monospace;">
-                        <button onclick="document.getElementById('sheetIdInput').value=''" style="padding:12px 16px;background:#fed7d7;color:#c53030;border:none;border-radius:8px;cursor:pointer;">✕</button>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 6px;">📄 Google Sheet ID <span style="color: #e53e3e;">*WAJIB*</span></label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="sheetIdInput" value="${this.sheetId || ''}" placeholder="44 karakter dari URL spreadsheet" style="
+                            flex: 1;
+                            padding: 12px;
+                            border: 2px solid ${hasSheetId ? '#48bb78' : '#fc8181'};
+                            border-radius: 8px;
+                            font-size: 14px;
+                            font-family: monospace;
+                        ">
+                        <button onclick="document.getElementById('sheetIdInput').value=''" style="
+                            padding: 12px 16px;
+                            background: #fed7d7;
+                            color: #c53030;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                        ">✕</button>
                     </div>
-                    <div style="font-size:11px;color:#718096;margin-top:4px;">
-                        ${hasSheetId ? '<span style="color:#48bb78;">✓ Valid (44 karakter)</span>' : '<span style="color:#e53e3e;">✗ ' + validation.message + '</span>'}
+                    <div style="font-size: 11px; color: #718096; margin-top: 4px;">
+                        ${hasSheetId ? '<span style="color: #48bb78;">✓ Valid (44 karakter)</span>' : '<span style="color: #e53e3e;">✗ ' + validation.message + '</span>'}
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                    <button onclick="backupModule.saveGasUrl()" style="padding:14px;background:#34a853;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">💾 Simpan</button>
-                    <button onclick="backupModule.testGASConnection()" style="padding:14px;background:#4299e1;color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;" ${!hasSheetId ? 'disabled style="opacity:0.5;"' : ''}>🧪 Test</button>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                    <button onclick="backupModule.saveGasUrl()" style="
+                        padding: 14px;
+                        background: #34a853;
+                        color: white;
+                        border: none;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        font-weight: 600;
+                    ">💾 Simpan</button>
+                    <button onclick="backupModule.testGASConnection()" style="
+                        padding: 14px;
+                        background: #4299e1;
+                        color: white;
+                        border: none;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        font-weight: 600;
+                    " ${!hasSheetId ? 'disabled style="opacity: 0.5;"' : ''}>🧪 Test</button>
                 </div>
                 
                 ${isConfigured ? `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f0fff4;border-radius:10px;border:1px solid #9ae6b4;">
-                        <div>
-                            <div style="font-weight:600;color:#2d3748;">✅ Ready</div>
-                            <div style="font-size:12px;color:#718096;">${this.sheetId.substring(0, 15)}...</div>
-                        </div>
-                        <div onclick="backupModule.toggleAutoSync()" style="width:50px;height:28px;background:${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};border-radius:14px;position:relative;cursor:pointer;">
-                            <div style="width:24px;height:24px;background:white;border-radius:50%;position:absolute;top:2px;${this.isAutoSyncEnabled ? 'left:24px' : 'left:2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>
-                        </div>
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px;
+                    background: #f0fff4;
+                    border-radius: 10px;
+                    border: 1px solid #9ae6b4;
+                ">
+                    <div>
+                        <div style="font-weight: 600; color: #2d3748;">✅ Ready</div>
+                        <div style="font-size: 12px; color: #718096;">${this.sheetId.substring(0, 15)}...</div>
                     </div>
+                    <div onclick="backupModule.toggleAutoSync()" style="
+                        width: 50px;
+                        height: 28px;
+                        background: ${this.isAutoSyncEnabled ? '#48bb78' : '#cbd5e0'};
+                        border-radius: 14px;
+                        position: relative;
+                        cursor: pointer;
+                    ">
+                        <div style="
+                            width: 24px;
+                            height: 24px;
+                            background: white;
+                            border-radius: 50%;
+                            position: absolute;
+                            top: 2px;
+                            ${this.isAutoSyncEnabled ? 'left: 24px' : 'left: 2px'};
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        "></div>
+                    </div>
+                </div>
                 ` : `
-                    <div style="background:#fff5f5;border:1px solid #feb2b2;border-radius:10px;padding:16px;text-align:center;">
-                        <div style="font-size:13px;color:#c53030;">⚠️ Konfigurasi belum lengkap</div>
-                    </div>
+                <div style="
+                    background: #fff5f5;
+                    border: 1px solid #feb2b2;
+                    border-radius: 10px;
+                    padding: 16px;
+                    text-align: center;
+                ">
+                    <div style="font-size: 13px; color: #c53030;">⚠️ Konfigurasi belum lengkap</div>
+                </div>
                 `}
             </div>
         `;
     },
-
-        // ============================================
+    
+    // ============================================
     // FIREBASE METHODS
     // ============================================
     
@@ -1619,8 +2103,8 @@ const backupModule = {
         
         return cleanData;
     },
-
-        // ============================================
+    
+    // ============================================
     // GOOGLE SHEETS METHODS
     // ============================================
     
@@ -1680,8 +2164,7 @@ const backupModule = {
                 body: JSON.stringify(payload)
             });
             
-            const text = await response.text();
-            const result = JSON.parse(text);
+            const result = await response.json();
             
             if (result.success) {
                 this.showToast('✅ ' + result.message);
@@ -1717,8 +2200,7 @@ const backupModule = {
             body: JSON.stringify(payload)
         });
         
-        const text = await response.text();
-        const result = JSON.parse(text);
+        const result = await response.json();
         
         if (!result.success) throw new Error(result.message || 'Upload failed');
         
@@ -1749,8 +2231,7 @@ const backupModule = {
             body: JSON.stringify(payload)
         });
         
-        const text = await response.text();
-        const result = JSON.parse(text);
+        const result = await response.json();
         
         if (!result.success) throw new Error(result.message || 'Download failed');
         
@@ -1812,8 +2293,8 @@ const backupModule = {
             console.log('[Backup] checkNewDevice error:', err);
         }
     },
-
-        // ============================================
+    
+    // ============================================
     // UTILITY METHODS
     // ============================================
     
@@ -2136,7 +2617,7 @@ const backupModule = {
             
             const toast = document.createElement('div');
             toast.className = 'backup-toast';
-            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:white;padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;';
+            toast.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 12px 24px; border-radius: 8px; z-index: 9999; font-size: 14px;';
             toast.textContent = msg;
             document.body.appendChild(toast);
             setTimeout(() => {
