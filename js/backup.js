@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v3.9.0)
-// HOTFIX: Config Sync, Better Cash Structure
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.0)
+// HOTFIX: Restore Preview/Download, Fix Data Structure, Telegram Sync
 // ============================================
 
 const backupModule = {
@@ -29,6 +29,9 @@ const backupModule = {
     lastLocalDataHash: null,
     lastCloudDataHash: null,
     
+    // Preview data storage
+    previewData: null,
+    
     firebaseConfig: {},
     firebaseApp: null,
     database: null,
@@ -46,14 +49,14 @@ const backupModule = {
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
     
-    // ✅ BARU: Config yang akan disync ke cloud
+    // Config yang akan disync ke cloud
     syncedConfig: {
         provider: 'local',
         gasUrl: '',
         sheetId: '',
         firebaseConfig: {},
         autoSync: false,
-        version: '3.9.0'
+        version: '4.0.0'
     },
     
     SYNC_STATUS: {
@@ -84,12 +87,11 @@ const backupModule = {
         CLOUD_DATA_HASH: 'hifzi_cloud_data_hash',
         LAST_CLOUD_CHECK: 'hifzi_last_cloud_check',
         CLOUD_CHECK_COUNT: 'hifzi_cloud_check_count',
-        // ✅ BARU: Key untuk menyimpan config yang di-sync
         SYNCED_CONFIG: 'hifzi_synced_config',
         CONFIG_SYNCED_AT: 'hifzi_config_synced_at'
     },
 
-    init(forceReinit = false) {
+        init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
             this.reloadAllConfig();
@@ -97,7 +99,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v3.9.0 - Config Sync Ready...');
+        console.log('[Backup] Initializing v4.0.0 - Full Data Sync Ready...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -130,7 +132,6 @@ const backupModule = {
         this.setupNetworkListeners();
         this.setupDataChangeObserver();
         
-        // ✅ BARU: Load config dari cloud jika ada
         this.loadSyncedConfig();
         
         if (this.currentProvider === 'firebase') {
@@ -151,10 +152,9 @@ const backupModule = {
     },
     
     // ============================================
-    // ✅ BARU: CONFIG SYNC - Simpan & Load config dari cloud
+    // CONFIG SYNC - Simpan & Load config dari cloud
     // ============================================
     
-    // Simpan config ke cloud (dipanggil saat setting berubah)
     async syncConfigToCloud() {
         if (this.currentProvider === 'local') return;
         
@@ -164,7 +164,7 @@ const backupModule = {
             sheetId: this.sheetId,
             firebaseConfig: this.firebaseConfig,
             autoSync: this.isAutoSyncEnabled,
-            version: '3.9.0',
+            version: '4.0.0',
             syncedAt: new Date().toISOString(),
             syncedBy: this.deviceId
         };
@@ -180,7 +180,6 @@ const backupModule = {
                 });
                 console.log('[Backup] Config synced to Firebase');
             } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
-                // Simpan config sebagai sheet terpisah atau di metadata
                 const payload = {
                     action: 'syncConfig',
                     config: this.syncedConfig,
@@ -203,7 +202,6 @@ const backupModule = {
         }
     },
     
-    // Load config dari cloud (dipanggil saat init atau manual check)
     async loadConfigFromCloud() {
         if (this.currentProvider === 'local') return null;
         
@@ -236,7 +234,6 @@ const backupModule = {
             if (cloudConfig) {
                 console.log('[Backup] Config loaded from cloud:', cloudConfig);
                 
-                // Apply config dari cloud jika berbeda
                 const localConfigStr = JSON.stringify({
                     provider: this.currentProvider,
                     gasUrl: this.gasUrl,
@@ -256,17 +253,14 @@ const backupModule = {
                 if (localConfigStr !== cloudConfigStr) {
                     console.log('[Backup] Applying config from cloud...');
                     
-                    // Simpan config lama untuk backup
                     const oldProvider = this.currentProvider;
                     
-                    // Apply config baru
                     this.currentProvider = cloudConfig.provider || this.currentProvider;
                     this.gasUrl = cloudConfig.gasUrl || this.gasUrl;
                     this.sheetId = cloudConfig.sheetId || this.sheetId;
                     this.firebaseConfig = cloudConfig.firebaseConfig || this.firebaseConfig;
                     this.isAutoSyncEnabled = cloudConfig.autoSync || this.isAutoSyncEnabled;
                     
-                    // Simpan ke localStorage
                     localStorage.setItem(this.KEYS.PROVIDER, this.currentProvider);
                     localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
                     localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
@@ -274,7 +268,6 @@ const backupModule = {
                     localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
                     this.saveBackupSettings();
                     
-                    // Re-init jika provider berubah
                     if (oldProvider !== this.currentProvider) {
                         if (this.currentProvider === 'firebase') {
                             this.initFirebase(true);
@@ -295,7 +288,6 @@ const backupModule = {
         }
     },
     
-    // Load config yang tersimpan locally (untuk referensi)
     loadSyncedConfig() {
         try {
             const saved = localStorage.getItem(this.KEYS.SYNCED_CONFIG);
@@ -306,9 +298,189 @@ const backupModule = {
             console.log('[Backup] No synced config found');
         }
     },
-    
+
+        // ============================================
+    // PREVIEW & DOWNLOAD FEATURES (RESTORED)
     // ============================================
-    // MANUAL CHECK UPDATE - TOMBOL CEK UPDATE
+    
+    async previewCloudData() {
+        if (!this.isOnline) {
+            this.showToast('📴 Offline - Tidak bisa preview');
+            return;
+        }
+        
+        if (this.currentProvider === 'local') {
+            this.showToast('💾 Mode Local - Tidak ada cloud data');
+            return;
+        }
+        
+        this.showToast('🔍 Mengambil data dari cloud...');
+        
+        try {
+            let cloudData = null;
+            let source = '';
+            
+            if (this.currentProvider === 'firebase' && this.currentUser) {
+                const snapshot = await this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value');
+                cloudData = snapshot.val();
+                source = 'Firebase';
+            } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
+                const result = await this.downloadFromGAS(true, true);
+                if (result && result.data) {
+                    cloudData = result.data;
+                    source = 'Google Sheets';
+                }
+            }
+            
+            if (!cloudData) {
+                this.showToast('ℹ️ Tidak ada data di cloud');
+                return;
+            }
+            
+            this.previewData = cloudData;
+            this.showPreviewModal(cloudData, source);
+            
+        } catch (err) {
+            console.error('[Backup] Preview error:', err);
+            this.showToast('❌ Gagal preview: ' + err.message);
+        }
+    },
+    
+    showPreviewModal(data, source) {
+        const stats = this.calculateDataStats(data);
+        const modal = document.createElement('div');
+        modal.id = 'preview-modal';
+        modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;`;
+        
+        modal.innerHTML = `
+            <div style="background:white;border-radius:16px;max-width:700px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:slideUp 0.3s ease;">
+                <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px;flex-shrink:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:20px;font-weight:700;">👁️ Preview Data Cloud</div>
+                            <div style="font-size:13px;opacity:0.9;margin-top:4px;">Sumber: ${source}</div>
+                        </div>
+                        <button onclick="backupModule.closePreviewModal()" style="background:rgba(255,255,255,0.2);border:none;color:white;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:20px;">×</button>
+                    </div>
+                </div>
+                
+                <div style="padding:20px;overflow-y:auto;flex:1;">
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
+                            <div style="font-size:28px;margin-bottom:4px;">📦</div>
+                            <div style="font-size:12px;color:#718096;">Produk</div>
+                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.products}</div>
+                        </div>
+                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
+                            <div style="font-size:28px;margin-bottom:4px;">📝</div>
+                            <div style="font-size:12px;color:#718096;">Transaksi</div>
+                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.transactions}</div>
+                        </div>
+                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
+                            <div style="font-size:28px;margin-bottom:4px;">💸</div>
+                            <div style="font-size:12px;color:#718096;">Cash Flow</div>
+                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.cashTransactions}</div>
+                        </div>
+                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
+                            <div style="font-size:28px;margin-bottom:4px;">💳</div>
+                            <div style="font-size:12px;color:#718096;">Hutang</div>
+                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.debts}</div>
+                        </div>
+                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
+                            <div style="font-size:28px;margin-bottom:4px;">📁</div>
+                            <div style="font-size:12px;color:#718096;">Kategori</div>
+                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.categories}</div>
+                        </div>
+                        <div style="background:#f7fafc;padding:16px;border-radius:10px;text-align:center;border:2px solid #e2e8f0;">
+                            <div style="font-size:28px;margin-bottom:4px;">👥</div>
+                            <div style="font-size:12px;color:#718096;">Users</div>
+                            <div style="font-size:20px;font-weight:700;color:#2d3748;">${stats.users}</div>
+                        </div>
+                    </div>
+                    
+                    ${data.telegram ? `
+                    <div style="background:#e6fffa;border:2px solid #81e6d9;border-radius:10px;padding:16px;margin-bottom:16px;">
+                        <div style="font-weight:600;color:#234e52;margin-bottom:8px;">📱 Telegram Config</div>
+                        <div style="font-size:13px;color:#2d3748;">
+                            Bot Token: ${data.telegram.botToken ? '✅ Terkonfigurasi' : '❌ Tidak ada'}<br>
+                            Chat ID: ${data.telegram.chatId || '-'}<br>
+                            Enabled: ${data.telegram.enabled ? '✅ Aktif' : '❌ Nonaktif'}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="background:#fffaf0;border:2px solid #fbd38d;border-radius:10px;padding:16px;margin-bottom:16px;">
+                        <div style="font-weight:600;color:#744210;margin-bottom:8px;">🔍 Search History</div>
+                        <div style="font-size:13px;color:#744210;">
+                            Total Pencarian: ${stats.searchHistory} item
+                        </div>
+                    </div>
+                    
+                    <div style="background:#f0fff4;border:2px solid #9ae6b4;border-radius:10px;padding:16px;margin-bottom:16px;">
+                        <div style="font-weight:600;color:#22543d;margin-bottom:8px;">📊 Metadata</div>
+                        <div style="font-size:13px;color:#2d3748;">
+                            Backup Date: ${data._backupMeta?.backupDate ? new Date(data._backupMeta.backupDate).toLocaleString('id-ID') : '-'}<br>
+                            Device: ${data._backupMeta?.deviceName || '-'}<br>
+                            Version: ${data._backupMeta?.version || '-'}
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex;gap:12px;">
+                        <button onclick="backupModule.downloadPreviewData()" style="flex:1;padding:14px;background:linear-gradient(135deg,#48bb78 0%,#38a169 100%);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:600;">
+                            ⬇️ Download Data Ini
+                        </button>
+                        <button onclick="backupModule.closePreviewModal()" style="padding:14px 24px;background:#e2e8f0;color:#4a5568;border:none;border-radius:10px;cursor:pointer;font-weight:600;">
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <style>
+                @keyframes slideUp {
+                    from { opacity: 0; transform: translateY(50px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            </style>
+        `;
+        
+        document.body.appendChild(modal);
+    },
+    
+    calculateDataStats(data) {
+        return {
+            products: data.products?.length || 0,
+            transactions: data.transactions?.length || 0,
+            cashTransactions: data.cashTransactions?.length || 0,
+            debts: data.debts?.length || 0,
+            categories: data.categories?.length || 0,
+            users: data.users?.length || 0,
+            searchHistory: data.searchHistory?.length || 0
+        };
+    },
+    
+    closePreviewModal() {
+        const modal = document.getElementById('preview-modal');
+        if (modal) modal.remove();
+    },
+    
+    downloadPreviewData() {
+        if (!this.previewData) return;
+        
+        const blob = new Blob([JSON.stringify(this.previewData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `hifzi_cloud_backup_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showToast('✅ Data cloud didownload!');
+    },
+
+        // ============================================
+    // MANUAL CHECK UPDATE
     // ============================================
     
     async manualCheckUpdate() {
@@ -332,13 +504,11 @@ const backupModule = {
             return;
         }
         
-        // Reset check count untuk force check
         this.cloudCheckCount = 0;
         this.lastCloudCheck = null;
         
         this.showToast('🔍 Mengecek update di cloud...');
         
-        // ✅ BARU: Cek config dulu, kemudian data
         const configUpdated = await this.loadConfigFromCloud();
         await this.checkCloudDataOnLoad(true);
         
@@ -595,14 +765,13 @@ const backupModule = {
         
         this.pendingCloudData = null;
     },
-    
-    async smartMergeData(cloudData) {
+
+        async smartMergeData(cloudData) {
         const localData = this.getBackupData();
         
         const merged = {
             products: this.mergeArrays(localData.products || [], cloudData.products || [], 'id', 'updatedAt'),
             transactions: this.mergeArrays(localData.transactions || [], cloudData.transactions || [], 'id', 'date'),
-            // ✅ BARU: Include cashTransactions dengan struktur baru
             cashTransactions: this.mergeCashTransactions(
                 localData.cashTransactions || [], 
                 cloudData.cashTransactions || []
@@ -611,14 +780,16 @@ const backupModule = {
             categories: this.mergeArrays(localData.categories || [], cloudData.categories || [], 'id'),
             users: this.mergeArrays(localData.users || [], cloudData.users || [], 'id', 'lastLogin'),
             settings: { ...cloudData.settings, ...localData.settings },
-            // ✅ BARU: Include kasir dengan struktur multi-user
             kasir: this.mergeKasirData(localData.kasir || {}, cloudData.kasir || {}),
             shiftHistory: this.mergeArrays(localData.shiftHistory || [], cloudData.shiftHistory || [], 'date'),
             loginHistory: this.mergeArrays(localData.loginHistory || [], cloudData.loginHistory || [], 'id', 'timestamp'),
-            // ✅ BARU: Include pendingModals untuk kasir
             pendingModals: { ...(cloudData.pendingModals || {}), ...(localData.pendingModals || {}) },
+            // ✅ Telegram - priority ke cloud jika ada
+            telegram: cloudData.telegram || localData.telegram || { botToken: '', chatId: '', enabled: false },
+            // ✅ Search History - merge keduanya
+            searchHistory: this.mergeArrays(localData.searchHistory || [], cloudData.searchHistory || [], 'id', 'timestamp'),
             _backupMeta: {
-                version: '3.9.0',
+                version: '4.0.0',
                 deviceId: this.deviceId,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider,
@@ -630,21 +801,17 @@ const backupModule = {
         await this.forceSyncNow();
     },
     
-    // ✅ BARU: Merge khusus untuk cash transactions dengan struktur baru
     mergeCashTransactions(localArr, cloudArr) {
         const map = new Map();
         
-        // Prioritaskan cloud untuk transaksi yang sama
         cloudArr.forEach(item => {
             map.set(item.id, { ...item, source: 'cloud' });
         });
         
-        // Tambahkan transaksi lokal yang belum ada di cloud
         localArr.forEach(item => {
             if (!map.has(item.id)) {
                 map.set(item.id, { ...item, source: 'local' });
             } else {
-                // Jika sama, ambil yang lebih baru berdasarkan timestamp
                 const existing = map.get(item.id);
                 const localTime = new Date(item.timestamp || item.date || 0).getTime();
                 const cloudTime = new Date(existing.timestamp || existing.date || 0).getTime();
@@ -658,22 +825,18 @@ const backupModule = {
         return Array.from(map.values());
     },
     
-    // ✅ BARU: Merge kasir data dengan struktur multi-user
     mergeKasirData(localKasir, cloudKasir) {
-        // Merge activeShifts - gabungkan semua shift dari kedua sumber
         const localShifts = localKasir.activeShifts || [];
         const cloudShifts = cloudKasir.activeShifts || [];
         
         const mergedShifts = [];
         const shiftMap = new Map();
         
-        // Gabungkan shifts berdasarkan userId
         [...localShifts, ...cloudShifts].forEach(shift => {
             const existing = shiftMap.get(shift.userId);
             if (!existing) {
                 shiftMap.set(shift.userId, shift);
             } else {
-                // Pilih shift yang lebih baru
                 const existingTime = new Date(existing.openTime || 0).getTime();
                 const newTime = new Date(shift.openTime || 0).getTime();
                 if (newTime > existingTime) {
@@ -816,7 +979,7 @@ const backupModule = {
         const hours = Math.floor(minutes / 60);
         if (hours < 24) return `${hours} jam lalu`;
         const days = Math.floor(hours / 24);
-        return `${days} hari lalu`;
+        return `${days} hari lalu';
     },
     
     // ============================================
@@ -850,7 +1013,6 @@ const backupModule = {
             this.updateSyncStatus(this.SYNC_STATUS.SYNCED);
             this.showToast('✅ Upload berhasil! Data tersimpan di cloud.');
             
-            // ✅ BARU: Sync config juga
             await this.syncConfigToCloud();
             
         } catch (err) {
@@ -858,496 +1020,11 @@ const backupModule = {
             this.showToast('❌ Upload gagal: ' + err.message);
         }
     },
-    
-    // ============================================
-    // DATA OBSERVER & UTILITIES
-    // ============================================
-    
-    setupDataChangeObserver() {
-        if (typeof dataManager !== 'undefined') {
-            const originalSaveData = dataManager.saveData.bind(dataManager);
-            const self = this;
-            
-            dataManager.saveData = function() {
-                const result = originalSaveData.apply(this, arguments);
-                self.handleDataChange();
-                return result;
-            };
-        }
-        
-        window.addEventListener('hifzi_data_changed', () => {
-            this.handleDataChange();
-        });
-    },
-    
-    handleDataChange() {
-        if (this.syncDebounceTimer) {
-            clearTimeout(this.syncDebounceTimer);
-        }
-        
-        this.syncDebounceTimer = setTimeout(() => {
-            if (this.isAutoSyncEnabled) {
-                this.checkAndSync();
-            }
-        }, 3000);
-        
-        if (this.syncStatus !== this.SYNC_STATUS.CLOUD_NEWER) {
-            this.updateSyncStatus(this.SYNC_STATUS.PENDING);
-        }
-    },
-    
-    async checkAndSync() {
-        if (!this.isOnline || this.currentProvider === 'local') return;
-        if (this.currentProvider === 'firebase' && !this.currentUser) return;
-        if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) return;
-        
-        const currentData = this.getBackupData();
-        const currentHash = this.generateDataHash(currentData);
-        
-        if (currentHash === this.lastLocalDataHash) return;
-        
-        await this.forceSyncNow();
-    },
-    
-    generateDataHash(data) {
-        const str = JSON.stringify(data);
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        return hash.toString();
-    },
-    
-    // ============================================
-    // FIREBASE METHODS
-    // ============================================
-    
-    initFirebase(attemptAutoLogin = false) {
-        if (typeof firebase === 'undefined') return;
-        if (!this.firebaseConfig.apiKey) return;
-        
-        try {
-            if (firebase.apps && firebase.apps.length) {
-                firebase.apps.forEach(app => app.delete());
-            }
-            
-            this.firebaseApp = firebase.initializeApp(this.firebaseConfig);
-            this.database = firebase.database();
-            this.auth = firebase.auth();
-            this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-            
-            this.auth.onAuthStateChanged((user) => {
-                this._firebaseAuthStateReady = true;
-                if (user) {
-                    this.currentUser = user;
-                    localStorage.setItem(this.KEYS.FB_USER, JSON.stringify({
-                        uid: user.uid, email: user.email, displayName: user.displayName || ''
-                    }));
-                    if (this.isAutoSyncEnabled) this.startAutoSync();
-                    this.setupFirebaseRealtimeListener();
-                    
-                    // ✅ BARU: Load config dari cloud setelah login
-                    setTimeout(() => {
-                        this.loadConfigFromCloud().then(() => {
-                            this.checkCloudDataOnLoad(true);
-                        });
-                    }, 2000);
-                } else if (attemptAutoLogin) {
-                    this.attemptAutoLogin();
-                }
-                if (this.isRendered) this.render();
-            });
-        } catch (err) {
-            this.showToast('❌ Error Firebase: ' + err.message);
-        }
-    },
-    
-    setupFirebaseRealtimeListener() {
-        if (!this.database || !this.currentUser) return;
-        
-        const userRef = this.database.ref('users/' + this.currentUser.uid + '/hifzi_data');
-        
-        userRef.on('value', (snapshot) => {
-            const cloudData = snapshot.val();
-            if (cloudData && cloudData._syncMeta) {
-                const cloudDeviceId = cloudData._syncMeta.deviceId;
-                const cloudTime = new Date(cloudData._syncMeta.lastModified);
-                const localTime = this.lastSyncTime ? new Date(this.lastSyncTime) : new Date(0);
-                
-                if (cloudDeviceId !== this.deviceId && cloudTime > localTime + 60000) {
-                    this.showToast('🔄 Update dari device lain terdeteksi!');
-                    this.updateSyncStatus(this.SYNC_STATUS.CLOUD_NEWER);
-                    this.showSyncConflictModal('cloud_newer', cloudData, cloudTime.getTime(), localTime.getTime(), true);
-                }
-            }
-        });
-    },
-    
-    attemptAutoLogin() {
-        const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
-        const savedPass = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
-        if (savedEmail && savedPass && this.auth) {
-            this.auth.signInWithEmailAndPassword(savedEmail, savedPass)
-                .catch(() => {
-                    localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
-                    localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
-                });
-        }
-    },
-    
-    firebaseLogin(email, password) {
-        if (!this.auth) return Promise.reject('Not ready');
-        return this.auth.signInWithEmailAndPassword(email, password)
-            .then((cred) => {
-                this.currentUser = cred.user;
-                localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
-                localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
-                this.showToast('✅ Login berhasil!');
-                
-                // ✅ BARU: Sync config ke cloud setelah login
-                setTimeout(() => this.syncConfigToCloud(), 3000);
-                
-                setTimeout(() => {
-                    this.loadConfigFromCloud().then(() => {
-                        this.checkCloudDataOnLoad(true);
-                    });
-                }, 2000);
-                
-                this.render();
-                return cred.user;
-            })
-            .catch((err) => {
-                this.showToast('❌ ' + err.message);
-                throw err;
-            });
-    },
-    
-    firebaseRegister(email, password) {
-        if (!this.auth) return Promise.reject('Not ready');
-        return this.auth.createUserWithEmailAndPassword(email, password)
-            .then((cred) => {
-                this.currentUser = cred.user;
-                localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
-                localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
-                this.showToast('✅ Daftar berhasil!');
-                
-                // ✅ BARU: Sync config ke cloud setelah register
-                setTimeout(() => this.syncConfigToCloud(), 3000);
-                
-                this.uploadToFirebase(this.getBackupData(), true);
-                this.render();
-                return cred.user;
-            })
-            .catch((err) => {
-                this.showToast('❌ ' + err.message);
-                throw err;
-            });
-    },
-    
-    firebaseLogout() {
-        if (!this.auth) return Promise.resolve();
-        if (this.database && this.currentUser) {
-            this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').off();
-        }
-        return this.auth.signOut().then(() => {
-            this.currentUser = null;
-            localStorage.removeItem(this.KEYS.FB_USER);
-            this.stopAutoSync();
-            this.showToast('✅ Logout berhasil');
-            this.render();
-        });
-    },
-    
-    uploadToFirebase(data, silent = false) {
-        if (!this.database || !this.currentUser) {
-            if (!silent) this.showToast('❌ Belum login');
-            return Promise.reject('Not authenticated');
-        }
-        
-        this.isSyncing = true;
-        const dataHash = this.generateDataHash(data);
-        
-        return this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set({
-            ...data,
-            _syncMeta: { 
-                lastModified: new Date().toISOString(), 
-                deviceId: this.deviceId, 
-                version: '3.9.0',
-                hash: dataHash
-            }
-        }).then(() => {
-            this.lastSyncTime = new Date().toISOString();
-            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-            localStorage.setItem(this.KEYS.CLOUD_DATA_HASH, dataHash);
-            this.saveBackupSettings();
-            this.isSyncing = false;
-            if (!silent) this.showToast('✅ Upload berhasil!');
-            return true;
-        }).catch((err) => {
-            this.isSyncing = false;
-            if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
-            throw err;
-        });
-    },
-    
-    downloadFromFirebase(silent = false, force = false) {
-        if (!this.database || !this.currentUser) {
-            if (!silent) this.showToast('❌ Belum login');
-            return Promise.reject('Not authenticated');
-        }
-        if (!silent && !force) {
-            if (!confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) return Promise.resolve();
-        }
-        
-        return this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value')
-            .then((snapshot) => {
-                const cloudData = snapshot.val();
-                if (cloudData) {
-                    this.saveBackupData(cloudData);
-                    this.lastSyncTime = new Date().toISOString();
-                    localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                    this.lastLocalDataHash = cloudData._syncMeta?.hash;
-                    localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
-                    localStorage.setItem(this.KEYS.CLOUD_DATA_HASH, cloudData._syncMeta?.hash || this.lastLocalDataHash);
-                    
-                    if (!silent) {
-                        this.showToast('✅ Download berhasil! Reload...');
-                        setTimeout(() => location.reload(), 1500);
-                    }
-                    return cloudData;
-                }
-                return null;
-            })
-            .catch((err) => {
-                if (!silent) this.showToast('❌ Download gagal: ' + err.message);
-                throw err;
-            });
-    },
-    
-    clearFirebaseConfig() {
-        if (!confirm('⚠️ Hapus konfigurasi Firebase?')) return;
-        this.firebaseConfig = {};
-        this.firebaseApp = null;
-        this.database = null;
-        this.auth = null;
-        this.currentUser = null;
-        localStorage.removeItem(this.KEYS.FIREBASE_CONFIG);
-        localStorage.removeItem(this.KEYS.FB_USER);
-        this.stopAutoSync();
-        this.saveBackupSettings();
-        this.showToast('✅ Config dihapus');
-        this.render();
-    },
-    
-    // ============================================
-    // GOOGLE SHEETS METHODS
-    // ============================================
-    
-    checkNewDeviceGAS() {
-        const hasLocalData = (typeof dataManager !== 'undefined' && dataManager.data) 
-            ? dataManager.data.products?.length > 0 
-            : false;
-        if (!hasLocalData && this.gasUrl && this._gasConfigValid) {
-            setTimeout(() => this.downloadFromGAS(true, true), 1000);
-        }
-    },
-    
-    testGASConnection() {
-        if (!this.gasUrl) {
-            this.showToast('❌ URL GAS belum diisi');
-            return Promise.reject('No URL');
-        }
-        const cleanSheetId = this.cleanSheetId(this.sheetId);
-        if (!cleanSheetId) {
-            this.showToast('⚠️ Sheet ID kosong');
-            return Promise.reject('Sheet ID empty');
-        }
 
-        this.showToast('🧪 Testing koneksi...');
-        
-        return fetch(this.gasUrl, {
-            method: 'POST',
-            mode: 'cors',
-            cache: 'no-cache',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'test', deviceId: this.deviceId, sheetId: cleanSheetId })
-        })
-        .then(async (r) => {
-            const text = await r.text();
-            try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON'); }
-        })
-        .then(result => {
-            if (result?.success) {
-                this.showToast('✅ ' + (result.message || 'Koneksi berhasil!'));
-                return result;
-            } else {
-                throw new Error(result?.message || 'Test failed');
-            }
-        })
-        .catch((err) => {
-            this.showToast('❌ Koneksi gagal: ' + err.message);
-            throw err;
-        });
-    },
-    
-    uploadToGAS(data, silent = false) {
-        if (!this.gasUrl) {
-            if (!silent) this.showToast('❌ URL GAS belum diisi');
-            return Promise.reject('No URL');
-        }
-        
-        const cleanSheetId = this.cleanSheetId(this.sheetId);
-        if (!cleanSheetId) {
-            if (!silent) this.showToast('⚠️ Sheet ID kosong');
-            return Promise.reject('Sheet ID empty');
-        }
-        
-        this.isSyncing = true;
-        const dataHash = this.generateDataHash(data);
-        
-        const payload = {
-            action: 'sync',
-            data: data,
-            deviceId: this.deviceId,
-            deviceName: this.deviceName,
-            sheetId: cleanSheetId,
-            timestamp: new Date().toISOString(),
-            hash: dataHash
-        };
-
-        return fetch(this.gasUrl, {
-            method: 'POST',
-            mode: 'cors',
-            cache: 'no-cache',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        })
-        .then(async (r) => {
-            const text = await r.text();
-            try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON'); }
-        })
-        .then(result => {
-            if (result?.success) {
-                this.lastSyncTime = new Date().toISOString();
-                localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                localStorage.setItem(this.KEYS.CLOUD_DATA_HASH, dataHash);
-                this.saveBackupSettings();
-                this.isSyncing = false;
-                this.pendingSync = false;
-                if (!silent) this.showToast('✅ Upload berhasil!');
-                return result;
-            } else {
-                throw new Error(result?.message || 'Upload failed');
-            }
-        })
-        .catch((err) => {
-            this.isSyncing = false;
-            this.pendingSync = true;
-            if (!silent) this.showToast('❌ Upload gagal: ' + err.message);
-            throw err;
-        });
-    },
-    
-    downloadFromGAS(silent = false, force = false) {
-        if (!this.gasUrl) {
-            if (!silent) this.showToast('❌ URL GAS belum diisi');
-            return Promise.reject('No URL');
-        }
-        
-        const cleanSheetId = this.cleanSheetId(this.sheetId);
-        if (!cleanSheetId) {
-            if (!silent) this.showToast('⚠️ Sheet ID kosong');
-            return Promise.reject('Sheet ID empty');
-        }
-        
-        if (!silent && !force) {
-            if (!confirm('📥 Download akan mengganti data lokal. Lanjutkan?')) return Promise.resolve();
-        }
-        
-        if (!silent) this.showToast('⬇️ Downloading...');
-
-        const payload = {
-            action: 'restore',
-            sheetId: cleanSheetId,
-            deviceId: this.deviceId,
-            timestamp: new Date().toISOString()
-        };
-
-        return fetch(this.gasUrl, {
-            method: 'POST',
-            mode: 'cors',
-            cache: 'no-cache',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        })
-        .then(async (r) => {
-            const text = await r.text();
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON'); }
-        })
-        .then(result => {
-            if (result?.success && result.data) {
-                this.gasBackupData = result.data;
-                this.saveBackupData(result.data);
-                this.lastSyncTime = new Date().toISOString();
-                localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
-                this.lastLocalDataHash = result.data._backupMeta?.hash || this.generateDataHash(result.data);
-                localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
-                localStorage.setItem(this.KEYS.CLOUD_DATA_HASH, result.hash || this.lastLocalDataHash);
-                
-                if (!silent) {
-                    this.showToast('✅ Download berhasil! Reload...');
-                    setTimeout(() => location.reload(), 1500);
-                }
-                return result;
-            } else {
-                throw new Error(result?.message || 'No data');
-            }
-        })
-        .catch((err) => {
-            if (!silent) this.showToast('❌ Download gagal: ' + err.message);
-            throw err;
-        });
-    },
-    
-    clearGASConfig() {
-        if (!confirm('⚠️ Hapus konfigurasi Google Sheets?')) return;
-        this.gasUrl = '';
-        this.sheetId = '';
-        this._gasConfigValid = false;
-        localStorage.removeItem(this.KEYS.GAS_URL);
-        localStorage.removeItem(this.KEYS.SHEET_ID);
-        this.stopAutoSync();
-        this.saveBackupSettings();
-        this.showToast('✅ Config dihapus');
-        this.render();
-    },
-    
-    // ============================================
-    // UTILITY METHODS
+        // ============================================
+    // GET BACKUP DATA - LENGKAP DENGAN TELEGRAM & SEARCH
     // ============================================
     
-    cleanSheetId(sheetId) {
-        if (!sheetId) return '';
-        if (typeof sheetId !== 'string') {
-            try { sheetId = String(sheetId); } catch (e) { return ''; }
-        }
-        let cleaned = sheetId.replace(/\s/g, '').replace(/[^\x20-\x7E]/g, '').trim();
-        if (cleaned === 'null' || cleaned === 'undefined') return '';
-        return cleaned;
-    },
-    
-    validateSheetId(sheetId) {
-        const cleaned = this.cleanSheetId(sheetId);
-        if (!cleaned) return { valid: false, message: 'Sheet ID kosong', cleaned: '' };
-        if (cleaned.length !== 44) return { valid: false, message: 'Sheet ID harus 44 karakter', cleaned };
-        if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) return { valid: false, message: 'Karakter tidak valid', cleaned };
-        return { valid: true, cleaned, message: 'Valid (44 karakter)' };
-    },
-    
-    // ✅ PERBAIKAN: Include struktur cash yang baru
     getBackupData() {
         let allData = {};
         if (typeof dataManager !== 'undefined') {
@@ -1358,10 +1035,10 @@ const backupModule = {
             }
         }
         
-        // ✅ Pastikan struktur cash transactions lengkap dengan field baru
+        // Pastikan struktur cash transactions lengkap
         const cashTransactions = (allData.cashTransactions || []).map(t => ({
             id: t.id,
-            type: t.type, // 'in', 'out', 'modal_in', 'topup', 'tarik_tunai'
+            type: t.type,
             category: t.category,
             amount: t.amount,
             description: t.description,
@@ -1370,7 +1047,6 @@ const backupModule = {
             userId: t.userId,
             userName: t.userName,
             paymentMethod: t.paymentMethod,
-            // ✅ Field baru untuk struktur cash yang lengkap
             details: t.details || {
                 adminFee: 0,
                 provider: '',
@@ -1379,17 +1055,26 @@ const backupModule = {
                 bankName: '',
                 accountNumber: ''
             },
-            shiftId: t.shiftId // ✅ Link ke shift kasir
+            shiftId: t.shiftId
         }));
+        
+        // ✅ PENTING: Sertakan Telegram config
+        const telegram = allData.telegram || {
+            botToken: '',
+            chatId: '',
+            enabled: false,
+            lastTest: null
+        };
+        
+        // ✅ PENTING: Sertakan search history
+        const searchHistory = allData.searchHistory || [];
         
         return {
             products: allData.products || [],
             categories: allData.categories || [],
             transactions: allData.transactions || [],
-            // ✅ Cash transactions dengan struktur lengkap
             cashTransactions: cashTransactions,
             debts: allData.debts || [],
-            // ✅ Kasir dengan struktur multi-user
             kasir: allData.kasir || {
                 isOpen: false,
                 activeShifts: [],
@@ -1397,14 +1082,18 @@ const backupModule = {
                 lastCheckDate: null
             },
             settings: allData.settings || {},
-            // ✅ Shift history untuk tracking
             shiftHistory: allData.shiftHistory || [],
             loginHistory: allData.loginHistory || [],
-            // ✅ Pending modals untuk kasir
             pendingModals: allData.pendingModals || {},
             currentUser: allData.currentUser || null,
+            // ✅ Telegram config
+            telegram: telegram,
+            // ✅ Search history
+            searchHistory: searchHistory,
+            // Users
+            users: allData.users || [],
             _backupMeta: {
-                version: '3.9.0',
+                version: '4.0.0',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
@@ -1414,18 +1103,12 @@ const backupModule = {
     },
     
     saveBackupData(backupData) {
-        const telegramBackup = (typeof dataManager !== 'undefined' && dataManager.data) 
-            ? dataManager.data.telegram 
-            : {};
-        
-        const dataToSave = { ...backupData, telegram: telegramBackup };
-        
         if (typeof dataManager !== 'undefined') {
             if (dataManager.saveAllData) {
-                dataManager.saveAllData(dataToSave);
+                dataManager.saveAllData(backupData);
             } else {
                 Object.keys(backupData).forEach(key => {
-                    if (key !== '_backupMeta' && key !== 'telegram') {
+                    if (key !== '_backupMeta') {
                         dataManager.data[key] = backupData[key];
                     }
                 });
@@ -1433,147 +1116,9 @@ const backupModule = {
             }
         }
     },
-    
-    setupNetworkListeners() {
-        window.removeEventListener('online', this.handleOnline);
-        window.removeEventListener('offline', this.handleOffline);
-        
-        this.handleOnline = () => {
-            this.isOnline = true;
-            this.showToast('🌐 Online');
-            this.updateSyncStatus(this.SYNC_STATUS.IDLE);
-        };
-        
-        this.handleOffline = () => {
-            this.isOnline = false;
-            this.showToast('📴 Offline');
-            this.updateSyncStatus(this.SYNC_STATUS.OFFLINE);
-        };
-        
-        window.addEventListener('online', this.handleOnline);
-        window.addEventListener('offline', this.handleOffline);
-    },
-    
-    toggleAutoSync() {
-        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
-        localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
-        this.saveBackupSettings();
-        
-        // ✅ BARU: Sync config ke cloud saat toggle
-        this.syncConfigToCloud();
-        
-        if (this.isAutoSyncEnabled) {
-            this.startAutoSync();
-            this.showToast('🟢 Auto-sync aktif');
-        } else {
-            this.stopAutoSync();
-            this.showToast('⚪ Auto-sync dimatikan');
-        }
-        this.render();
-    },
-    
-    startAutoSync() {
-        this.stopAutoSync();
-        if (!this.isAutoSyncEnabled || this.currentProvider === 'local') return;
-        this.autoSyncInterval = setInterval(() => {
-            this.checkAndSync();
-        }, 120000);
-    },
-    
-    stopAutoSync() {
-        if (this.autoSyncInterval) {
-            clearInterval(this.autoSyncInterval);
-            this.autoSyncInterval = null;
-        }
-    },
-    
-    saveBackupSettings() {
-        const settings = {
-            provider: this.currentProvider,
-            gasUrl: this.gasUrl,
-            sheetId: this.sheetId,
-            autoSync: this.isAutoSyncEnabled,
-            firebaseConfig: this.firebaseConfig,
-            lastSync: this.lastSyncTime,
-            deviceId: this.deviceId,
-            savedAt: new Date().toISOString()
-        };
-        localStorage.setItem(this.KEYS.BACKUP_SETTINGS, JSON.stringify(settings));
-        
-        // ✅ BARU: Simpan juga ke syncedConfig
-        this.syncedConfig = {
-            provider: this.currentProvider,
-            gasUrl: this.gasUrl,
-            sheetId: this.sheetId,
-            firebaseConfig: this.firebaseConfig,
-            autoSync: this.isAutoSyncEnabled,
-            version: '3.9.0'
-        };
-        localStorage.setItem(this.KEYS.SYNCED_CONFIG, JSON.stringify(this.syncedConfig));
-    },
-    
-    loadBackupSettings() {
-        try {
-            const saved = localStorage.getItem(this.KEYS.BACKUP_SETTINGS);
-            if (saved) {
-                const settings = JSON.parse(saved);
-                this.currentProvider = settings.provider || 'local';
-                this.gasUrl = settings.gasUrl || '';
-                this.sheetId = settings.sheetId || '';
-                this.isAutoSyncEnabled = settings.autoSync || false;
-                this.firebaseConfig = settings.firebaseConfig || {};
-                this.lastSyncTime = settings.lastSync || null;
-                if (settings.deviceId) this.deviceId = settings.deviceId;
-            }
-        } catch (e) {
-            this.currentProvider = 'local';
-        }
-    },
-    
-    reloadAllConfig() {
-        try {
-            this.currentProvider = localStorage.getItem(this.KEYS.PROVIDER) || 'local';
-            this.isAutoSyncEnabled = localStorage.getItem(this.KEYS.AUTO_SYNC) === 'true';
-            this.lastSyncTime = localStorage.getItem(this.KEYS.LAST_SYNC);
-            this.gasUrl = localStorage.getItem(this.KEYS.GAS_URL) || '';
-            this.sheetId = localStorage.getItem(this.KEYS.SHEET_ID) || '';
-            
-            const fbConfig = localStorage.getItem(this.KEYS.FIREBASE_CONFIG);
-            this.firebaseConfig = fbConfig ? JSON.parse(fbConfig) : {};
-            
-            const deviceId = localStorage.getItem(this.KEYS.DEVICE_ID);
-            if (deviceId) this.deviceId = deviceId;
-        } catch (e) {
-            this.currentProvider = 'local';
-        }
-    },
-    
-    setProvider(provider) {
-        this.currentProvider = provider;
-        localStorage.setItem(this.KEYS.PROVIDER, provider);
-        this.saveBackupSettings();
-        this.stopAutoSync();
-        this.firebaseBackupData = null;
-        this.gasBackupData = null;
-        
-        // ✅ BARU: Sync config ke cloud saat ganti provider
-        this.syncConfigToCloud();
-        
-        if (provider === 'firebase') {
-            this.initFirebase(true);
-        } else if (provider === 'googlesheet') {
-            this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
-            if (this._gasConfigValid) {
-                setTimeout(() => this.checkCloudDataOnLoad(true), 2000);
-            }
-        }
-        
-        this.showToast(`✅ Provider: ${provider === 'local' ? '💾 Local' : provider === 'firebase' ? '🔥 Firebase' : '📊 Google Sheets'}`);
-        this.render();
-    },
-    
-    // ============================================
-    // RENDER - DENGAN TOMBOL CHECK UPDATE YANG JELAS
+
+        // ============================================
+    // RENDER - DENGAN TOMBOL PREVIEW & DOWNLOAD
     // ============================================
     
     render() {
@@ -1636,22 +1181,21 @@ const backupModule = {
                     </div>
                 </div>
 
-                <!-- TOMBOL CHECK UPDATE - PALING ATAS & MENONJOL -->
+                <!-- TOMBOL CHECK UPDATE & PREVIEW -->
                 ${!isLocal ? `
-                <div style="background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%);padding:20px;border-radius:16px;margin-bottom:20px;box-shadow:0 4px 15px rgba(237,137,54,0.3);text-align:center;">
-                    <div style="color:white;margin-bottom:12px;">
-                        <div style="font-size:16px;font-weight:600;">🔄 Cek Update dari Device Lain</div>
-                        <div style="font-size:13px;opacity:0.9;">Klik tombol di bawah untuk mengecek data terbaru di cloud</div>
+                <div style="background:linear-gradient(135deg,#ed8936 0%,#dd6b20 100%);padding:20px;border-radius:16px;margin-bottom:20px;box-shadow:0 4px 15px rgba(237,137,54,0.3);">
+                    <div style="color:white;margin-bottom:16px;text-align:center;">
+                        <div style="font-size:16px;font-weight:600;">🔄 Sinkronisasi Data</div>
+                        <div style="font-size:13px;opacity:0.9;">Cek dan kelola data di cloud</div>
                     </div>
-                    <button id="check-update-btn" onclick="backupModule.manualCheckUpdate()" style="padding:14px 32px;background:white;color:#ed8936;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:16px;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:all 0.3s;">
-                        🔍 Cek Update Sekarang
-                    </button>
-                    <style>
-                        @keyframes pulse {
-                            0%, 100% { transform: scale(1); }
-                            50% { transform: scale(1.05); }
-                        }
-                    </style>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <button id="check-update-btn" onclick="backupModule.manualCheckUpdate()" style="padding:14px;background:white;color:#ed8936;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:all 0.3s;">
+                            🔍 Cek Update
+                        </button>
+                        <button onclick="backupModule.previewCloudData()" style="padding:14px;background:rgba(255,255,255,0.2);color:white;border:2px solid white;border-radius:12px;cursor:pointer;font-weight:700;font-size:14px;transition:all 0.3s;">
+                            👁️ Preview Data
+                        </button>
+                    </div>
                 </div>
                 ` : ''}
 
@@ -1746,7 +1290,7 @@ const backupModule = {
                     <div style="background:#e6fffa;border:1px solid #81e6d9;border-radius:8px;padding:12px;font-size:12px;color:#234e52;">
                         <strong>💡 Cara Sync:</strong><br>
                         1. <strong>Device 1</strong>: Input transaksi → Klik <strong>Upload ke Cloud</strong><br>
-                        2. <strong>Device 2</strong>: Klik <strong>🔍 Cek Update</strong> di atas → Download data baru
+                        2. <strong>Device 2</strong>: Klik <strong>🔍 Cek Update</strong> → Download data baru
                     </div>
                 </div>
 
@@ -1887,10 +1431,560 @@ const backupModule = {
             </div>
         `;
     },
-    
+
+        // ============================================
+    // FIREBASE METHODS
     // ============================================
+    
+    initFirebase(attemptAutoLogin = false) {
+        if (typeof firebase === 'undefined') return;
+        if (!this.firebaseConfig.apiKey) return;
+        
+        try {
+            if (firebase.apps && firebase.apps.length) {
+                firebase.apps.forEach(app => app.delete());
+            }
+            
+            this.firebaseApp = firebase.initializeApp(this.firebaseConfig);
+            this.database = firebase.database();
+            this.auth = firebase.auth();
+            this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+            
+            this.auth.onAuthStateChanged((user) => {
+                this._firebaseAuthStateReady = true;
+                if (user) {
+                    this.currentUser = user;
+                    localStorage.setItem(this.KEYS.FB_USER, JSON.stringify({
+                        uid: user.uid, email: user.email, displayName: user.displayName || ''
+                    }));
+                    if (this.isAutoSyncEnabled) this.startAutoSync();
+                    this.setupFirebaseRealtimeListener();
+                    
+                    setTimeout(() => {
+                        this.loadConfigFromCloud().then(() => {
+                            this.checkCloudDataOnLoad(true);
+                        });
+                    }, 2000);
+                } else if (attemptAutoLogin) {
+                    this.attemptAutoLogin();
+                }
+                if (this.isRendered) this.render();
+            });
+        } catch (err) {
+            this.showToast('❌ Error Firebase: ' + err.message);
+        }
+    },
+    
+    setupFirebaseRealtimeListener() {
+        if (!this.database || !this.currentUser) return;
+        
+        const userRef = this.database.ref('users/' + this.currentUser.uid + '/hifzi_data');
+        
+        userRef.on('value', (snapshot) => {
+            const cloudData = snapshot.val();
+            if (cloudData && cloudData._syncMeta) {
+                const cloudDeviceId = cloudData._syncMeta.deviceId;
+                const cloudTime = new Date(cloudData._syncMeta.lastModified);
+                const localTime = this.lastSyncTime ? new Date(this.lastSyncTime) : new Date(0);
+                
+                if (cloudDeviceId !== this.deviceId && cloudTime > localTime + 60000) {
+                    this.showToast('🔄 Update dari device lain terdeteksi!');
+                    this.updateSyncStatus(this.SYNC_STATUS.CLOUD_NEWER);
+                    this.showSyncConflictModal('cloud_newer', cloudData, cloudTime.getTime(), localTime.getTime(), true);
+                }
+            }
+        });
+    },
+    
+    attemptAutoLogin() {
+        const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
+        const savedPass = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
+        if (savedEmail && savedPass && this.auth) {
+            this.auth.signInWithEmailAndPassword(savedEmail, savedPass)
+                .catch(() => {
+                    localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+                    localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
+                });
+        }
+    },
+    
+    firebaseLogin(email, password) {
+        if (!this.auth) return Promise.reject('Not ready');
+        return this.auth.signInWithEmailAndPassword(email, password)
+            .then((cred) => {
+                this.currentUser = cred.user;
+                localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
+                localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
+                this.showToast('✅ Login berhasil!');
+                
+                setTimeout(() => this.syncConfigToCloud(), 3000);
+                
+                setTimeout(() => {
+                    this.loadConfigFromCloud().then(() => {
+                        this.checkCloudDataOnLoad(true);
+                    });
+                }, 2000);
+                
+                this.render();
+                return cred.user;
+            })
+            .catch((err) => {
+                this.showToast('❌ ' + err.message);
+                throw err;
+            });
+    },
+    
+    firebaseRegister(email, password) {
+        if (!this.auth) return Promise.reject('Not ready');
+        return this.auth.createUserWithEmailAndPassword(email, password)
+            .then((cred) => {
+                this.currentUser = cred.user;
+                localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
+                localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
+                this.showToast('✅ Daftar berhasil!');
+                
+                setTimeout(() => this.syncConfigToCloud(), 3000);
+                
+                this.uploadToFirebase(this.getBackupData(), true);
+                this.render();
+                return cred.user;
+            })
+            .catch((err) => {
+                this.showToast('❌ ' + err.message);
+                throw err;
+            });
+    },
+    
+    firebaseLogout() {
+        if (this.auth) {
+            this.auth.signOut().then(() => {
+                this.currentUser = null;
+                this.showToast('✅ Logout berhasil');
+                this.render();
+            });
+        }
+    },
+    
+    clearFirebaseConfig() {
+        this.firebaseConfig = {};
+        localStorage.removeItem(this.KEYS.FIREBASE_CONFIG);
+        localStorage.removeItem(this.KEYS.FB_USER);
+        localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+        localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
+        this.showToast('✅ Config Firebase dihapus');
+        this.render();
+    },
+    
+    async uploadToFirebase(data, silent = false) {
+        if (!this.database || !this.currentUser) throw new Error('Not authenticated');
+        
+        const payload = {
+            ...data,
+            _syncMeta: {
+                lastModified: new Date().toISOString(),
+                deviceId: this.deviceId,
+                deviceName: this.deviceName,
+                hash: this.generateDataHash(data),
+                version: '4.0.0'
+            }
+        };
+        
+        await this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').set(payload);
+        
+        if (!silent) {
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+            this.saveBackupSettings();
+        }
+    },
+    
+    async downloadFromFirebase(silent = false) {
+        if (!this.database || !this.currentUser) throw new Error('Not authenticated');
+        
+        const snapshot = await this.database.ref('users/' + this.currentUser.uid + '/hifzi_data').once('value');
+        const data = snapshot.val();
+        
+        if (!data) throw new Error('No data in Firebase');
+        
+        const { _syncMeta, ...cleanData } = data;
+        this.saveBackupData(cleanData);
+        
+        if (!silent) {
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+            this.saveBackupSettings();
+            this.showToast('✅ Download berhasil!');
+            setTimeout(() => location.reload(), 1500);
+        }
+        
+        return cleanData;
+    },
+
+        // ============================================
+    // GOOGLE SHEETS METHODS
+    // ============================================
+    
+    validateSheetId(sheetId) {
+        if (!sheetId) return { valid: false, message: 'Sheet ID kosong', cleaned: '' };
+        
+        const cleaned = sheetId.trim();
+        
+        if (cleaned.length === 0) return { valid: false, message: 'Sheet ID kosong', cleaned: '' };
+        
+        if (cleaned.length !== 44) {
+            return { valid: false, message: `Panjang harus 44 karakter (saat ini: ${cleaned.length})`, cleaned };
+        }
+        
+        const validPattern = /^[a-zA-Z0-9_-]+$/;
+        if (!validPattern.test(cleaned)) {
+            return { valid: false, message: 'Hanya boleh huruf, angka, underscore, dan dash', cleaned };
+        }
+        
+        return { valid: true, message: 'Valid', cleaned };
+    },
+    
+    cleanSheetId(sheetId) {
+        if (!sheetId) return '';
+        return sheetId.trim().replace(/['"]/g, '');
+    },
+    
+    async testGASConnection() {
+        if (!this.gasUrl) {
+            this.showToast('❌ URL GAS belum diisi');
+            return;
+        }
+        
+        const sheetId = document.getElementById('sheetIdInput')?.value?.trim();
+        const validation = this.validateSheetId(sheetId);
+        
+        if (!validation.valid) {
+            this.showToast('❌ ' + validation.message);
+            return;
+        }
+        
+        this.showToast('🧪 Testing connection...');
+        
+        try {
+            const payload = {
+                action: 'test',
+                sheetId: validation.cleaned,
+                deviceId: this.deviceId,
+                timestamp: new Date().toISOString()
+            };
+
+            const response = await fetch(this.gasUrl, {
+                method: 'POST',
+                mode: 'cors',
+                cache: 'no-cache',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+            
+            const text = await response.text();
+            const result = JSON.parse(text);
+            
+            if (result.success) {
+                this.showToast('✅ ' + result.message);
+                this.sheetId = validation.cleaned;
+                localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
+                this._gasConfigValid = true;
+                this.saveBackupSettings();
+                this.render();
+            } else {
+                this.showToast('❌ ' + (result.message || 'Test failed'));
+            }
+        } catch (err) {
+            this.showToast('❌ Error: ' + err.message);
+        }
+    },
+    
+    async uploadToGAS(data, silent = false) {
+        if (!this.gasUrl || !this._gasConfigValid) throw new Error('GAS not configured');
+        
+        const payload = {
+            action: 'upload',
+            sheetId: this.cleanSheetId(this.sheetId),
+            deviceId: this.deviceId,
+            data: data,
+            timestamp: new Date().toISOString()
+        };
+
+        const response = await fetch(this.gasUrl, {
+            method: 'POST',
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        
+        const text = await response.text();
+        const result = JSON.parse(text);
+        
+        if (!result.success) throw new Error(result.message || 'Upload failed');
+        
+        if (!silent) {
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+            this.saveBackupSettings();
+        }
+        
+        return result;
+    },
+    
+    async downloadFromGAS(silent = false, previewOnly = false) {
+        if (!this.gasUrl || !this._gasConfigValid) throw new Error('GAS not configured');
+        
+        const payload = {
+            action: 'download',
+            sheetId: this.cleanSheetId(this.sheetId),
+            deviceId: this.deviceId,
+            timestamp: new Date().toISOString()
+        };
+
+        const response = await fetch(this.gasUrl, {
+            method: 'POST',
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        
+        const text = await response.text();
+        const result = JSON.parse(text);
+        
+        if (!result.success) throw new Error(result.message || 'Download failed');
+        
+        if (!previewOnly && result.data) {
+            this.saveBackupData(result.data);
+            this.lastSyncTime = new Date().toISOString();
+            localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
+            this.saveBackupSettings();
+            this.showToast('✅ Download berhasil!');
+            setTimeout(() => location.reload(), 1500);
+        }
+        
+        return result;
+    },
+    
+    async manualDownload() {
+        if (this.currentProvider === 'firebase') {
+            if (!this.currentUser) {
+                this.showToast('❌ Belum login Firebase');
+                return;
+            }
+            this.showToast('⬇️ Downloading...');
+            try {
+                await this.downloadFromFirebase();
+            } catch (err) {
+                this.showToast('❌ ' + err.message);
+            }
+        } else if (this.currentProvider === 'googlesheet') {
+            if (!this._gasConfigValid) {
+                this.showToast('❌ GAS belum dikonfigurasi');
+                return;
+            }
+            this.showToast('⬇️ Downloading...');
+            try {
+                await this.downloadFromGAS();
+            } catch (err) {
+                this.showToast('❌ ' + err.message);
+            }
+        }
+    },
+    
+    async checkNewDeviceGAS() {
+        try {
+            const payload = {
+                action: 'checkNewDevice',
+                sheetId: this.cleanSheetId(this.sheetId),
+                deviceId: this.deviceId,
+                deviceName: this.deviceName,
+                timestamp: new Date().toISOString()
+            };
+
+            await fetch(this.gasUrl, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+        } catch (err) {
+            console.log('[Backup] checkNewDevice error:', err);
+        }
+    },
+
+        // ============================================
     // UTILITY METHODS
     // ============================================
+    
+    setProvider(provider) {
+        this.currentProvider = provider;
+        localStorage.setItem(this.KEYS.PROVIDER, provider);
+        this.saveBackupSettings();
+        
+        if (provider === 'firebase') {
+            this.initFirebase(true);
+        } else if (provider === 'googlesheet') {
+            if (this._gasConfigValid) {
+                this.checkNewDeviceGAS();
+                setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
+            }
+        }
+        
+        this.render();
+    },
+    
+    toggleAutoSync() {
+        this.isAutoSyncEnabled = !this.isAutoSyncEnabled;
+        localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
+        
+        if (this.isAutoSyncEnabled) {
+            this.startAutoSync();
+            this.showToast('✅ Auto-sync diaktifkan');
+        } else {
+            this.stopAutoSync();
+            this.showToast('⏸️ Auto-sync dimatikan');
+        }
+        
+        this.syncConfigToCloud();
+        this.render();
+    },
+    
+    startAutoSync() {
+        if (this.autoSyncInterval) clearInterval(this.autoSyncInterval);
+        
+        this.autoSyncInterval = setInterval(() => {
+            if (this.isOnline && !this.isSyncing) {
+                this.checkAndSync();
+            }
+        }, 30000);
+        
+        console.log('[Backup] Auto-sync started (30s interval)');
+    },
+    
+    stopAutoSync() {
+        if (this.autoSyncInterval) {
+            clearInterval(this.autoSyncInterval);
+            this.autoSyncInterval = null;
+        }
+        console.log('[Backup] Auto-sync stopped');
+    },
+    
+    setupNetworkListeners() {
+        window.addEventListener('online', () => {
+            this.isOnline = true;
+            this.updateSyncStatus(this.SYNC_STATUS.IDLE);
+            console.log('[Backup] Online');
+            if (this.isAutoSyncEnabled) {
+                setTimeout(() => this.checkCloudDataOnLoad(true), 2000);
+            }
+        });
+        
+        window.addEventListener('offline', () => {
+            this.isOnline = false;
+            this.updateSyncStatus(this.SYNC_STATUS.OFFLINE);
+            console.log('[Backup] Offline');
+        });
+    },
+    
+    setupDataChangeObserver() {
+        if (typeof dataManager !== 'undefined') {
+            const originalSaveData = dataManager.saveData.bind(dataManager);
+            const self = this;
+            
+            dataManager.saveData = function() {
+                const result = originalSaveData.apply(this, arguments);
+                self.handleDataChange();
+                return result;
+            };
+        }
+        
+        window.addEventListener('hifzi_data_changed', () => {
+            this.handleDataChange();
+        });
+    },
+    
+    handleDataChange() {
+        if (this.syncDebounceTimer) {
+            clearTimeout(this.syncDebounceTimer);
+        }
+        
+        this.syncDebounceTimer = setTimeout(() => {
+            if (this.isAutoSyncEnabled) {
+                this.checkAndSync();
+            }
+        }, 3000);
+        
+        if (this.syncStatus !== this.SYNC_STATUS.CLOUD_NEWER) {
+            this.updateSyncStatus(this.SYNC_STATUS.PENDING);
+        }
+    },
+    
+    async checkAndSync() {
+        if (!this.isOnline || this.currentProvider === 'local') return;
+        if (this.currentProvider === 'firebase' && !this.currentUser) return;
+        if (this.currentProvider === 'googlesheet' && !this._gasConfigValid) return;
+        
+        const currentData = this.getBackupData();
+        const currentHash = this.generateDataHash(currentData);
+        
+        if (currentHash === this.lastLocalDataHash) return;
+        
+        await this.forceSyncNow();
+    },
+    
+    generateDataHash(data) {
+        const str = JSON.stringify(data);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString();
+    },
+    
+    loadBackupSettings() {
+        const saved = localStorage.getItem(this.KEYS.BACKUP_SETTINGS);
+        if (saved) {
+            try {
+                const settings = JSON.parse(saved);
+                this.currentProvider = settings.currentProvider || 'local';
+                this.gasUrl = settings.gasUrl || '';
+                this.sheetId = settings.sheetId || '';
+                this.isAutoSyncEnabled = settings.isAutoSyncEnabled || false;
+                this.isAutoSaveLocalEnabled = settings.isAutoSaveLocalEnabled !== false;
+                this.lastSyncTime = settings.lastSyncTime || null;
+                this.firebaseConfig = settings.firebaseConfig || {};
+            } catch (e) {
+                console.error('Error loading backup settings:', e);
+            }
+        } else {
+            this.currentProvider = localStorage.getItem(this.KEYS.PROVIDER) || 'local';
+            this.gasUrl = localStorage.getItem(this.KEYS.GAS_URL) || '';
+            this.sheetId = localStorage.getItem(this.KEYS.SHEET_ID) || '';
+            this.isAutoSyncEnabled = localStorage.getItem(this.KEYS.AUTO_SYNC) === 'true';
+            this.firebaseConfig = JSON.parse(localStorage.getItem(this.KEYS.FIREBASE_CONFIG) || '{}');
+        }
+    },
+    
+    saveBackupSettings() {
+        const settings = {
+            currentProvider: this.currentProvider,
+            gasUrl: this.gasUrl,
+            sheetId: this.sheetId,
+            isAutoSyncEnabled: this.isAutoSyncEnabled,
+            isAutoSaveLocalEnabled: this.isAutoSaveLocalEnabled,
+            lastSyncTime: this.lastSyncTime,
+            firebaseConfig: this.firebaseConfig
+        };
+        localStorage.setItem(this.KEYS.BACKUP_SETTINGS, JSON.stringify(settings));
+    },
+    
+    reloadAllConfig() {
+        this.loadBackupSettings();
+        this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+    },
     
     downloadJSON() {
         const data = this.getBackupData();
@@ -1947,7 +2041,6 @@ const backupModule = {
         localStorage.setItem(this.KEYS.FIREBASE_CONFIG, JSON.stringify(config));
         this.saveBackupSettings();
         
-        // ✅ BARU: Sync config ke cloud
         this.syncConfigToCloud();
         
         this.showToast('✅ Config Firebase disimpan!');
@@ -1974,7 +2067,6 @@ const backupModule = {
         this._gasConfigValid = url && validation.cleaned && validation.cleaned.length === 44;
         this.saveBackupSettings();
         
-        // ✅ BARU: Sync config ke cloud
         this.syncConfigToCloud();
         
         this.showToast(this.sheetId ? '✅ Konfigurasi disimpan!' : '✅ Disimpan (tapi Sheet ID invalid)');
@@ -1982,6 +2074,17 @@ const backupModule = {
         if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
             setTimeout(() => this.checkCloudDataOnLoad(true), 2000);
         }
+        this.render();
+    },
+    
+    clearGASConfig() {
+        this.gasUrl = '';
+        this.sheetId = '';
+        localStorage.removeItem(this.KEYS.GAS_URL);
+        localStorage.removeItem(this.KEYS.SHEET_ID);
+        this._gasConfigValid = false;
+        this.saveBackupSettings();
+        this.showToast('✅ Config GAS dihapus');
         this.render();
     },
 
@@ -2052,4 +2155,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v3.9.0 loaded - Config Sync Ready');
+console.log('[Backup] v4.0.0 loaded - Full Data Sync Ready');
