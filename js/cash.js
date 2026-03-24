@@ -244,155 +244,164 @@ const cashModule = {
         const isNewDay = lastActiveDate && lastActiveDate !== today;
 
         const activeShifts = dataManager.getActiveShifts();
+        
+        // User info card
         const userInfoHtml = currentUser ? `
-            <div style="background: #e3f2fd; border-radius: 12px; padding: 12px 16px; margin-bottom: 15px; border-left: 4px solid #2196f3;">
-                <div style="font-size: 13px; color: #1565c0; font-weight: 600;">
-                    👤 ${currentUser.name} (${currentUser.role})
+            <div class="cash-info-card cash-fade-in">
+                <div class="cash-info-card-icon blue">👤</div>
+                <div class="cash-info-card-content">
+                    <div class="cash-info-card-title">${currentUser.name} <span style="color: var(--cash-text-secondary); font-weight: 500;">(${currentUser.role})</span></div>
+                    <div class="cash-info-card-text">
+                        ${userShift 
+                            ? `Shift aktif sejak ${new Date(userShift.openTime).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}` 
+                            : 'Anda belum membuka kasir'}
+                    </div>
                 </div>
-                ${userShift ? `
-                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
-                        Shift aktif sejak: ${new Date(userShift.openTime).toLocaleTimeString('id-ID')}
-                    </div>
-                ` : `
-                    <div style="font-size: 12px; color: #999; margin-top: 4px;">
-                        Anda belum membuka kasir
-                    </div>
-                `}
             </div>
         ` : '';
 
+        // Warning hari baru
+        const newDayHtml = isNewDay ? `
+            <div class="cash-info-card" style="border-left: 4px solid var(--cash-warning);">
+                <div class="cash-info-card-icon orange">🌅</div>
+                <div class="cash-info-card-content">
+                    <div class="cash-info-card-title">Hari Baru Terdeteksi!</div>
+                    <div class="cash-info-card-text">Kas masih tersisa dari hari sebelumnya. Reset untuk memulai shift baru.</div>
+                </div>
+                <button class="cash-info-card-action" style="background: var(--cash-warning); color: white;" onclick="cashModule.showResetOptions()">⚙️ Atur Shift</button>
+            </div>
+        ` : '';
+
+        // Tombol Modal Awal - sembunyikan untuk kasir
         const modalAwalButtonHtml = !isKasir ? `
-            <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()"
-                    style="background: #fff8e1; border: 2px solid #ffc107; color: #f57f17; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                <span style="font-size: 28px;">💰</span>
-                <span style="font-size: 14px; font-weight: 600;">Modal Awal</span>
+            <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()">
+                <span class="cash-btn-icon">💰</span>
+                <span class="cash-btn-text">Modal Awal</span>
             </button>
         ` : '';
 
+        // Tombol Atur Modal Kasir untuk Owner
         const aturModalKasirButtonHtml = isOwner ? `
-            <button class="cash-btn atur-modal-kasir" onclick="cashModule.showAturModalKasir()"
-                    style="background: #e8f5e9; border: 2px solid #4caf50; color: #2e7d32; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                <span style="font-size: 28px;">👥</span>
-                <span style="font-size: 14px; font-weight: 600;">Atur Modal Kasir</span>
+            <button class="cash-btn atur-modal-kasir" onclick="cashModule.showAturModalKasir()">
+                <span class="cash-btn-icon">👥</span>
+                <span class="cash-btn-text">Atur Modal Kasir</span>
             </button>
+        ` : '';
+
+        // Pengaturan Shift - hanya untuk Owner/Admin
+        const pengaturanShiftHtml = (isOwner || isAdmin) ? `
+            <div class="cash-info-card" style="border-left: 4px solid var(--cash-info);">
+                <div class="cash-info-card-icon blue">🔄</div>
+                <div class="cash-info-card-content">
+                    <div class="cash-info-card-title">Reset Kas & Modal</div>
+                    <div class="cash-info-card-text">Kas: Rp ${utils.formatNumber(currentCash)} | Modal: Rp ${utils.formatNumber(modalAwal)}</div>
+                </div>
+                <button class="cash-info-card-action" style="background: var(--cash-info); color: white;" onclick="cashModule.showResetOptions()">⚙️ Pengaturan Shift</button>
+            </div>
+        ` : '';
+
+        // User aktif dengan detail modal - hanya untuk Owner/Admin
+        const userAktifHtml = (isOwner || isAdmin) && activeShifts.length > 0 ? `
+            <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: var(--cash-radius); padding: 20px; margin-bottom: 20px; box-shadow: var(--cash-shadow);">
+                <div style="font-size: 16px; font-weight: 700; color: #2e7d32; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                    👥 User dengan Shift Aktif <span style="background: #4caf50; color: white; padding: 2px 10px; border-radius: 12px; font-size: 12px;">${activeShifts.length}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                    ${activeShifts.map(s => `
+                        <div class="cash-user-shift-card">
+                            <div class="cash-user-shift-header">
+                                <span class="cash-user-shift-name">${s.userName}</span>
+                                <span class="cash-user-shift-role">${s.userRole}</span>
+                            </div>
+                            <div class="cash-user-shift-stats">
+                                <div class="cash-user-shift-stat modal">
+                                    <div class="cash-user-shift-stat-label" style="color: #f57f17;">💰 Modal</div>
+                                    <div class="cash-user-shift-stat-value">Rp ${utils.formatNumber(s.modalAwal || 0)}</div>
+                                </div>
+                                <div class="cash-user-shift-stat cash">
+                                    <div class="cash-user-shift-stat-label" style="color: #1565c0;">💵 Kas</div>
+                                    <div class="cash-user-shift-stat-value">Rp ${utils.formatNumber(s.currentCash || 0)}</div>
+                                </div>
+                            </div>
+                            <div class="cash-user-shift-time">
+                                🕐 Buka: ${new Date(s.openTime).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : '';
+
+        // Warning data tidak konsisten - hanya untuk Owner/Admin
+        const repairHtml = (needsRepair && !isKasir) ? `
+            <div class="cash-info-card" style="border-left: 4px solid var(--cash-warning);">
+                <div class="cash-info-card-icon orange">⚠️</div>
+                <div class="cash-info-card-content">
+                    <div class="cash-info-card-title">Data Kas Tidak Konsisten</div>
+                    <div class="cash-info-card-text">Kas Tercatat: Rp ${utils.formatNumber(currentCash)} vs Hitungan: Rp ${utils.formatNumber(calculatedCash)}</div>
+                </div>
+                <button class="cash-info-card-action" style="background: var(--cash-warning); color: white;" onclick="cashModule.recalculateCash()">🔄 Recalculate</button>
+            </div>
         ` : '';
 
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 ${userInfoHtml}
+                ${newDayHtml}
                 
-                ${isNewDay ? `
-                <div style="background: #fff3e0; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #ff9800;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <!-- Hero Card -->
+                <div class="cash-hero">
+                    <div class="cash-hero-header">
                         <div>
-                            <div style="font-size: 14px; font-weight: 600; color: #e65100; margin-bottom: 4px;">
-                                🌅 Hari Baru Terdeteksi!
-                            </div>
-                            <div style="font-size: 12px; color: #666;">
-                                Kas masih tersisa dari hari sebelumnya. Reset untuk memulai shift baru.
+                            <div class="cash-hero-title">💰 Kas di Tangan ${isOwner || isAdmin ? '(Global)' : '(Shift Anda)'}</div>
+                            <div class="cash-hero-amount">Rp ${utils.formatNumber(currentCash)}</div>
+                            <div style="margin-top: 12px; opacity: 0.9; font-size: 14px;">
+                                📦 Modal: Rp ${utils.formatNumber(modalAwal)} | 
+                                💵 Cash: Rp ${utils.formatNumber(todayCashSales)} | 
+                                📱 Non-Cash: Rp ${utils.formatNumber(todayNonCashSales)}
                             </div>
                         </div>
-                        <button onclick="cashModule.showResetOptions()" style="padding: 10px 20px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
-                            ⚙️ Atur Shift Baru
-                        </button>
-                    </div>
-                </div>
-                ` : ''}
-
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 24px; margin-bottom: 20px; 
-                     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); color: white;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-                        <div>
-                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">
-                                💰 Kas di Tangan ${isOwner || isAdmin ? '(Global)' : '(Shift Anda)'}
-                            </div>
-                            <div style="font-size: 36px; font-weight: 700; margin-bottom: 8px;">
-                                Rp ${utils.formatNumber(currentCash)}
-                            </div>
-                            <div style="font-size: 13px; opacity: 0.8; display: flex; gap: 16px; flex-wrap: wrap;">
-                                <span>📦 Modal: Rp ${utils.formatNumber(modalAwal)}</span>
-                                <span>💵 Penjualan Cash: Rp ${utils.formatNumber(todayCashSales)}</span>
-                                <span>📱 Non-Cash: Rp ${utils.formatNumber(todayNonCashSales)}</span>
-                            </div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="background: rgba(255,255,255,0.2); border-radius: 12px; padding: 12px 20px; backdrop-filter: blur(10px);">
-                                <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Status</div>
-                                <div style="font-size: 16px; font-weight: 600; ${currentCash < 0 ? 'color: #ffebee;' : ''}">
-                                    ${currentCash < 0 ? '⚠️ MINUS' : '✅ Normal'}
-                                </div>
+                        <div style="background: rgba(255,255,255,0.2); border-radius: 12px; padding: 16px 24px; text-align: center;">
+                            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Status</div>
+                            <div style="font-size: 18px; font-weight: 700; ${currentCash < 0 ? 'color: #ffebee;' : ''}">
+                                ${currentCash < 0 ? '⚠️ MINUS' : '✅ Normal'}
                             </div>
                         </div>
                     </div>
                     
-                    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
-                            <div style="font-size: 11px; opacity: 0.8;">Kas Masuk (Manual)</div>
-                            <div style="font-size: 16px; font-weight: 600;">Rp ${utils.formatNumber(periodStats.manualKasMasuk)}</div>
+                    <div class="cash-hero-stats">
+                        <div class="cash-hero-stat">
+                            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">Kas Masuk</div>
+                            <div style="font-size: 18px; font-weight: 700;">Rp ${utils.formatNumber(periodStats.manualKasMasuk)}</div>
                         </div>
-                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
-                            <div style="font-size: 11px; opacity: 0.8;">Kas Keluar</div>
-                            <div style="font-size: 16px; font-weight: 600;">Rp ${utils.formatNumber(periodStats.kasKeluar)}</div>
+                        <div class="cash-hero-stat">
+                            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">Kas Keluar</div>
+                            <div style="font-size: 18px; font-weight: 700;">Rp ${utils.formatNumber(periodStats.kasKeluar)}</div>
                         </div>
-                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
-                            <div style="font-size: 11px; opacity: 0.8;">Top Up Masuk</div>
-                            <div style="font-size: 16px; font-weight: 600;">Rp ${utils.formatNumber(periodStats.topUpMasuk)}</div>
+                        <div class="cash-hero-stat">
+                            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">Top Up</div>
+                            <div style="font-size: 18px; font-weight: 700;">Rp ${utils.formatNumber(periodStats.topUpMasuk)}</div>
                         </div>
-                        <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px;">
-                            <div style="font-size: 11px; opacity: 0.8;">Laba Admin</div>
-                            <div style="font-size: 16px; font-weight: 600; color: #a5d6a7;">Rp ${utils.formatNumber(periodStats.laba)}</div>
+                        <div class="cash-hero-stat">
+                            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">Laba</div>
+                            <div style="font-size: 18px; font-weight: 700; color: #a5d6a7;">Rp ${utils.formatNumber(periodStats.laba)}</div>
                         </div>
                     </div>
                 </div>
 
-                ${needsRepair ? `
-                <div style="background: #fff3e0; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #ff9800;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                        <div>
-                            <div style="font-size: 14px; font-weight: 600; color: #e65100; margin-bottom: 4px;">
-                                ⚠️ Data Kas Tidak Konsisten
-                            </div>
-                            <div style="font-size: 12px; color: #666;">
-                                Kas Tercatat: Rp ${utils.formatNumber(currentCash)} vs Hitungan: Rp ${utils.formatNumber(calculatedCash)} (Selisih: Rp ${utils.formatNumber(selisih)})
-                            </div>
-                        </div>
-                        <button onclick="cashModule.recalculateCash()" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
-                            🔄 Recalculate
-                        </button>
-                    </div>
-                </div>
-                ` : ''}
+                ${repairHtml}
+                ${userAktifHtml}
 
-                ${(isOwner || isAdmin) && activeShifts.length > 0 ? `
-                <div style="background: #e8f5e9; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #4caf50;">
-                    <div style="font-size: 14px; font-weight: 600; color: #2e7d32; margin-bottom: 8px;">
-                        👥 User dengan Shift Aktif (${activeShifts.length})
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px;">
-                        ${activeShifts.map(s => `
-                            <div style="background: white; padding: 10px; border-radius: 8px; font-size: 13px;">
-                                <div style="font-weight: 600;">${s.userName}</div>
-                                <div style="color: #666; font-size: 11px;">${s.userRole} • Kas: Rp ${utils.formatNumber(s.currentCash || 0)} • Modal: Rp ${utils.formatNumber(s.modalAwal || 0)}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                ` : ''}
-
-                <div style="background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 14px; color: #666; font-weight: 600;">📅 Periode:</span>
-                        <span id="periodBadge" style="background: #667eea; color: white; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600;">${periodLabel}</span>
-                        <span id="dateRangeText" style="font-size: 13px; color: #999;">${dateRangeText}</span>
+                <!-- Filter Bar -->
+                <div class="cash-filter-bar">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-weight: 600; color: var(--cash-text);">📅 Periode:</span>
+                        <span class="cash-filter-badge">${periodLabel}</span>
+                        <span style="color: var(--cash-text-secondary); font-size: 13px;">${dateRangeText}</span>
                     </div>
                     
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <select id="filterPreset" onchange="cashModule.applyFilter()" 
-                                style="padding: 8px 16px; border-radius: 8px; border: 2px solid #e0e0e0; font-size: 14px; background: white; cursor: pointer;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="filterPreset" onchange="cashModule.applyFilter()" class="cash-filter-select">
                             <option value="today">📅 Hari Ini</option>
                             <option value="yesterday">📅 Kemarin</option>
                             <option value="week">📆 Minggu Ini</option>
@@ -401,128 +410,105 @@ const cashModule = {
                             <option value="custom">🔍 Custom...</option>
                         </select>
                         
-                        <div id="customDateRange" style="display: none; gap: 8px; align-items: center;">
-                            <input type="date" id="filterStartDate" onchange="cashModule.applyFilter()" 
-                                   style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
-                            <span style="color: #666;">s/d</span>
-                            <input type="date" id="filterEndDate" onchange="cashModule.applyFilter()" 
-                                   style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0; font-size: 13px;">
+                        <div id="customDateRange" style="display: none; gap: 10px; align-items: center;">
+                            <input type="date" id="filterStartDate" onchange="cashModule.applyFilter()" style="padding: 10px; border-radius: 8px; border: 2px solid var(--cash-border);">
+                            <span style="color: var(--cash-text-secondary);">s/d</span>
+                            <input type="date" id="filterEndDate" onchange="cashModule.applyFilter()" style="padding: 10px; border-radius: 8px; border: 2px solid var(--cash-border);">
                         </div>
                     </div>
                 </div>
 
-                <div style="background: #e3f2fd; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #2196f3;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                        <div>
-                            <div style="font-size: 14px; font-weight: 600; color: #1565c0; margin-bottom: 4px;">
-                                🔄 Reset Kas & Modal
-                            </div>
-                            <div style="font-size: 12px; color: #666;">
-                                Kas: Rp ${utils.formatNumber(currentCash)} | Modal: Rp ${utils.formatNumber(modalAwal)}
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button onclick="cashModule.showResetOptions()" style="padding: 10px 20px; background: #2196f3; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
-                                ⚙️ Pengaturan Shift
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                ${pengaturanShiftHtml}
 
-                <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; 
-                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid ${periodStats.laba >= 0 ? '#4caf50' : '#f44336'};">
+                <!-- Profit Card -->
+                <div class="cash-profit-card">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-size: 13px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
+                            <div style="font-size: 12px; color: var(--cash-text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
                                 💰 Laba Bersih ${periodLabel}
                             </div>
-                            <div style="font-size: 28px; font-weight: 700; color: ${periodStats.laba >= 0 ? '#2e7d32' : '#c62828'};">
+                            <div class="cash-profit-amount ${periodStats.laba < 0 ? 'negative' : ''}">
                                 Rp ${utils.formatNumber(periodStats.laba)}
                             </div>
-                            <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                            <div style="font-size: 13px; color: var(--cash-text-secondary); margin-top: 8px;">
                                 Dari Admin Fee Top Up & Tarik Tunai
                             </div>
                         </div>
-                        <div style="width: 56px; height: 56px; background: ${periodStats.laba >= 0 ? '#e8f5e9' : '#ffebee'}; 
-                             border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px;">
+                        <div style="width: 64px; height: 64px; background: ${periodStats.laba >= 0 ? '#f0fdf4' : '#fef2f2'}; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px;">
                             ${periodStats.laba >= 0 ? '📈' : '📉'}
                         </div>
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0;">
-                        <div style="text-align: center;">
-                            <div style="font-size: 11px; color: #9c27b0; font-weight: 600; margin-bottom: 4px;">💜 Top Up</div>
-                            <div style="font-size: 16px; font-weight: 700; color: #6a1b9a;">Rp ${utils.formatNumber(periodStats.labaTopUp)}</div>
+                    <div class="cash-profit-grid">
+                        <div class="cash-profit-item">
+                            <div style="font-size: 12px; color: var(--cash-purple); font-weight: 600; margin-bottom: 8px;">💜 Top Up</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #7c3aed;">Rp ${utils.formatNumber(periodStats.labaTopUp)}</div>
                         </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 11px; color: #2196f3; font-weight: 600; margin-bottom: 4px;">🏧 Tarik Tunai</div>
-                            <div style="font-size: 16px; font-weight: 700; color: #1565c0;">Rp ${utils.formatNumber(periodStats.labaTarikTunai)}</div>
+                        <div class="cash-profit-item">
+                            <div style="font-size: 12px; color: var(--cash-info); font-weight: 600; margin-bottom: 8px;">🏧 Tarik Tunai</div>
+                            <div style="font-size: 20px; font-weight: 700; color: #2563eb;">Rp ${utils.formatNumber(periodStats.labaTarikTunai)}</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card" style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <span class="card-title" style="font-size: 18px; font-weight: 600; color: #333;">Manajemen Kas</span>
-                        <div style="font-size: 12px; color: #999;">${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                <!-- Actions Card -->
+                <div class="cash-actions-card">
+                    <div style="font-size: 16px; font-weight: 700; color: var(--cash-text); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Manajemen Kas</span>
+                        <span style="font-size: 13px; color: var(--cash-text-secondary); font-weight: 500;">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
                     </div>
                     
-                    <div class="cash-actions" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                        <button class="cash-btn in" onclick="cashModule.openModal('in')" 
-                                style="background: #e8f5e9; border: 2px solid #4caf50; color: #2e7d32; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                            <span style="font-size: 28px;">⬇️</span>
-                            <span style="font-size: 14px; font-weight: 600;">Kas Masuk</span>
+                    <div class="cash-actions">
+                        <button class="cash-btn in" onclick="cashModule.openModal('in')">
+                            <span class="cash-btn-icon">⬇️</span>
+                            <span class="cash-btn-text">Kas Masuk</span>
                         </button>
                         
-                        <button class="cash-btn out" onclick="cashModule.openModal('out')"
-                                style="background: #ffebee; border: 2px solid #f44336; color: #c62828; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                            <span style="font-size: 28px;">⬆️</span>
-                            <span style="font-size: 14px; font-weight: 600;">Kas Keluar</span>
+                        <button class="cash-btn out" onclick="cashModule.openModal('out')">
+                            <span class="cash-btn-icon">⬆️</span>
+                            <span class="cash-btn-text">Kas Keluar</span>
                         </button>
                         
-                        <button class="cash-btn tarik-tunai" onclick="cashModule.openTarikTunai()"
-                                style="background: #e3f2fd; border: 2px solid #2196f3; color: #1565c0; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                            <span style="font-size: 28px;">🏧</span>
-                            <span style="font-size: 14px; font-weight: 600;">Tarik Tunai</span>
+                        <button class="cash-btn tarik-tunai" onclick="cashModule.openTarikTunai()">
+                            <span class="cash-btn-icon">🏧</span>
+                            <span class="cash-btn-text">Tarik Tunai</span>
                         </button>
                         
-                        <button class="cash-btn topup" onclick="cashModule.openTopUp()"
-                                style="background: #f3e5f5; border: 2px solid #9c27b0; color: #6a1b9a; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                            <span style="font-size: 28px;">💜</span>
-                            <span style="font-size: 14px; font-weight: 600;">Top Up</span>
+                        <button class="cash-btn topup" onclick="cashModule.openTopUp()">
+                            <span class="cash-btn-icon">💜</span>
+                            <span class="cash-btn-text">Top Up</span>
                         </button>
                         
                         ${modalAwalButtonHtml}
                         
                         ${aturModalKasirButtonHtml}
                         
-                        <button class="cash-btn history" onclick="cashModule.openHistory()"
-                                style="background: #eceff1; border: 2px solid #607d8b; color: #37474f; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                            <span style="font-size: 28px;">📋</span>
-                            <span style="font-size: 14px; font-weight: 600;">Riwayat</span>
+                        <button class="cash-btn history" onclick="cashModule.openHistory()">
+                            <span class="cash-btn-icon">📋</span>
+                            <span class="cash-btn-text">Riwayat</span>
                         </button>
                     </div>
                 </div>
 
-                <div class="card" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; cursor: pointer;" onclick="cashModule.toggleHistory()">
+                <!-- History Card -->
+                <div class="cash-history-card">
+                    <div class="cash-history-header" onclick="cashModule.toggleHistory()">
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            <span class="card-title" style="font-size: 18px; font-weight: 600; color: #333;">Riwayat Transaksi Kas</span>
-                            <span id="historyToggleIcon" style="font-size: 24px; transition: transform 0.3s; transform: ${this.filterState.showHistory ? 'rotate(180deg)' : 'rotate(0deg)'};">🔽</span>
+                            <span style="font-size: 18px; font-weight: 700; color: var(--cash-text);">Riwayat Transaksi Kas</span>
+                            <span id="historyToggleIcon" class="cash-history-toggle ${this.filterState.showHistory ? 'open' : ''}">🔽</span>
                         </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); cashModule.recalculateCash()" 
-                                    style="font-size: 13px; padding: 8px 16px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 8px; cursor: pointer;">
-                                🔄 Recalculate
-                            </button>
-                        </div>
+                        ${!isKasir ? `
+                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); cashModule.recalculateCash()" 
+                                style="padding: 8px 16px; background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--cash-text);">
+                            🔄 Recalculate
+                        </button>
+                        ` : ''}
                     </div>
                     
-                    <div id="cashTransactionList" style="min-height: ${this.filterState.showHistory ? '200px' : '0px'}; overflow: hidden; transition: all 0.3s ease; ${this.filterState.showHistory ? '' : 'max-height: 0;'}">
+                    <div id="cashTransactionList" style="${this.filterState.showHistory ? '' : 'max-height: 0; overflow: hidden;'}">
                     </div>
                     
-                    <div id="filterSummary" style="padding: 16px; background: #f8f9fa; border-radius: 8px; margin-top: 16px; font-size: 14px; border: 1px solid #e0e0e0;">
+                    <div id="filterSummary" class="cash-summary-box">
                     </div>
                 </div>
             </div>
@@ -557,10 +543,10 @@ const cashModule = {
         
         if (users.length === 0) {
             kasirListHtml = `
-                <div style="text-align: center; padding: 30px; color: #999;">
-                    <div style="font-size: 48px; margin-bottom: 10px;">👤</div>
-                    <p>Belum ada user kasir</p>
-                    <p style="font-size: 12px;">Tambahkan user kasir di menu Users</p>
+                <div style="text-align: center; padding: 40px; color: var(--cash-text-secondary);">
+                    <div style="font-size: 56px; margin-bottom: 16px;">👤</div>
+                    <p style="font-size: 16px; margin-bottom: 8px;">Belum ada user kasir</p>
+                    <p style="font-size: 13px;">Tambahkan user kasir di menu Users</p>
                 </div>
             `;
         } else {
@@ -571,34 +557,36 @@ const cashModule = {
                 const isActive = !!shift;
                 
                 return `
-                    <div style="background: ${isActive ? '#e8f5e9' : '#f5f5f5'}; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid ${isActive ? '#4caf50' : '#e0e0e0'};">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="background: ${isActive ? '#f0fdf4' : '#f8fafc'}; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 2px solid ${isActive ? '#86efac' : '#e2e8f0'};">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                             <div>
-                                <div style="font-weight: 600; font-size: 15px; color: #333;">${user.name}</div>
-                                <div style="font-size: 12px; color: #666;">@${user.username}</div>
+                                <div style="font-weight: 700; font-size: 16px; color: var(--cash-text);">${user.name}</div>
+                                <div style="font-size: 13px; color: var(--cash-text-secondary);">@${user.username}</div>
                             </div>
-                            <span style="background: ${isActive ? '#4caf50' : '#9e9e9e'}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                            <span style="background: ${isActive ? '#22c55e' : '#94a3b8'}; color: white; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;">
                                 ${isActive ? '🟢 Aktif' : '⚪ Offline'}
                             </span>
                         </div>
                         
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                            <div style="background: white; padding: 10px; border-radius: 8px;">
-                                <div style="font-size: 11px; color: #666;">Modal Saat Ini</div>
-                                <div style="font-size: 16px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(currentModal)}</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                            <div style="background: white; padding: 14px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                <div style="font-size: 12px; color: var(--cash-text-secondary); margin-bottom: 6px; font-weight: 600;">💰 Modal Saat Ini</div>
+                                <div style="font-size: 18px; font-weight: 800; color: var(--cash-text);">Rp ${utils.formatNumber(currentModal)}</div>
                             </div>
-                            <div style="background: white; padding: 10px; border-radius: 8px;">
-                                <div style="font-size: 11px; color: #666;">Kas Saat Ini</div>
-                                <div style="font-size: 16px; font-weight: 700; color: ${currentCash >= 0 ? '#2e7d32' : '#c62828'};">Rp ${utils.formatNumber(currentCash)}</div>
+                            <div style="background: white; padding: 14px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                <div style="font-size: 12px; color: var(--cash-text-secondary); margin-bottom: 6px; font-weight: 600;">💵 Kas Saat Ini</div>
+                                <div style="font-size: 18px; font-weight: 800; color: ${currentCash >= 0 ? 'var(--cash-success)' : 'var(--cash-danger)'};">Rp ${utils.formatNumber(currentCash)}</div>
                             </div>
                         </div>
                         
-                        <div style="display: flex; gap: 8px;">
-                            <input type="number" id="modalInput_${user.id}" placeholder="Modal baru..." 
-                                   style="flex: 1; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+                        <div style="display: flex; gap: 10px;">
+                            <input type="number" id="modalInput_${user.id}" placeholder="Masukkan modal baru..." 
+                                   style="flex: 1; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 14px; outline: none; transition: all 0.2s;"
+                                   onfocus="this.style.borderColor='#22c55e'" onblur="this.style.borderColor='#e2e8f0'">
                             <button onclick="cashModule.setModalForKasir('${user.id}')" 
-                                    style="padding: 10px 16px; background: #4caf50; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
-                                💾 Set
+                                    style="padding: 12px 20px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 14px; transition: all 0.2s; white-space: nowrap;"
+                                    onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                                💾 Simpan
                             </button>
                         </div>
                     </div>
@@ -608,22 +596,25 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="aturModalKasirModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
-                <div class="modal-content" style="max-width: 500px; max-height: 85vh; overflow-y: auto;">
-                    <div class="modal-header">
-                        <span class="modal-title" style="color: #4caf50;">👥 Atur Modal Per Kasir</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('aturModalKasirModal')">×</button>
+                <div class="modal-content" style="max-width: 520px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
+                    <div class="modal-header" style="padding: 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);">
+                        <span class="modal-title" style="color: #15803d; font-size: 18px; font-weight: 700;">👥 Atur Modal Per Kasir</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('aturModalKasirModal')" style="color: #15803d; font-size: 28px;">×</button>
                     </div>
                     
-                    <div style="background: #e3f2fd; border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 13px; color: #1565c0;">
-                        ℹ️ Atur modal awal untuk setiap kasir. Modal akan diterapkan saat kasir membuka shift.
+                    <div style="padding: 24px;">
+                        <div style="background: #dbeafe; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #1e40af; display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 20px;">ℹ️</span>
+                            <span>Atur modal awal untuk setiap kasir. Modal akan diterapkan saat kasir membuka shift.</span>
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            ${kasirListHtml}
+                        </div>
                     </div>
 
-                    <div style="margin-bottom: 20px;">
-                        ${kasirListHtml}
-                    </div>
-
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('aturModalKasirModal')">Tutup</button>
+                    <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('aturModalKasirModal')" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">Tutup</button>
                     </div>
                 </div>
             </div>
@@ -643,12 +634,18 @@ const cashModule = {
 
         const shift = dataManager.getUserShift(userId);
         if (shift) {
+            // Jika kasir sedang aktif, update langsung
+            const oldModal = shift.modalAwal || 0;
             shift.modalAwal = newModal;
-            if (shift.currentCash === 0 || shift.currentCash === shift.modalAwal) {
+            
+            // Jika kasir baru buka (currentCash sama dengan modal lama), update currentCash juga
+            if (shift.currentCash === oldModal) {
                 shift.currentCash = newModal;
             }
+            
             dataManager.updateUserShift(userId, shift);
         } else {
+            // Simpan ke pending modal untuk kasir yang offline
             if (!dataManager.data.pendingModals) {
                 dataManager.data.pendingModals = {};
             }
@@ -661,6 +658,7 @@ const cashModule = {
         
         app.showToast(`✅ Modal untuk ${user?.name || 'Kasir'} diatur: Rp ${utils.formatNumber(newModal)}`);
         
+        // Refresh modal
         this.closeModal('aturModalKasirModal');
         this.showAturModalKasir();
     },
@@ -777,23 +775,22 @@ const cashModule = {
         const list = document.getElementById('cashTransactionList');
         
         if (icon) {
-            icon.style.transform = this.filterState.showHistory ? 'rotate(180deg)' : 'rotate(0deg)';
+            icon.classList.toggle('open', this.filterState.showHistory);
         }
         
         if (list) {
             if (this.filterState.showHistory) {
                 list.style.maxHeight = 'none';
-                list.style.minHeight = '200px';
+                list.style.overflow = 'visible';
             } else {
-                list.style.maxHeight = '0px';
-                list.style.minHeight = '0px';
+                list.style.maxHeight = '0';
+                list.style.overflow = 'hidden';
             }
         }
         
         this.renderTransactions();
     },
 
-    // ✅ PERBAIKAN: Calculate Period Stats - tampilkan modal untuk semua role yang berhak
     calculatePeriodStats(startDate, endDate) {
         const currentUser = dataManager.getCurrentUser();
         const isOwner = currentUser && currentUser.role === 'owner';
@@ -804,7 +801,7 @@ const cashModule = {
             const tDate = new Date(t.date);
             const inRange = tDate >= startDate && tDate <= endDate;
             
-            // ✅ PERBAIKAN: Kasir hanya lihat transaksi sendiri
+            // Kasir hanya lihat transaksi sendiri
             if (isKasir) {
                 return inRange && (t.userId === currentUser.userId || !t.userId);
             }
@@ -842,7 +839,7 @@ const cashModule = {
         
         const laba = labaTopUp + labaTarikTunai;
         
-        // ✅ PERBAIKAN: Modal masuk - tampilkan untuk semua role yang berhak
+        // Modal masuk - tampilkan untuk semua role
         const modalMasuk = transactions
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -860,18 +857,14 @@ const cashModule = {
         };
     },
 
-    // ✅ PERBAIKAN: Render Transactions - tampilkan modal untuk semua role
     renderTransactions() {
         const container = document.getElementById('cashTransactionList');
         if (!container) return;
         
         if (!this.filterState.showHistory) {
             container.innerHTML = '';
-            container.style.maxHeight = '0px';
             return;
         }
-        
-        container.style.maxHeight = 'none';
         
         const { startDate, endDate } = this.getDateRange();
         const currentUser = dataManager.getCurrentUser();
@@ -879,7 +872,7 @@ const cashModule = {
         const isAdmin = currentUser && currentUser.role === 'admin';
         const isKasir = currentUser && currentUser.role === 'kasir';
         
-        // ✅ PERBAIKAN: Filter transaksi
+        // Filter transaksi
         let transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
             const inRange = tDate >= startDate && tDate <= endDate;
@@ -912,7 +905,7 @@ const cashModule = {
         
         const totalLaba = totalLabaTopUp + totalLabaTarikTunai;
         
-        // ✅ PERBAIKAN: Hitung total modal masuk
+        // Hitung total modal masuk
         const totalModal = transactions
             .filter(t => t.type === 'modal_in')
             .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
@@ -925,22 +918,22 @@ const cashModule = {
         if (summaryEl) {
             const periodLabel = this.getFilterLabel();
             summaryEl.innerHTML = `
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: flex-start;">
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
                     <div>
-                        <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px;">
+                        <div style="font-size: 16px; font-weight: 700; color: var(--cash-text); margin-bottom: 6px;">
                             Ringkasan ${periodLabel}
-                            ${isOwner || isAdmin ? '' : '<span style="font-size: 12px; color: #999;">(Shift Anda)</span>'}
+                            ${isOwner || isAdmin ? '' : '<span style="font-size: 12px; color: var(--cash-text-secondary); font-weight: 500;">(Shift Anda)</span>'}
                         </div>
-                        <div style="font-size: 13px; color: #666;">
+                        <div style="font-size: 14px; color: var(--cash-text-secondary);">
                             ${transactions.length} transaksi kas
                         </div>
                     </div>
                     <div style="text-align: right;">
-                        <div style="color: #2e7d32; font-weight: 600; font-size: 15px;">⬇️ Kas Masuk: Rp ${utils.formatNumber(totalKasMasuk)}</div>
-                        <div style="color: #c62828; font-weight: 600; font-size: 15px; margin: 4px 0;">⬆️ Kas Keluar: Rp ${utils.formatNumber(totalKasKeluar)}</div>
-                        ${totalModal > 0 ? `<div style="color: #f57f17; font-weight: 600; font-size: 14px; margin: 4px 0;">💰 Modal: Rp ${utils.formatNumber(totalModal)}</div>` : ''}
-                        ${totalPosSales > 0 ? `<div style="color: #2196f3; font-weight: 600; font-size: 14px; margin: 4px 0;">🛒 Penjualan POS: Rp ${utils.formatNumber(totalPosSales)}</div>` : ''}
-                        <div style="font-weight: 700; font-size: 16px; color: #6a1b9a; padding-top: 8px; border-top: 2px solid #e0e0e0; margin-top: 8px;">
+                        <div style="color: var(--cash-success); font-weight: 700; font-size: 15px;">⬇️ Kas Masuk: Rp ${utils.formatNumber(totalKasMasuk)}</div>
+                        <div style="color: var(--cash-danger); font-weight: 700; font-size: 15px; margin: 6px 0;">⬆️ Kas Keluar: Rp ${utils.formatNumber(totalKasKeluar)}</div>
+                        ${totalModal > 0 ? `<div style="color: var(--cash-warning); font-weight: 700; font-size: 14px; margin: 6px 0;">💰 Modal: Rp ${utils.formatNumber(totalModal)}</div>` : ''}
+                        ${totalPosSales > 0 ? `<div style="color: var(--cash-info); font-weight: 700; font-size: 14px; margin: 6px 0;">🛒 Penjualan POS: Rp ${utils.formatNumber(totalPosSales)}</div>` : ''}
+                        <div style="font-weight: 800; font-size: 18px; color: var(--cash-purple); padding-top: 12px; margin-top: 12px; border-top: 2px solid var(--cash-border);">
                             💰 Laba Bersih: Rp ${utils.formatNumber(totalLaba)}
                         </div>
                     </div>
@@ -950,10 +943,10 @@ const cashModule = {
         
         if (transactions.length === 0) {
             container.innerHTML = `
-                <div class="empty-state" style="text-align: center; padding: 48px 20px; color: #999;">
-                    <div style="font-size: 64px; margin-bottom: 16px;">📋</div>
-                    <p style="font-size: 16px; margin: 0;">Belum ada transaksi ${this.getFilterLabel().toLowerCase()}</p>
-                    <p style="font-size: 13px; margin-top: 8px; opacity: 0.7;">Transaksi kas masuk dan keluar akan muncul di sini</p>
+                <div style="text-align: center; padding: 60px 20px; color: var(--cash-text-secondary);">
+                    <div style="font-size: 72px; margin-bottom: 20px;">📋</div>
+                    <p style="font-size: 18px; margin: 0; font-weight: 600;">Belum ada transaksi ${this.getFilterLabel().toLowerCase()}</p>
+                    <p style="font-size: 14px; margin-top: 12px; opacity: 0.8;">Transaksi kas masuk dan keluar akan muncul di sini</p>
                 </div>
             `;
             return;
@@ -984,21 +977,22 @@ const cashModule = {
             }, 0);
             
             html += `
-                <div style="background: #f5f5f5; padding: 10px 16px; margin: 16px 0 8px 0; border-radius: 8px; font-weight: 600; font-size: 14px; color: #555; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                    <span>${dateKey}</span>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        ${dayLaba > 0 ? `<span style="color: #9c27b0; font-size: 12px; font-weight: 700;">💰 Laba: Rp ${utils.formatNumber(dayLaba)}</span>` : ''}
-                        <span style="color: ${dayKasNet >= 0 ? '#4caf50' : '#f44336'}; font-weight: 700;">
-                            Kas: ${dayKasNet >= 0 ? '+' : ''}Rp ${utils.formatNumber(Math.abs(dayKasNet))}
-                        </span>
+                <div class="cash-date-group">
+                    <div class="cash-date-header">
+                        <span>${dateKey}</span>
+                        <div style="display: flex; gap: 16px; align-items: center;">
+                            ${dayLaba > 0 ? `<span style="color: #7c3aed; font-size: 13px; font-weight: 700;">💰 Laba: Rp ${utils.formatNumber(dayLaba)}</span>` : ''}
+                            <span style="color: ${dayKasNet >= 0 ? 'var(--cash-success)' : 'var(--cash-danger)'}; font-weight: 700;">
+                                Kas: ${dayKasNet >= 0 ? '+' : ''}Rp ${utils.formatNumber(Math.abs(dayKasNet))}
+                            </span>
+                        </div>
                     </div>
-                </div>
             `;
             
             dayTrans.forEach(t => {
                 const isIncome = t.type === 'in' || t.type === 'modal_in' || t.type === 'topup' || t.type === 'pos_sale';
                 const prefix = isIncome ? '+' : '-';
-                const amountColor = isIncome ? '#2e7d32' : '#c62828';
+                const amountColor = isIncome ? 'income' : 'expense';
                 
                 let typeLabel = '';
                 let labaBadge = '';
@@ -1010,32 +1004,32 @@ const cashModule = {
                 if ((isOwner || isAdmin) && t.userId) {
                     const user = dataManager.getUsers().find(u => u.id === t.userId);
                     if (user) {
-                        userBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-left: 8px;">👤 ${user.name}</span>`;
+                        userBadge = `<span class="cash-transaction-badge user">👤 ${user.name}</span>`;
                     }
                 }
                 
-                // ✅ PERBAIKAN: Tampilkan badge MODAL untuk semua role
+                // Tampilkan badge MODAL untuk semua role
                 if (t.type === 'modal_in') {
                     typeLabel = ' (Modal)';
-                    modalBadge = `<span style="background: #fff8e1; color: #f57f17; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">MODAL</span>`;
+                    modalBadge = `<span class="cash-transaction-badge modal">MODAL</span>`;
                 } else if (t.type === 'topup') {
                     typeLabel = ' (Top Up)';
                     const adminFee = parseInt(t.details?.adminFee) || 0;
                     if (adminFee > 0) {
-                        labaBadge = `<span style="background: #f3e5f5; color: #6a1b9a; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
+                        labaBadge = `<span class="cash-transaction-badge profit">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
                     }
                 } else if (t.category === 'tarik_tunai') {
                     typeLabel = ' (Tarik Tunai)';
                     const adminFee = parseInt(t.details?.adminFee) || 0;
                     if (adminFee > 0) {
-                        labaBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
+                        labaBadge = `<span class="cash-transaction-badge profit">Laba: Rp ${utils.formatNumber(adminFee)}</span>`;
                     }
                 } else if (t.type === 'pos_sale') {
                     typeLabel = ' (POS)';
-                    posBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">AUTO</span>`;
+                    posBadge = `<span class="cash-transaction-badge pos">AUTO</span>`;
                 } else if (t.type === 'pos_void') {
                     typeLabel = ' (Batal POS)';
-                    posBadge = `<span style="background: #ffebee; color: #c62828; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">VOID</span>`;
+                    posBadge = `<span class="cash-transaction-badge void">VOID</span>`;
                 }
                 
                 const timeStr = new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -1043,35 +1037,30 @@ const cashModule = {
                 const showDelete = t.type !== 'pos_sale' && t.type !== 'pos_void';
                 
                 html += `
-                    <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='transparent'">
-                        <div class="transaction-info" style="flex: 1;">
-                            <div class="transaction-title" style="font-weight: 600; margin-bottom: 4px; color: #333; font-size: 14px; display: flex; align-items: center; flex-wrap: wrap;">
+                    <div class="cash-transaction-item">
+                        <div style="flex: 1;">
+                            <div class="cash-transaction-title">
                                 ${t.note || t.category}${typeLabel}
                                 ${labaBadge}
                                 ${modalBadge}
                                 ${posBadge}
                                 ${userBadge}
                             </div>
-                            <div class="transaction-meta" style="font-size: 12px; color: #999;">${timeStr}</div>
+                            <div style="font-size: 13px; color: var(--cash-text-secondary);">${timeStr}</div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            <div class="transaction-amount" style="font-weight: 700; font-size: 16px; color: ${amountColor};">
+                            <div class="cash-transaction-amount ${amountColor}">
                                 ${prefix} Rp ${utils.formatNumber(t.amount)}
                             </div>
                             ${showDelete ? `
-                            <button class="btn-delete-cash" data-transaction-id="${t.id}" 
-                                    style="width: 36px; height: 36px; border-radius: 50%; background: #ffebee; 
-                                           border: 2px solid #f44336; color: #f44336; font-size: 16px; cursor: pointer; 
-                                           display: flex; align-items: center; justify-content: center;
-                                           transition: all 0.2s;"
-                                    onmouseover="this.style.background='#f44336'; this.style.color='white';"
-                                    onmouseout="this.style.background='#ffebee'; this.style.color='#f44336';"
-                                    title="Hapus transaksi">🗑️</button>
-                            ` : '<span style="font-size: 12px; color: #999; font-style: italic;">Auto</span>'}
+                            <button class="cash-transaction-delete" data-transaction-id="${t.id}" title="Hapus transaksi">🗑️</button>
+                            ` : '<span style="font-size: 12px; color: var(--cash-text-secondary); font-style: italic;">Auto</span>'}
                         </div>
                     </div>
                 `;
             });
+            
+            html += '</div>';
         });
         
         container.innerHTML = html;
@@ -1079,7 +1068,7 @@ const cashModule = {
     },
 
     attachDeleteListeners() {
-        document.querySelectorAll('.btn-delete-cash').forEach(btn => {
+        document.querySelectorAll('.cash-transaction-delete').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const id = btn.getAttribute('data-transaction-id');
@@ -1098,9 +1087,11 @@ const cashModule = {
 
         const currentUser = dataManager.getCurrentUser();
         
+        // Reverse the transaction effect
         if (transaction.type === 'in' || transaction.type === 'modal_in' || transaction.type === 'topup') {
             dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) - parseInt(transaction.amount);
             
+            // Update user shift
             if (currentUser) {
                 const userShift = dataManager.getUserShift(currentUser.userId);
                 if (userShift) {
@@ -1111,6 +1102,7 @@ const cashModule = {
         } else if (transaction.type === 'out') {
             dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) + parseInt(transaction.amount);
             
+            // Update user shift
             if (currentUser) {
                 const userShift = dataManager.getUserShift(currentUser.userId);
                 if (userShift) {
@@ -1226,6 +1218,7 @@ const cashModule = {
         const calculated = this.calculateActualCash();
         dataManager.data.settings.currentCash = calculated;
         
+        // Update user shift juga
         if (userShift) {
             userShift.currentCash = calculated;
             dataManager.updateUserShift(currentUser.userId, userShift);
@@ -1250,45 +1243,51 @@ const cashModule = {
 
         const isIncome = type === 'in';
         const title = isIncome ? '⬇️ Kas Masuk' : '⬆️ Kas Keluar';
-        const color = isIncome ? '#4caf50' : '#f44336';
+        const color = isIncome ? 'var(--cash-success)' : 'var(--cash-danger)';
         
         const modalHTML = `
             <div class="modal active" id="cashModal" style="display: flex; z-index: 2000;">
-                <div class="modal-content" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <span class="modal-title" style="color: ${color};">${title}</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('cashModal')">×</button>
+                <div class="modal-content" style="max-width: 420px; border-radius: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid #e2e8f0; padding: 20px 24px;">
+                        <span class="modal-title" style="color: ${color}; font-size: 18px; font-weight: 700;">${title}</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('cashModal')" style="color: #64748b; font-size: 28px;">×</button>
                     </div>
 
-                    <div class="form-group">
-                        <label>Jumlah (Rp) *</label>
-                        <input type="number" id="cashAmount" placeholder="0" autofocus>
+                    <div style="padding: 24px;">
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Jumlah (Rp) *</label>
+                            <input type="number" id="cashAmount" placeholder="0" autofocus 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s;"
+                                   onfocus="this.style.borderColor='${color}'" onblur="this.style.borderColor='#e2e8f0'">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Kategori *</label>
+                            <select id="cashCategory" style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; background: white;">
+                                ${isIncome ? `
+                                    <option value="penjualan">Penjualan</option>
+                                    <option value="modal">Modal Masuk</option>
+                                    <option value="lainnya">Lainnya</option>
+                                ` : `
+                                    <option value="belanja">Belanja/Restock</option>
+                                    <option value="operasional">Operasional</option>
+                                    <option value="gaji">Gaji</option>
+                                    <option value="lainnya">Lainnya</option>
+                                `}
+                            </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Keterangan</label>
+                            <textarea id="cashNote" rows="3" placeholder="Keterangan tambahan..." 
+                                      style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; resize: vertical;"></textarea>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Kategori *</label>
-                        <select id="cashCategory">
-                            ${isIncome ? `
-                                <option value="penjualan">Penjualan</option>
-                                <option value="modal">Modal Masuk</option>
-                                <option value="lainnya">Lainnya</option>
-                            ` : `
-                                <option value="belanja">Belanja/Restock</option>
-                                <option value="operasional">Operasional</option>
-                                <option value="gaji">Gaji</option>
-                                <option value="lainnya">Lainnya</option>
-                            `}
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Keterangan</label>
-                        <textarea id="cashNote" rows="2" placeholder="Keterangan tambahan..."></textarea>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveCash('${type}')" style="background: ${color}; border-color: ${color};">
+                    <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveCash('${type}')" 
+                                style="padding: 12px 24px; border-radius: 10px; font-weight: 700; background: ${color}; border-color: ${color};">
                             💾 Simpan
                         </button>
                     </div>
@@ -1328,87 +1327,94 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="topUpModal" style="display: flex; z-index: 2000;">
-                <div class="modal-content" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <span class="modal-title" style="color: #9c27b0;">💜 Top Up E-Wallet</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('topUpModal')">×</button>
+                <div class="modal-content" style="max-width: 440px; border-radius: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid #e2e8f0; padding: 20px 24px; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);">
+                        <span class="modal-title" style="color: #7c3aed; font-size: 18px; font-weight: 700;">💜 Top Up E-Wallet</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('topUpModal')" style="color: #7c3aed; font-size: 28px;">×</button>
                     </div>
 
-                    <div class="form-group">
-                        <label>Provider *</label>
-                        <select id="topUpProvider">
-                            ${providerOptions}
-                        </select>
-                    </div>
-                    
-                    <div style="text-align: right; margin-bottom: 15px;">
-                        <button onclick="cashModule.addCustomProvider('topup')" style="font-size: 12px; color: #667eea; background: none; border: none; cursor: pointer;">
-                            ➕ Tambah Provider Baru
-                        </button>
-                        ${this.providers.custom.length > 0 ? `
-                        <button onclick="cashModule.manageCustomProviders()" style="font-size: 12px; color: #f44336; background: none; border: none; cursor: pointer; margin-left: 10px;">
-                            ✏️ Kelola Provider
-                        </button>
-                        ` : ''}
-                    </div>
-
-                    <div class="form-group">
-                        <label>Nomor HP / ID Pelanggan *</label>
-                        <input type="text" id="topUpPhone" placeholder="08xxxxxxxxx">
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Nominal Top Up (Rp) *</label>
-                            <select id="topUpNominal" onchange="cashModule.handleTopUpNominalChange()">
-                                <option value="">Pilih nominal...</option>
-                                <option value="5000">Rp 5.000</option>
-                                <option value="10000">Rp 10.000</option>
-                                <option value="20000">Rp 20.000</option>
-                                <option value="25000">Rp 25.000</option>
-                                <option value="50000">Rp 50.000</option>
-                                <option value="100000">Rp 100.000</option>
-                                <option value="150000">Rp 150.000</option>
-                                <option value="200000">Rp 200.000</option>
-                                <option value="300000">Rp 300.000</option>
-                                <option value="500000">Rp 500.000</option>
-                                <option value="1000000">Rp 1.000.000</option>
-                                <option value="custom">Lainnya...</option>
+                    <div style="padding: 24px;">
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Provider *</label>
+                            <select id="topUpProvider" style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; background: white;">
+                                ${providerOptions}
                             </select>
                         </div>
-                        <div class="form-group" id="customNominalGroup" style="display: none;">
-                            <label>Nominal Lain (Rp)</label>
-                            <input type="number" id="topUpCustomNominal" placeholder="0" oninput="cashModule.calcTopUp()">
+                        
+                        <div style="text-align: right; margin-bottom: 16px;">
+                            <button onclick="cashModule.addCustomProvider('topup')" style="font-size: 12px; color: var(--cash-primary); background: none; border: none; cursor: pointer; font-weight: 600;">
+                                ➕ Tambah Provider Baru
+                            </button>
+                            ${this.providers.custom.length > 0 ? `
+                            <button onclick="cashModule.manageCustomProviders()" style="font-size: 12px; color: var(--cash-danger); background: none; border: none; cursor: pointer; margin-left: 12px; font-weight: 600;">
+                                ✏️ Kelola Provider
+                            </button>
+                            ` : ''}
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nomor HP / ID Pelanggan *</label>
+                            <input type="text" id="topUpPhone" placeholder="08xxxxxxxxx" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                            <div class="form-group">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nominal Top Up (Rp) *</label>
+                                <select id="topUpNominal" onchange="cashModule.handleTopUpNominalChange()" 
+                                        style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; background: white;">
+                                    <option value="">Pilih nominal...</option>
+                                    <option value="5000">Rp 5.000</option>
+                                    <option value="10000">Rp 10.000</option>
+                                    <option value="20000">Rp 20.000</option>
+                                    <option value="25000">Rp 25.000</option>
+                                    <option value="50000">Rp 50.000</option>
+                                    <option value="100000">Rp 100.000</option>
+                                    <option value="150000">Rp 150.000</option>
+                                    <option value="200000">Rp 200.000</option>
+                                    <option value="300000">Rp 300.000</option>
+                                    <option value="500000">Rp 500.000</option>
+                                    <option value="1000000">Rp 1.000.000</option>
+                                    <option value="custom">Lainnya...</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="customNominalGroup" style="display: none;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nominal Lain (Rp)</label>
+                                <input type="number" id="topUpCustomNominal" placeholder="0" oninput="cashModule.calcTopUp()" 
+                                       style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Admin Fee (Rp)</label>
+                            <input type="number" id="topUpAdminFee" placeholder="0" value="0" oninput="cashModule.calcTopUp()" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
+                        </div>
+
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 20px; color: white; margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px;">
+                                <span>Nominal Top Up:</span>
+                                <span id="topUpDisplayNominal" style="font-weight: 600;">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px;">
+                                <span>Admin Fee:</span>
+                                <span id="topUpDisplayAdmin" style="font-weight: 600;">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 20px; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3); padding-top: 12px; margin-top: 12px;">
+                                <span>Total Dibayar:</span>
+                                <span id="topUpTotal">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 14px; color: #a5d6a7; margin-top: 8px;">
+                                <span>💰 Laba:</span>
+                                <span id="topUpLaba">Rp 0</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Admin Fee (Rp)</label>
-                        <input type="number" id="topUpAdminFee" placeholder="0" value="0" oninput="cashModule.calcTopUp()">
-                    </div>
-
-                    <div class="calculation-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                        <div class="calc-row">
-                            <span>Nominal Top Up:</span>
-                            <span id="topUpDisplayNominal">Rp 0</span>
-                        </div>
-                        <div class="calc-row">
-                            <span>Admin Fee:</span>
-                            <span id="topUpDisplayAdmin">Rp 0</span>
-                        </div>
-                        <div class="calc-row" style="font-size: 20px; font-weight: 700; border-top: 2px solid rgba(255,255,255,0.3); padding-top: 10px; margin-top: 10px;">
-                            <span>Total Dibayar:</span>
-                            <span id="topUpTotal">Rp 0</span>
-                        </div>
-                        <div class="calc-row" style="font-size: 14px; color: #a5d6a7;">
-                            <span>💰 Laba:</span>
-                            <span id="topUpLaba">Rp 0</span>
-                        </div>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="background: #9c27b0; border-color: #9c27b0;">
+                    <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveTopUp()" 
+                                style="padding: 12px 24px; border-radius: 10px; font-weight: 700; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border: none;">
                             💜 Proses Top Up
                         </button>
                     </div>
@@ -1504,72 +1510,79 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="tarikTunaiModal" style="display: flex; z-index: 2000;">
-                <div class="modal-content" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <span class="modal-title" style="color: #2196f3;">🏧 Tarik Tunai</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')">×</button>
+                <div class="modal-content" style="max-width: 440px; border-radius: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid #e2e8f0; padding: 20px 24px; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);">
+                        <span class="modal-title" style="color: #2563eb; font-size: 18px; font-weight: 700;">🏧 Tarik Tunai</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')" style="color: #2563eb; font-size: 28px;">×</button>
                     </div>
 
-                    <div class="form-group">
-                        <label>Provider *</label>
-                        <select id="tarikProvider">
-                            ${providerOptions}
-                        </select>
-                    </div>
-                    
-                    <div style="text-align: right; margin-bottom: 15px;">
-                        <button onclick="cashModule.addCustomProvider('tarik')" style="font-size: 12px; color: #667eea; background: none; border: none; cursor: pointer;">
-                            ➕ Tambah Provider Baru
-                        </button>
-                        ${this.providers.custom.length > 0 ? `
-                        <button onclick="cashModule.manageCustomProviders()" style="font-size: 12px; color: #f44336; background: none; border: none; cursor: pointer; margin-left: 10px;">
-                            ✏️ Kelola Provider
-                        </button>
-                        ` : ''}
-                    </div>
-
-                    <div class="form-group">
-                        <label>Nomor Rekening / HP *</label>
-                        <input type="text" id="tarikRekening" placeholder="Nomor rekening atau HP">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Nama Pemilik Rekening *</label>
-                        <input type="text" id="tarikNama" placeholder="Nama sesuai rekening">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Nominal Tarik (Rp) *</label>
-                        <input type="number" id="tarikNominal" placeholder="0" oninput="cashModule.calcTarik()">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Admin Fee (Rp)</label>
-                        <input type="number" id="tarikAdminFee" placeholder="0" value="0" oninput="cashModule.calcTarik()">
-                    </div>
-
-                    <div class="calculation-box" style="background: linear-gradient(135deg, #2196f3 0%, #1565c0 100%); color: white;">
-                        <div class="calc-row">
-                            <span>Nominal Tarik:</span>
-                            <span id="tarikDisplayNominal">Rp 0</span>
+                    <div style="padding: 24px;">
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Provider *</label>
+                            <select id="tarikProvider" style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; background: white;">
+                                ${providerOptions}
+                            </select>
                         </div>
-                        <div class="calc-row">
-                            <span>Admin Fee:</span>
-                            <span id="tarikDisplayAdmin">Rp 0</span>
+                        
+                        <div style="text-align: right; margin-bottom: 16px;">
+                            <button onclick="cashModule.addCustomProvider('tarik')" style="font-size: 12px; color: var(--cash-primary); background: none; border: none; cursor: pointer; font-weight: 600;">
+                                ➕ Tambah Provider Baru
+                            </button>
+                            ${this.providers.custom.length > 0 ? `
+                            <button onclick="cashModule.manageCustomProviders()" style="font-size: 12px; color: var(--cash-danger); background: none; border: none; cursor: pointer; margin-left: 12px; font-weight: 600;">
+                                ✏️ Kelola Provider
+                            </button>
+                            ` : ''}
                         </div>
-                        <div class="calc-row" style="font-size: 20px; font-weight: 700; border-top: 2px solid rgba(255,255,255,0.3); padding-top: 10px; margin-top: 10px;">
-                            <span>Total Diterima:</span>
-                            <span id="tarikTotal">Rp 0</span>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nomor Rekening / HP *</label>
+                            <input type="text" id="tarikRekening" placeholder="Nomor rekening atau HP" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
                         </div>
-                        <div class="calc-row" style="font-size: 14px; color: #a5d6a7;">
-                            <span>💰 Laba:</span>
-                            <span id="tarikLaba">Rp 0</span>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nama Pemilik Rekening *</label>
+                            <input type="text" id="tarikNama" placeholder="Nama sesuai rekening" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nominal Tarik (Rp) *</label>
+                            <input type="number" id="tarikNominal" placeholder="0" oninput="cashModule.calcTarik()" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Admin Fee (Rp)</label>
+                            <input type="number" id="tarikAdminFee" placeholder="0" value="0" oninput="cashModule.calcTarik()" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
+                        </div>
+
+                        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius: 16px; padding: 20px; color: white; margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px;">
+                                <span>Nominal Tarik:</span>
+                                <span id="tarikDisplayNominal" style="font-weight: 600;">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px;">
+                                <span>Admin Fee:</span>
+                                <span id="tarikDisplayAdmin" style="font-weight: 600;">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 20px; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3); padding-top: 12px; margin-top: 12px;">
+                                <span>Total Diterima:</span>
+                                <span id="tarikTotal">Rp 0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 14px; color: #a5d6a7; margin-top: 8px;">
+                                <span>💰 Laba:</span>
+                                <span id="tarikLaba">Rp 0</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveTarikTunai()" style="background: #2196f3; border-color: #2196f3;">
+                    <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveTarikTunai()" 
+                                style="padding: 12px 24px; border-radius: 10px; font-weight: 700; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border: none;">
                             🏧 Proses Tarik Tunai
                         </button>
                     </div>
@@ -1619,6 +1632,7 @@ const cashModule = {
 
         const providerLabel = this.getProviderLabel(provider);
 
+        // Tarik tunai = kas keluar (uang diberikan ke customer)
         this.saveTransaction('out', nominal, 'tarik_tunai', `Tarik Tunai ${providerLabel} - ${nama} (${rekening})`, {
             provider: provider,
             rekening: rekening,
@@ -1645,38 +1659,42 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="modalAwalModal" style="display: flex; z-index: 2000;">
-                <div class="modal-content" style="max-width: 400px;">
-                    <div class="modal-header">
-                        <span class="modal-title" style="color: #ffc107;">💰 Modal Awal</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('modalAwalModal')">×</button>
+                <div class="modal-content" style="max-width: 420px; border-radius: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid #e2e8f0; padding: 20px 24px; background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);">
+                        <span class="modal-title" style="color: #a16207; font-size: 18px; font-weight: 700;">💰 Modal Awal</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('modalAwalModal')" style="color: #a16207; font-size: 28px;">×</button>
                     </div>
 
-                    <div class="info-box" style="background: #fff8e1; border-left-color: #ffc107; margin-bottom: 20px;">
-                        <div class="info-title">ℹ️ Informasi</div>
-                        <div class="info-text">
-                            Modal awal adalah uang yang disiapkan di kasir sebelum memulai transaksi hari ini.
-                            Modal ini akan digunakan untuk menghitung laba bersih.
+                    <div style="padding: 24px;">
+                        <div style="background: #fef3c7; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #92400e; border-left: 4px solid #f59e0b;">
+                            <div style="font-weight: 700; margin-bottom: 6px;">ℹ️ Informasi</div>
+                            <div>Modal awal adalah uang yang disiapkan di kasir sebelum memulai transaksi hari ini. Modal ini akan digunakan untuk menghitung laba bersih.</div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Awal Saat Ini</label>
+                            <input type="text" value="Rp ${utils.formatNumber(currentModal)}" disabled 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; background: #f1f5f9; color: #64748b; font-weight: 600;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Awal Baru (Rp) *</label>
+                            <input type="number" id="newModalAwal" placeholder="0" value="${currentModal}" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s; font-weight: 600;"
+                                   onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#e2e8f0'">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Keterangan (opsional)</label>
+                            <input type="text" id="modalNote" placeholder="Contoh: Modal hari Senin" 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Modal Awal Saat Ini</label>
-                        <input type="text" value="Rp ${utils.formatNumber(currentModal)}" disabled style="background: #f5f5f5; color: #666;">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Modal Awal Baru (Rp) *</label>
-                        <input type="number" id="newModalAwal" placeholder="0" value="${currentModal}">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Keterangan (opsional)</label>
-                        <input type="text" id="modalNote" placeholder="Contoh: Modal hari Senin">
-                    </div>
-
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')">Batal</button>
-                        <button class="btn btn-primary" onclick="cashModule.saveModalAwal()" style="background: #ffc107; border-color: #ffc107; color: #333;">
+                    <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveModalAwal()" 
+                                style="padding: 12px 24px; border-radius: 10px; font-weight: 700; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none; color: white;">
                             💾 Simpan Modal
                         </button>
                     </div>
@@ -1699,15 +1717,19 @@ const cashModule = {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
 
+        // Simpan modal lama untuk perhitungan
         const oldModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
 
+        // Update modal global
         dataManager.data.settings.modalAwal = newModal;
 
+        // Update user shift jika ada
         if (userShift) {
             userShift.modalAwal = newModal;
             dataManager.updateUserShift(currentUser.userId, userShift);
         }
 
+        // Jika modal bertambah, catat sebagai kas masuk
         if (newModal > oldModal) {
             const diff = newModal - oldModal;
             this.saveTransaction('modal_in', diff, 'modal_tambahan', note || 'Penambahan modal awal');
@@ -1751,54 +1773,72 @@ const cashModule = {
 
         const modalHTML = `
             <div class="modal active" id="resetOptionsModal" style="display: flex; z-index: 2000;">
-                <div class="modal-content" style="max-width: 450px;">
-                    <div class="modal-header">
-                        <span class="modal-title">⚙️ Pengaturan Shift & Kas</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('resetOptionsModal')">×</button>
+                <div class="modal-content" style="max-width: 480px; border-radius: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid #e2e8f0; padding: 20px 24px;">
+                        <span class="modal-title" style="font-size: 18px; font-weight: 700;">⚙️ Pengaturan Shift & Kas</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('resetOptionsModal')" style="color: #64748b; font-size: 28px;">×</button>
                     </div>
 
-                    <div style="background: #e3f2fd; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-                        <div style="font-size: 14px; color: #1565c0; margin-bottom: 8px;">
-                            📊 Status Saat Ini ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '(Global)' : '(Shift Anda)'}
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                            <div>
-                                <div style="font-size: 12px; color: #666;">Kas di Tangan</div>
-                                <div style="font-size: 18px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(currentCash)}</div>
+                    <div style="padding: 24px;">
+                        <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+                            <div style="font-size: 14px; color: #1e40af; margin-bottom: 12px; font-weight: 600;">
+                                📊 Status Saat Ini ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '(Global)' : '(Shift Anda)'}
                             </div>
-                            <div>
-                                <div style="font-size: 12px; color: #666;">Modal Awal</div>
-                                <div style="font-size: 18px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(modalAwal)}</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                    <div style="font-size: 12px; color: #64748b; margin-bottom: 6px; font-weight: 600;">Kas di Tangan</div>
+                                    <div style="font-size: 22px; font-weight: 800; color: var(--cash-text);">Rp ${utils.formatNumber(currentCash)}</div>
+                                </div>
+                                <div style="background: white; padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                    <div style="font-size: 12px; color: #64748b; margin-bottom: 6px; font-weight: 600;">Modal Awal</div>
+                                    <div style="font-size: 22px; font-weight: 800; color: var(--cash-text);">Rp ${utils.formatNumber(modalAwal)}</div>
+                                </div>
                             </div>
+                        </div>
+
+                        <div style="display: grid; gap: 12px;">
+                            <button onclick="cashModule.saveDayClosing()" 
+                                    style="padding: 20px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; border-radius: 16px; cursor: pointer; text-align: left; transition: all 0.2s;"
+                                    onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                                <div style="font-weight: 800; font-size: 16px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                                    <span>📋</span> Tutup Shift Hari Ini
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.9;">Simpan laporan penutupan dan tutup kasir untuk shift ini</div>
+                            </button>
+
+                            <button onclick="cashModule.setNewModal()" 
+                                    style="padding: 20px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 16px; cursor: pointer; text-align: left; transition: all 0.2s;"
+                                    onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                                <div style="font-weight: 800; font-size: 16px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                                    <span>💰</span> Atur Modal Awal Baru
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.9;">Set ulang modal awal untuk shift baru</div>
+                            </button>
+
+                            ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? `
+                            <button onclick="cashModule.carryOverCash()" 
+                                    style="padding: 20px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; border-radius: 16px; cursor: pointer; text-align: left; transition: all 0.2s;"
+                                    onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                                <div style="font-weight: 800; font-size: 16px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                                    <span>🔄</span> Carry Over Kas
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.9;">Lanjutkan kas ke hari berikutnya (tanpa reset)</div>
+                            </button>
+                            ` : ''}
+
+                            <button onclick="cashModule.resetToZero()" 
+                                    style="padding: 20px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border: none; border-radius: 16px; cursor: pointer; text-align: left; transition: all 0.2s;"
+                                    onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                                <div style="font-weight: 800; font-size: 16px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                                    <span>🗑️</span> Reset Kas ke 0
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.9;">HAPUS SEMUA kas dan mulai dari nol (hati-hati!)</div>
+                            </button>
                         </div>
                     </div>
 
-                    <div style="display: grid; gap: 12px;">
-                        <button onclick="cashModule.saveDayClosing()" style="padding: 16px; background: #4caf50; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
-                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">📋 Tutup Shift Hari Ini</div>
-                            <div style="font-size: 13px; opacity: 0.9;">Simpan laporan penutupan dan tutup kasir untuk shift ini</div>
-                        </button>
-
-                        <button onclick="cashModule.setNewModal()" style="padding: 16px; background: #2196f3; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
-                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">💰 Atur Modal Awal Baru</div>
-                            <div style="font-size: 13px; opacity: 0.9;">Set ulang modal awal untuk shift baru</div>
-                        </button>
-
-                        ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? `
-                        <button onclick="cashModule.carryOverCash()" style="padding: 16px; background: #ff9800; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
-                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">🔄 Carry Over Kas</div>
-                            <div style="font-size: 13px; opacity: 0.9;">Lanjutkan kas ke hari berikutnya (tanpa reset)</div>
-                        </button>
-                        ` : ''}
-
-                        <button onclick="cashModule.resetToZero()" style="padding: 16px; background: #f44336; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
-                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">🗑️ Reset Kas ke 0</div>
-                            <div style="font-size: 13px; opacity: 0.9;">HAPUS SEMUA kas dan mulai dari nol (hati-hati!)</div>
-                        </button>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="cashModule.closeModal('resetOptionsModal')">Batal</button>
+                    <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('resetOptionsModal')" style="padding: 12px 24px; border-radius: 10px; font-weight: 600;">Batal</button>
                     </div>
                 </div>
             </div>
@@ -1829,11 +1869,13 @@ const cashModule = {
         const today = new Date();
         const todayStr = today.toDateString();
 
+        // Hitung statistik hari ini
         const todayStats = this.calculatePeriodStats(
             new Date(today.getFullYear(), today.getMonth(), today.getDate()),
             new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
         );
 
+        // Simpan ke history
         if (!dataManager.data.shiftHistory) {
             dataManager.data.shiftHistory = [];
         }
@@ -1852,9 +1894,11 @@ const cashModule = {
 
         dataManager.data.shiftHistory.push(closingRecord);
 
+        // Reset kas dan modal
         dataManager.data.settings.currentCash = 0;
         dataManager.data.settings.modalAwal = 0;
 
+        // Reset user shift
         if (userShift) {
             userShift.currentCash = 0;
             userShift.modalAwal = 0;
@@ -1863,6 +1907,7 @@ const cashModule = {
             dataManager.updateUserShift(currentUser.userId, userShift);
         }
 
+        // Tutup shift di dataManager
         if (currentUser) {
             dataManager.closeKasir(currentUser.userId);
         }
@@ -1872,6 +1917,7 @@ const cashModule = {
         this.closeModal('resetOptionsModal');
         app.showToast('✅ Shift ditutup dan laporan disimpan!');
         
+        // Redirect ke halaman tutup
         if (typeof app !== 'undefined' && app.showKasirClosedPage) {
             app.showKasirClosedPage();
         }
@@ -1894,6 +1940,7 @@ const cashModule = {
         dataManager.data.settings.currentCash = 0;
         dataManager.data.settings.modalAwal = 0;
 
+        // Reset user shift
         if (userShift) {
             userShift.currentCash = 0;
             userShift.modalAwal = 0;
@@ -1923,6 +1970,7 @@ const cashModule = {
 
         const currentUser = dataManager.getCurrentUser();
         
+        // Simpan history carry over
         if (!dataManager.data.shiftHistory) {
             dataManager.data.shiftHistory = [];
         }
@@ -1958,12 +2006,14 @@ const cashModule = {
 
         dataManager.data.cashTransactions.push(transaction);
         
+        // Update kas global
         if (type === 'in' || type === 'modal_in' || type === 'topup') {
             dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) + parseInt(amount);
         } else if (type === 'out') {
             dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) - parseInt(amount);
         }
         
+        // Update user shift jika ada
         if (currentUser) {
             const userShift = dataManager.getUserShift(currentUser.userId);
             if (userShift) {
@@ -1988,3 +2038,6 @@ const cashModule = {
         }
     }
 };
+
+// Expose ke window
+window.cashModule = cashModule;
