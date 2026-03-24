@@ -1,6 +1,6 @@
 /**
  * Global App - Core Application Logic
- * Hifzi Cell POS System
+ * Hifzi Cell POS System - Multi-User Edition
  */
 
 const app = {
@@ -158,27 +158,12 @@ const app = {
         this.updateHeader();
         this.updateKasirStatus();
         
+        // ✅ PERUBAHAN: Check status kasir untuk user ini
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         console.log('[App] Kasir status:', kasirStatus);
         
-        // Owner dan Admin bisa langsung akses menu non-operasional meski kasir dibuka user lain
-        if (this.currentUser.role === 'owner' || this.currentUser.role === 'admin') {
-            this.showToast(`Selamat datang, ${this.currentUser.name}! 👋`);
-            const defaultTab = document.querySelector('.nav-tab');
-            if (defaultTab) defaultTab.classList.add('active');
-            
-            if (kasirStatus.reason === 'different_user') {
-                if (typeof router !== 'undefined') {
-                    router.navigate('users', defaultTab);
-                }
-            } else {
-                if (typeof router !== 'undefined') {
-                    router.navigate('pos', defaultTab);
-                }
-                const cartBar = document.getElementById('cartBar');
-                if (cartBar) cartBar.style.display = 'flex';
-            }
-        } else if (kasirStatus.reason === 'already_open_same_user') {
+        // ✅ PERUBAHAN: Semua role bisa akses, tapi ditanya untuk buka kasir jika belum
+        if (kasirStatus.reason === 'already_open_same_user') {
             this.showToast(`Selamat datang kembali, ${this.currentUser.name}! 👋`);
             const defaultTab = document.querySelector('.nav-tab');
             if (defaultTab) defaultTab.classList.add('active');
@@ -187,27 +172,28 @@ const app = {
             }
             const cartBar = document.getElementById('cartBar');
             if (cartBar) cartBar.style.display = 'flex';
-        } else if (kasirStatus.reason === 'new_day_same_user') {
-            this.showNewDayConfirmModal();
-        } else if (kasirStatus.reason === 'different_user') {
-            this.showKasirUsedByOtherModal();
+        } else if (kasirStatus.reason === 'new_day_same_user' || kasirStatus.reason === 'new_shift') {
+            // Tanya apakah mau buka kasir
+            this.showOpenKasirModal();
         } else {
+            // Default: tampilkan halaman tutup dengan opsi buka kasir
             this.showKasirClosedPage();
         }
     },
 
-    showNewDayConfirmModal() {
+    // ✅ BARU: Modal untuk buka kasir (bisa diteruskan atau nanti)
+    showOpenKasirModal() {
         const modalHTML = `
-            <div class="modal active" id="newDayModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
+            <div class="modal active" id="openKasirModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">🌅</div>
+                    <div style="font-size: 48px; margin-bottom: 15px;">🏪</div>
                     <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Shift Baru Hari Ini</span>
+                        <span class="modal-title" style="font-size: 16px;">Buka Kasir</span>
                     </div>
                     <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
                         Hai <b>${this.currentUser.name}</b>!<br><br>
-                        Kasir terakhir dibuka kemarin.<br>
-                        Modal akan direset ke <b>Rp 0</b> untuk shift hari ini.
+                        Anda belum membuka kasir hari ini.<br>
+                        Silakan buka kasir untuk memulai shift.
                     </p>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <button class="btn btn-secondary" onclick="app.logout()">Logout</button>
@@ -219,34 +205,14 @@ const app = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    showKasirUsedByOtherModal() {
-        const currentKasirUser = this.data.kasir.currentUser;
-        const users = dataManager.getUsers();
-        const userInfo = users.find(u => u.id === currentKasirUser);
-        const userName = userInfo ? userInfo.name : 'User lain';
-
-        const modalHTML = `
-            <div class="modal active" id="kasirUsedModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
-                    <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Kasir Sedang Digunakan</span>
-                    </div>
-                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Kasir saat ini sedang digunakan oleh:<br>
-                        <b>${userName}</b><br><br>
-                        Silakan tunggu atau hubungi admin.
-                    </p>
-                    <button class="btn btn-secondary" onclick="app.logout()" style="width: 100%;">Logout</button>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
+    // ✅ PERUBAHAN: Tidak ada lagi blocking antar user
     confirmOpenKasir(forceReset) {
-        const newDayModal = document.getElementById('newDayModal');
-        if (newDayModal) newDayModal.remove();
+        // Remove modals
+        const modals = ['openKasirModal', 'newDayModal'];
+        modals.forEach(id => {
+            const modal = document.getElementById(id);
+            if (modal) modal.remove();
+        });
 
         const result = dataManager.openKasir(this.currentUser.userId, forceReset);
         
@@ -265,12 +231,13 @@ const app = {
         }
     },
 
+    // ✅ PERUBAHAN: Tutup kasir hanya untuk user ini
     closeKasir() {
-        if (!confirm('🚪 Yakin ingin menutup kasir?\n\nSemua transaksi hari ini akan disimpan.\nAnda perlu login ulang untuk membuka kasir lagi.')) {
+        if (!confirm('🚪 Yakin ingin menutup kasir?\n\nSemua transaksi Anda hari ini akan disimpan.\nAnda perlu login ulang untuk membuka kasir lagi.')) {
             return;
         }
 
-        const result = dataManager.closeKasir();
+        const result = dataManager.closeKasir(this.currentUser.userId);
         if (result.success) {
             this.showToast(result.message);
             this.updateHeader();
@@ -284,7 +251,7 @@ const app = {
 
     logout() {
         if (typeof dataManager !== 'undefined') {
-            dataManager.save();
+            dataManager.logout(); // Ini akan tutup shift user ini
         }
         
         localStorage.removeItem('hifzi_current_user');
@@ -293,7 +260,7 @@ const app = {
         location.reload();
     },
 
-    // ✅ PERBAIKAN: UpdateHeader - Ambil langsung dari settings, jangan hitung ulang
+    // ✅ PERUBAHAN: Update header dengan data per user
     updateHeader() {
         if (!this.data) return;
         
@@ -303,22 +270,21 @@ const app = {
         if (headerStoreName) headerStoreName.textContent = this.data.settings.storeName || 'HIFZI CELL';
         if (headerStoreAddress) headerStoreAddress.textContent = this.data.settings.address || 'Alamat Belum Diatur';
         
-        // ✅ AMBIL LANGSUNG DARI SETTINGS - Jangan hitung ulang!
-        const currentCash = parseInt(this.data.settings?.currentCash) || 0;
-        const modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
+        // ✅ PERUBAHAN: Ambil data dari shift user ini
+        const userShift = this.currentUser ? dataManager.getUserShift(this.currentUser.userId) : null;
+        const currentCash = userShift ? (userShift.currentCash || 0) : 0;
+        const modalAwal = userShift ? (userShift.modalAwal || 0) : 0;
         
-        // Hitung laba hari ini (dari transaksi)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const todayTransactions = (this.data.transactions || []).filter(t => {
-            if (t.status === 'deleted' || t.status === 'voided') return false;
-            const tDate = new Date(t.date);
-            tDate.setHours(0, 0, 0, 0);
-            return tDate.getTime() === today.getTime();
-        });
+        // ✅ PERUBAHAN: Hitung laba hanya dari transaksi user ini (atau semua untuk owner)
+        let todayTransactions = [];
+        if (this.currentUser && (this.currentUser.role === 'owner' || this.currentUser.role === 'admin')) {
+            todayTransactions = dataManager.getAllTodayTransactions();
+        } else if (this.currentUser) {
+            todayTransactions = dataManager.getUserTransactions(this.currentUser.userId);
+        }
         
         const todayProfit = todayTransactions.reduce((sum, t) => sum + (parseInt(t.profit) || 0), 0);
+        const totalSales = todayTransactions.reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
         
         // Update DOM
         const currentCashEl = document.getElementById('currentCash');
@@ -336,7 +302,6 @@ const app = {
             }
         };
         
-        // ✅ TAMPILKAN LANGSUNG - Tanpa hitung ulang!
         updateWithHighlight(currentCashEl, currentCash, 'Rp ');
         updateWithHighlight(modalAwalEl, modalAwal, 'Rp ');
         updateWithHighlight(headerProfitEl, todayProfit, 'Rp ');
@@ -357,23 +322,18 @@ const app = {
         this.updateKasirButton();
     },
 
+    // ✅ PERUBAHAN: Update tombol kasir berdasarkan status user ini
     updateKasirButton() {
         const kasirBtn = document.getElementById('kasirToggleBtn');
-        if (!kasirBtn) return;
+        if (!kasirBtn || !this.currentUser) return;
 
-        const isOpen = this.data.kasir && this.data.kasir.isOpen;
-        const kasirCurrentUser = this.data.kasir ? this.data.kasir.currentUser : null;
-        const canControlKasir = !isOpen || kasirCurrentUser === this.currentUser.userId || 
-                               this.currentUser.role === 'owner' || this.currentUser.role === 'admin';
+        // Cek apakah user ini punya shift aktif
+        const userShift = dataManager.getUserShift(this.currentUser.userId);
+        const hasActiveShift = !!userShift;
 
-        if (!canControlKasir) {
-            kasirBtn.style.display = 'none';
-            return;
-        }
-        
         kasirBtn.style.display = 'block';
 
-        if (isOpen) {
+        if (hasActiveShift) {
             kasirBtn.innerHTML = '🔒 Tutup Kasir';
             kasirBtn.style.background = '#ff4757';
             kasirBtn.onclick = () => this.closeKasir();
@@ -384,18 +344,22 @@ const app = {
         }
     },
 
+    // ✅ PERUBAHAN: Update status kasir dengan info multi-user
     updateKasirStatus() {
         if (!this.data || !this.data.kasir) return;
         
-        const isOpen = this.data.kasir.isOpen;
+        const userShift = this.currentUser ? dataManager.getUserShift(this.currentUser.userId) : null;
+        const hasActiveShift = !!userShift;
+        const activeShifts = dataManager.getActiveShifts();
+        
         const dot = document.getElementById('kasirStatusDot');
         const text = document.getElementById('kasirStatusText');
         const shiftStatus = document.getElementById('shiftStatus');
         const indicator = document.getElementById('kasirStatusIndicator');
 
-        if (isOpen) {
+        if (hasActiveShift) {
             if (dot) dot.style.background = '#00b894';
-            if (text) text.textContent = '🔓 Kasir Buka';
+            if (text) text.textContent = `🔓 Kasir Buka (${activeShifts.length} user)`;
             if (shiftStatus) shiftStatus.textContent = this.currentUser ? this.currentUser.name : 'Aktif';
             if (indicator) indicator.className = 'kasir-indicator open';
         } else {
@@ -412,21 +376,37 @@ const app = {
         const container = document.getElementById('mainContent');
         if (!container) return;
 
+        const activeShifts = dataManager.getActiveShifts();
+        const otherUsersActive = activeShifts.filter(s => s.userId !== this.currentUser.userId);
+
         container.innerHTML = `
             <div class="content-section active" style="text-align: center; padding: 40px 20px;">
                 <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
-                <h2 style="color: #c62828; margin-bottom: 15px; font-size: 20px;">Kasir Sedang Tutup</h2>
+                <h2 style="color: #c62828; margin-bottom: 15px; font-size: 20px;">Kasir Anda Sedang Tutup</h2>
                 <p style="color: #666; margin-bottom: 30px; line-height: 1.6; font-size: 14px;">
                     Selamat datang, <b>${this.currentUser ? this.currentUser.name : ''}</b>!<br>
                     Silakan buka kasir untuk memulai shift kerja.
                 </p>
+
+                ${otherUsersActive.length > 0 ? `
+                <div style="background: #e3f2fd; border: 2px solid #2196f3; border-radius: 16px; padding: 15px; max-width: 350px; margin: 0 auto 20px;">
+                    <div style="font-size: 13px; color: #1565c0; font-weight: 600; margin-bottom: 8px;">
+                        👥 User Aktif Saat Ini:
+                    </div>
+                    ${otherUsersActive.map(s => `
+                        <div style="font-size: 12px; color: #555; padding: 4px 0;">
+                            • ${s.userName} (${s.userRole})
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
 
                 <div style="background: #e8f5e9; border: 2px solid #4caf50; border-radius: 16px; padding: 20px; max-width: 350px; margin: 0 auto 20px;">
                     <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
                         📅 Hari ini: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </div>
                     <div style="font-size: 12px; color: #888;">
-                        ${this.data.kasir && this.data.kasir.date ? `Shift terakhir: ${new Date(this.data.kasir.date).toLocaleDateString('id-ID')}` : 'Belum ada shift hari ini'}
+                        ${activeShifts.length > 0 ? `${activeShifts.length} user sedang aktif` : 'Belum ada shift hari ini'}
                     </div>
                 </div>
 
