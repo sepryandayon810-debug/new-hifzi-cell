@@ -207,24 +207,32 @@ const cashModule = {
         return html;
     },
 
-    // ✅ PERBAIKAN: Hitung total kas global dari semua shift aktif
+    // ✅ PERBAIKAN: Hitung total kas global dari semua shift aktif + modal owner
     calculateGlobalCash() {
         const activeShifts = dataManager.getActiveShifts();
         let totalCash = 0;
         let totalModal = 0;
         
+        // Jumlahkan dari semua shift aktif kasir
         activeShifts.forEach(shift => {
             totalCash += parseInt(shift.currentCash) || 0;
             totalModal += parseInt(shift.modalAwal) || 0;
         });
         
-        // Tambahkan kas global settings (untuk owner/admin transactions)
-        const settingsCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+        // ✅ TAMBAHAN: Tambahkan modal dari settings (modal owner/admin)
         const settingsModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        const settingsCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+        
+        // Jika owner/admin yang login, hitung modal mereka juga
+        const currentUser = dataManager.getCurrentUser();
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            totalModal += settingsModal;
+            totalCash += settingsCash;
+        }
         
         return {
-            cash: totalCash + settingsCash,
-            modal: totalModal + settingsModal,
+            cash: totalCash,
+            modal: totalModal,
             shifts: activeShifts
         };
     },
@@ -711,8 +719,6 @@ const cashModule = {
         }
     },
 
-    // ... (fungsi lainnya tetap sama seperti sebelumnya)
-
     getDateRange() {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1168,7 +1174,6 @@ const cashModule = {
         app.showToast('✅ Transaksi dihapus');
         this.renderHTML();
         this.renderTransactions();
-        app.updateHeader();
     },
 
     updateStats() {
@@ -1757,6 +1762,7 @@ const cashModule = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
+    // ✅ PERBAIKAN: saveModalAwal - update settings dan shift owner/admin
     saveModalAwal() {
         const newModal = parseInt(document.getElementById('newModalAwal')?.value) || 0;
         const note = document.getElementById('modalNote')?.value;
@@ -1772,19 +1778,36 @@ const cashModule = {
         // Simpan modal lama untuk perhitungan
         const oldModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
 
-        // Update modal global
+        // ✅ PERBAIKAN: Update modal global di settings
         dataManager.data.settings.modalAwal = newModal;
+        
+        // ✅ PERBAIKAN: Update currentCash di settings juga (untuk owner/admin)
+        const oldCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+        const diff = newModal - oldModal;
+        dataManager.data.settings.currentCash = oldCash + diff;
 
-        // Update user shift jika ada
-        if (userShift) {
+        // Update user shift jika ada (untuk kasir)
+        if (userShift && currentUser && currentUser.role === 'kasir') {
             userShift.modalAwal = newModal;
+            const shiftOldCash = userShift.currentCash || 0;
+            userShift.currentCash = shiftOldCash + diff;
             dataManager.updateUserShift(currentUser.userId, userShift);
+        }
+        
+        // ✅ PERBAIKAN: Update shift owner/admin jika ada
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            const ownerShift = dataManager.getUserShift(currentUser.userId);
+            if (ownerShift) {
+                ownerShift.modalAwal = newModal;
+                ownerShift.currentCash = dataManager.data.settings.currentCash;
+                dataManager.updateUserShift(currentUser.userId, ownerShift);
+            }
         }
 
         // Jika modal bertambah, catat sebagai kas masuk
         if (newModal > oldModal) {
-            const diff = newModal - oldModal;
-            this.saveTransaction('modal_in', diff, 'modal_tambahan', note || 'Penambahan modal awal');
+            const diffAmount = newModal - oldModal;
+            this.saveTransaction('modal_in', diffAmount, 'modal_tambahan', note || 'Penambahan modal awal');
         }
 
         dataManager.save();
@@ -1979,11 +2002,11 @@ const cashModule = {
     },
 
     resetToZero() {
-        if (!confirm('⚠️ PERINGATAN!\n\nSemua kas akan dihapus dan diatur ke 0.\nTindakan ini tidak dapat dibatalkan.\n\nLanjutkan?')) {
+        if (!confirm('⚠️ PERINGATAN!\\n\\nSemua kas akan dihapus dan diatur ke 0.\\nTindakan ini tidak dapat dibatalkan.\\n\\nLanjutkan?')) {
             return;
         }
 
-        const confirmation = prompt('Ketik "RESET" untuk konfirmasi:');
+        const confirmation = prompt('Ketik \"RESET\" untuk konfirmasi:');
         if (confirmation !== 'RESET') {
             app.showToast('❌ Reset dibatalkan');
             return;
@@ -2019,7 +2042,7 @@ const cashModule = {
     },
 
     carryOverCash() {
-        if (!confirm('Carry over akan mempertahankan kas saat ini untuk shift berikutnya.\n\nLanjutkan?')) {
+        if (!confirm('Carry over akan mempertahankan kas saat ini untuk shift berikutnya.\\n\\nLanjutkan?')) {
             return;
         }
 
