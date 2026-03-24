@@ -1568,6 +1568,7 @@ const cashModule = {
         return provider ? provider.label : value;
     },
 
+    // ✅ PERUBAHAN: Hapus field Nomor Rekening/HP dan Nama Pemilik Rekening
     openTarikTunai() {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
@@ -1604,18 +1605,6 @@ const cashModule = {
                                 ✏️ Kelola Provider
                             </button>
                             ` : ''}
-                        </div>
-
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nomor Rekening / HP *</label>
-                            <input type="text" id="tarikRekening" placeholder="Nomor rekening atau HP" 
-                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
-                        </div>
-
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nama Pemilik Rekening *</label>
-                            <input type="text" id="tarikNama" placeholder="Nama sesuai rekening" 
-                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
                         </div>
 
                         <div class="form-group" style="margin-bottom: 16px;">
@@ -1676,24 +1665,15 @@ const cashModule = {
         document.getElementById('tarikLaba').textContent = 'Rp ' + utils.formatNumber(laba);
     },
 
+    // ✅ PERUBAHAN: Hapus validasi untuk field yang sudah dihapus
     saveTarikTunai() {
         const provider = document.getElementById('tarikProvider')?.value;
-        const rekening = document.getElementById('tarikRekening')?.value?.trim();
-        const nama = document.getElementById('tarikNama')?.value?.trim();
         const nominal = parseInt(document.getElementById('tarikNominal')?.value) || 0;
         const adminFee = parseInt(document.getElementById('tarikAdminFee')?.value) || 0;
         const total = nominal - adminFee;
 
         if (!provider) {
             app.showToast('❌ Pilih provider!');
-            return;
-        }
-        if (!rekening) {
-            app.showToast('❌ Masukkan nomor rekening!');
-            return;
-        }
-        if (!nama) {
-            app.showToast('❌ Masukkan nama pemilik rekening!');
             return;
         }
         if (nominal <= 0) {
@@ -1704,10 +1684,8 @@ const cashModule = {
         const providerLabel = this.getProviderLabel(provider);
 
         // Tarik tunai = kas keluar (uang diberikan ke customer)
-        this.saveTransaction('out', nominal, 'tarik_tunai', `Tarik Tunai ${providerLabel} - ${nama} (${rekening})`, {
+        this.saveTransaction('out', nominal, 'tarik_tunai', `Tarik Tunai ${providerLabel}`, {
             provider: provider,
-            rekening: rekening,
-            nama: nama,
             nominal: nominal,
             adminFee: adminFee,
             totalDiterima: total
