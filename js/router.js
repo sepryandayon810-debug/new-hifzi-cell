@@ -6,18 +6,15 @@
 const router = {
     currentPage: null,
 
-    // ✅ PERUBAHAN: Semua menu bisa diakses tanpa batasan kasir terbuka
-    // Hanya butuh konfirmasi buka kasir untuk menu operasional jika belum buka
-    requiresKasirOpen: [], // Kosongkan - tidak ada blocking
+    requiresKasirOpen: [],
 
     // ✅ PERUBAHAN: Tambahkan 'cash' untuk kasir
     menuAccess: {
         'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
         'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
-        'kasir': ['pos', 'products', 'cash', 'transactions', 'pencarian'] // ✅ Tambahkan 'cash'
+        'kasir': ['pos', 'products', 'cash', 'transactions', 'pencarian']
     },
 
-    // Definisi label menu untuk pesan error
     menuLabels: {
         'pos': 'Kasir',
         'products': 'Produk',
@@ -33,7 +30,6 @@ const router = {
         'pencarian': 'Pencarian'
     },
 
-    // Cek apakah module tersedia
     isModuleAvailable(moduleName) {
         const modules = {
             'pos': typeof posModule !== 'undefined',
@@ -52,23 +48,16 @@ const router = {
         return modules[moduleName] || false;
     },
 
-    /**
-     * Navigasi ke halaman tertentu
-     * @param {string} page - Nama halaman tujuan
-     * @param {HTMLElement} element - Element yang diklik (untuk styling)
-     */
     navigate(page, element) {
         console.log(`[Router] Navigating to: ${page}`);
 
         const currentUser = dataManager.getCurrentUser();
 
-        // Cek apakah user sudah login
         if (!currentUser) {
             app.showToast('❌ Silakan login terlebih dahulu!');
             return;
         }
 
-        // Cek akses berdasarkan role user
         const userRole = currentUser.role;
         const allowedMenus = this.menuAccess[userRole] || [];
 
@@ -77,35 +66,31 @@ const router = {
             return;
         }
 
-        // ✅ PERUBAHAN: Tidak ada blocking kasir, tapi tanya untuk buka kasir jika belum
-        // untuk menu operasional (POS, Cash, Debt)
+        // ✅ PERBAIKAN: Check shift dengan logika hari baru
         const operationalMenus = ['pos', 'cash', 'debt'];
         const userShift = dataManager.getUserShift(currentUser.userId);
+        const status = dataManager.checkKasirStatusForUser(currentUser.userId);
         
-        if (operationalMenus.includes(page) && !userShift) {
-            // Tanya user apakah mau buka kasir dulu
+        // Hanya tanya buka kasir jika: menu operasional DAN (tidak punya shift ATAU hari baru)
+        if (operationalMenus.includes(page) && status.canOpen && !status.isContinue) {
             this.showOpenKasirFirstModal(page, element);
             return;
         }
 
-        // Update UI - Hapus active dari semua tab
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         if (element) element.classList.add('active');
 
-        // Sembunyikan cart bar (akan ditampilkan lagi jika di POS)
         const cartBar = document.getElementById('cartBar');
         if (cartBar) cartBar.style.display = 'none';
 
         this.currentPage = page;
 
-        // Cek module tersedia sebelum dipanggil
         if (!this.isModuleAvailable(page)) {
             console.warn(`[Router] Module ${page} not available`);
             this.showModuleErrorModal(page);
             return;
         }
 
-        // Panggil module yang sesuai
         try {
             switch(page) {
                 case 'pos':
@@ -168,7 +153,6 @@ const router = {
         window.scrollTo(0, 0);
     },
 
-    // ✅ BARU: Modal untuk buka kasir terlebih dahulu
     showOpenKasirFirstModal(page, element) {
         const pageName = this.menuLabels[page] || page;
         
@@ -196,7 +180,6 @@ const router = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    // ✅ BARU: Buka kasir lalu navigasi
     openKasirAndNavigate(page) {
         const modal = document.getElementById('openKasirFirstModal');
         if (modal) modal.remove();
@@ -207,15 +190,11 @@ const router = {
             app.updateHeader();
             app.updateKasirStatus();
             
-            // Navigasi ke halaman yang diminta
             const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
             this.navigate(page, navTab);
         }
     },
 
-    /**
-     * Cek apakah user memiliki akses ke menu tertentu
-     */
     hasAccess(page) {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return false;
@@ -224,9 +203,6 @@ const router = {
         return allowedMenus.includes(page);
     },
 
-    /**
-     * Dapatkan daftar menu yang boleh diakses user saat ini
-     */
     getAllowedMenus() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return [];
@@ -281,9 +257,6 @@ const router = {
         if (modal) modal.remove();
     },
 
-    /**
-     * Modal error jika module tidak tersedia
-     */
     showModuleErrorModal(page) {
         const menuName = this.menuLabels[page] || page;
         const suggestions = {
@@ -326,9 +299,6 @@ const router = {
         if (existing) existing.remove();
     },
 
-    /**
-     * Render navigation tabs berdasarkan role user
-     */
     renderNavigation() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) {
@@ -375,37 +345,24 @@ const router = {
         console.log(`[Router] Navigation rendered for role: ${currentUser.role}`);
     },
 
-    /**
-     * Refresh navigation setelah login/logout
-     */
     refreshNavigation() {
         this.renderNavigation();
     },
 
-    /**
-     * Navigate to page programmatically (tanpa click element)
-     */
     goTo(page) {
         const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
         this.navigate(page, navTab);
     },
 
-    /**
-     * Check if current page is active
-     */
     isCurrentPage(page) {
         return this.currentPage === page;
     },
 
-    /**
-     * Get current active page
-     */
     getCurrentPage() {
         return this.currentPage;
     }
 };
 
-// Expose ke window
 window.router = router;
 
-console.log('[Router] Router system loaded v2.0 - Multi-User Edition');
+console.log('[Router] Router system loaded v2.1 - Multi-User Edition');
