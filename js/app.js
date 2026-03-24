@@ -1,14 +1,14 @@
-/**
- * Global App - Core Application Logic
- * Hifzi Cell POS System - Multi-User Edition
- */
+// ============================================
+// APP.JS - HIFZI CELL (v2.2) - Better Login Flow
+// ============================================
 
 const app = {
     data: null,
     currentUser: null,
+    isCloudConfigLoaded: false,
 
     init() {
-        console.log('[App] Initializing...');
+        console.log('[App] Initializing v2.2...');
         
         // Init dataManager
         if (typeof dataManager !== 'undefined') {
@@ -35,14 +35,7 @@ const app = {
             return;
         }
 
-        // Sudah login, render navigation sesuai role
-        if (typeof router !== 'undefined') {
-            router.renderNavigation();
-        } else {
-            console.error('[App] Router not found!');
-        }
-
-        console.log('[App] User logged in, checking kasir status');
+        // Sudah login, cek cloud config dulu (jika belum)
         this.handleLoggedIn();
     },
 
@@ -137,7 +130,7 @@ const app = {
         }, 500);
     },
 
-    handleLoggedIn() {
+    async handleLoggedIn() {
         console.log('[App] Handling logged in user');
         
         if (typeof dataManager !== 'undefined') {
@@ -158,11 +151,15 @@ const app = {
         this.updateHeader();
         this.updateKasirStatus();
         
-        // ✅ PERUBAHAN: Check status kasir untuk user ini
+        // ✅ BARU: Cek dan load cloud config jika belum diload
+        if (!this.isCloudConfigLoaded && typeof backupModule !== 'undefined') {
+            await this.loadCloudConfigIfAvailable();
+        }
+        
+        // Check status kasir
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         console.log('[App] Kasir status:', kasirStatus);
         
-        // ✅ PERUBAHAN: Semua role bisa akses, tapi ditanya untuk buka kasir jika belum
         if (kasirStatus.reason === 'already_open_same_user') {
             this.showToast(`Selamat datang kembali, ${this.currentUser.name}! 👋`);
             const defaultTab = document.querySelector('.nav-tab');
@@ -173,15 +170,70 @@ const app = {
             const cartBar = document.getElementById('cartBar');
             if (cartBar) cartBar.style.display = 'flex';
         } else if (kasirStatus.reason === 'new_day_same_user' || kasirStatus.reason === 'new_shift') {
-            // Tanya apakah mau buka kasir
             this.showOpenKasirModal();
         } else {
-            // Default: tampilkan halaman tutup dengan opsi buka kasir
             this.showKasirClosedPage();
         }
     },
 
-    // ✅ BARU: Modal untuk buka kasir (bisa diteruskan atau nanti)
+    // ✅ BARU: Load config dari cloud jika tersedia
+    async loadCloudConfigIfAvailable() {
+        console.log('[App] Checking for cloud config...');
+        
+        // Cek apakah sudah ada config lokal
+        const localProvider = localStorage.getItem('hifzi_provider') || 'local';
+        
+        // Jika sudah setup cloud secara lokal, tidak perlu auto-load
+        if (localProvider !== 'local') {
+            console.log('[App] Local cloud config exists, skipping auto-load');
+            this.isCloudConfigLoaded = true;
+            return;
+        }
+        
+        // Coba load config dari cloud (tanpa blocking UI)
+        try {
+            // Cek Firebase config terlebih dahulu (jika ada)
+            const savedFBConfig = localStorage.getItem('hifzi_firebase_config');
+            if (savedFBConfig) {
+                const fbConfig = JSON.parse(savedFBConfig);
+                if (fbConfig.apiKey) {
+                    console.log('[App] Found Firebase config, initializing...');
+                    backupModule.firebaseConfig = fbConfig;
+                    backupModule.initFirebase(true);
+                    
+                    // Tunggu auth state
+                    setTimeout(async () => {
+                        if (backupModule.currentUser) {
+                            const configUpdated = await backupModule.loadConfigFromCloud();
+                            if (configUpdated) {
+                                this.showToast('✅ Konfigurasi cloud dimuat!');
+                                // Re-init dengan config baru
+                                location.reload();
+                            }
+                        }
+                    }, 3000);
+                }
+            }
+            
+            // Cek GAS config
+            const savedGASUrl = localStorage.getItem('hifzi_gas_url');
+            const savedSheetId = localStorage.getItem('hifzi_sheet_id');
+            if (savedGASUrl && savedSheetId) {
+                console.log('[App] Found GAS config locally');
+                this.isCloudConfigLoaded = true;
+                return;
+            }
+            
+            // Jika tidak ada config sama sekali, user perlu setup manual di menu Cloud
+            console.log('[App] No cloud config found, user needs to setup manually');
+            
+        } catch (err) {
+            console.error('[App] Error loading cloud config:', err);
+        }
+        
+        this.isCloudConfigLoaded = true;
+    },
+
     showOpenKasirModal() {
         const modalHTML = `
             <div class="modal active" id="openKasirModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
@@ -205,9 +257,7 @@ const app = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    // ✅ PERUBAHAN: Tidak ada lagi blocking antar user
     confirmOpenKasir(forceReset) {
-        // Remove modals
         const modals = ['openKasirModal', 'newDayModal'];
         modals.forEach(id => {
             const modal = document.getElementById(id);
@@ -231,7 +281,6 @@ const app = {
         }
     },
 
-    // ✅ PERUBAHAN: Tutup kasir hanya untuk user ini
     closeKasir() {
         if (!confirm('🚪 Yakin ingin menutup kasir?\n\nSemua transaksi Anda hari ini akan disimpan.\nAnda perlu login ulang untuk membuka kasir lagi.')) {
             return;
@@ -251,7 +300,7 @@ const app = {
 
     logout() {
         if (typeof dataManager !== 'undefined') {
-            dataManager.logout(); // Ini akan tutup shift user ini
+            dataManager.logout();
         }
         
         localStorage.removeItem('hifzi_current_user');
@@ -260,7 +309,7 @@ const app = {
         location.reload();
     },
 
-    // ✅ PERBAIKAN: Update header dengan TOTAL GLOBAL dari semua transaksi (POS + Cash)
+    // ✅ PERBAIKAN: Update header dengan TOTAL GLOBAL
     updateHeader() {
         if (!this.data) return;
         
@@ -270,18 +319,14 @@ const app = {
         if (headerStoreName) headerStoreName.textContent = this.data.settings.storeName || 'HIFZI CELL';
         if (headerStoreAddress) headerStoreAddress.textContent = this.data.settings.address || 'Alamat Belum Diatur';
         
-        // ✅ PERBAIKAN: Hitung TOTAL GLOBAL kas dari semua shift aktif + settings
         const globalCash = this.calculateGlobalCash();
         const currentCash = globalCash.cash;
         const modalAwal = globalCash.modal;
         
-        // ✅ PERBAIKAN: Hitung TOTAL GLOBAL laba dari semua transaksi hari ini (POS + Cash)
         const todayStats = this.calculateTodayGlobalStats();
         const todayProfit = todayStats.totalProfit;
-        const totalSales = todayStats.totalSales;
         const transactionCount = todayStats.transactionCount;
         
-        // Update DOM
         const currentCashEl = document.getElementById('currentCash');
         const modalAwalEl = document.getElementById('modalAwal');
         const headerProfitEl = document.getElementById('headerProfit');
@@ -317,29 +362,24 @@ const app = {
         this.updateKasirButton();
     },
 
-    // ✅ FUNGSI BARU: Hitung total kas global dari semua shift + settings
     calculateGlobalCash() {
         const activeShifts = dataManager.getActiveShifts();
         let totalCash = 0;
         let totalModal = 0;
         
-        // Jumlahkan dari semua shift aktif
         activeShifts.forEach(shift => {
             const shiftCash = dataManager.calculateShiftCash(shift.userId, shift.modalAwal);
             totalCash += shiftCash;
             totalModal += parseInt(shift.modalAwal) || 0;
         });
         
-        // Tambahkan dari settings (untuk owner/admin yang tidak punya shift terpisah)
         const settingsModal = parseInt(this.data.settings?.modalAwal) || 0;
         const settingsCash = parseInt(this.data.settings?.currentCash) || 0;
         
-        // Cek apakah owner/admin sudah ada di activeShifts
         const currentUser = dataManager.getCurrentUser();
         if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
             const ownerShift = activeShifts.find(s => s.userId === currentUser.userId);
             if (!ownerShift) {
-                // Owner/admin belum punya shift, tambahkan dari settings
                 totalModal += settingsModal;
                 totalCash += settingsCash;
             }
@@ -351,11 +391,9 @@ const app = {
         };
     },
 
-    // ✅ FUNGSI BARU: Hitung total statistik global hari ini (POS + Cash)
     calculateTodayGlobalStats() {
         const today = new Date().toDateString();
         
-        // 1. Hitung dari transaksi POS (semua user)
         const todayPosTrans = this.data.transactions.filter(t => {
             const tDate = new Date(t.date).toDateString();
             return tDate === today && t.status !== 'voided' && t.status !== 'deleted';
@@ -365,29 +403,25 @@ const app = {
         const posProfit = todayPosTrans.reduce((sum, t) => sum + (parseInt(t.profit) || 0), 0);
         const posCount = todayPosTrans.length;
         
-        // 2. Hitung dari transaksi Cash (laba dari admin fee top up & tarik tunai)
         const todayCashTrans = this.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date).toDateString();
             return tDate === today;
         });
         
-        // Laba dari admin fee top up
         const topUpProfit = todayCashTrans
             .filter(t => t.type === 'topup')
             .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
         
-        // Laba dari admin fee tarik tunai
         const tarikTunaiProfit = todayCashTrans
             .filter(t => t.category === 'tarik_tunai')
             .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
         
         const cashProfit = topUpProfit + tarikTunaiProfit;
         
-        // Total keseluruhan
         return {
-            totalSales: posSales, // Penjualan dari POS
-            totalProfit: posProfit + cashProfit, // Laba POS + Laba Cash
-            transactionCount: posCount, // Jumlah transaksi POS
+            totalSales: posSales,
+            totalProfit: posProfit + cashProfit,
+            transactionCount: posCount,
             posProfit: posProfit,
             cashProfit: cashProfit,
             topUpProfit: topUpProfit,
@@ -395,12 +429,10 @@ const app = {
         };
     },
 
-    // ✅ PERUBAHAN: Update tombol kasir berdasarkan status user ini
     updateKasirButton() {
         const kasirBtn = document.getElementById('kasirToggleBtn');
         if (!kasirBtn || !this.currentUser) return;
 
-        // Cek apakah user ini punya shift aktif
         const userShift = dataManager.getUserShift(this.currentUser.userId);
         const hasActiveShift = !!userShift;
 
@@ -417,7 +449,6 @@ const app = {
         }
     },
 
-    // ✅ PERUBAHAN: Update status kasir dengan info multi-user
     updateKasirStatus() {
         if (!this.data || !this.data.kasir) return;
         
