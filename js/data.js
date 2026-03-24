@@ -36,17 +36,17 @@ const dataManager = {
             }
         },
         
+        // ✅ PERUBAHAN: Multi-user kasir system
+        // Kasir sekarang array of active shifts, bukan single object
         kasir: {
-            isOpen: false,
-            openTime: null,
-            closeTime: null,
+            isOpen: false, // global status
+            activeShifts: [], // array of active user shifts
             date: null,
-            currentUser: null,
             lastCheckDate: null
         }
     },
     
-    // PERBAIKAN: Gunakan ID tetap untuk default users agar konsisten
+    // Default users tetap sama
     defaultUsers: [
         {
             id: 'owner_default',
@@ -86,14 +86,32 @@ const dataManager = {
             this.data = this.deepMerge(this.data, parsed);
         }
         
+        // ✅ PERUBAHAN: Inisialisasi struktur kasir baru
         if (!this.data.kasir) {
             this.data.kasir = { 
                 isOpen: false, 
-                openTime: null, 
-                closeTime: null, 
-                date: null, 
-                currentUser: null, 
-                lastCheckDate: null 
+                activeShifts: [],
+                date: null,
+                lastCheckDate: null
+            };
+        }
+        
+        // ✅ PERUBAHAN: Konversi dari struktur lama ke struktur baru
+        if (this.data.kasir.currentUser !== undefined && !this.data.kasir.activeShifts) {
+            // Migrate dari struktur lama
+            const oldKasir = { ...this.data.kasir };
+            this.data.kasir = {
+                isOpen: oldKasir.isOpen,
+                activeShifts: oldKasir.isOpen && oldKasir.currentUser ? [{
+                    userId: oldKasir.currentUser,
+                    userName: oldKasir.userName || 'Unknown',
+                    userRole: oldKasir.userRole || 'kasir',
+                    openTime: oldKasir.openTime,
+                    modalAwal: this.data.settings?.modalAwal || 0,
+                    currentCash: this.data.settings?.modalAwal || 0
+                }] : [],
+                date: oldKasir.date,
+                lastCheckDate: oldKasir.lastCheckDate
             };
         }
 
@@ -103,7 +121,6 @@ const dataManager = {
 
         this.checkAutoCloseMidnight();
         
-        // PERBAIKAN: Inisialisasi users dengan pengecekan lebih baik
         this.initUsers();
         
         this.save();
@@ -115,12 +132,10 @@ const dataManager = {
         let users = JSON.parse(localStorage.getItem(this.USERS_KEY));
         
         if (!users || !Array.isArray(users) || users.length === 0) {
-            // Belum ada users, buat default
             users = [...this.defaultUsers];
             localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
             console.log('[DataManager] Default users created');
         } else {
-            // PERBAIKAN: Pastikan owner selalu ada
             const ownerExists = users.some(u => u.role === 'owner');
             if (!ownerExists) {
                 console.log('[DataManager] Owner not found, creating default owner');
@@ -136,7 +151,6 @@ const dataManager = {
                 localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
             }
             
-            // PERBAIKAN: Pastikan tidak ada duplikat username
             const uniqueUsers = [];
             const seenUsernames = new Set();
             for (const user of users) {
@@ -165,7 +179,12 @@ const dataManager = {
             debts: [],
             shiftHistory: [],
             settings: this.data.settings,
-            kasir: this.data.kasir
+            kasir: {
+                isOpen: false,
+                activeShifts: [],
+                date: null,
+                lastCheckDate: null
+            }
         };
         this.saveData(defaultData);
         return defaultData;
@@ -176,17 +195,30 @@ const dataManager = {
         const now = new Date();
         const today = now.toDateString();
         
-        if (this.data.kasir.isOpen && this.data.kasir.date) {
-            const kasirDate = new Date(this.data.kasir.date).toDateString();
-            if (kasirDate !== today) {
-                console.log('[AutoClose] Kasir otomatis ditutup karena sudah lewat jam 12 malam');
-                this.saveShiftHistory();
-                this.data.kasir.isOpen = false;
-                this.data.kasir.closeTime = new Date().toISOString();
-                this.data.kasir.currentUser = null;
-                this.data.kasir.date = null;
-                this.data.settings.modalAwal = 0;
-                this.data.kasir.lastCheckDate = today;
+        // ✅ PERUBAHAN: Check semua active shifts
+        if (this.data.kasir.activeShifts && this.data.kasir.activeShifts.length > 0) {
+            const shiftsToClose = this.data.kasir.activeShifts.filter(shift => {
+                const shiftDate = new Date(shift.openTime).toDateString();
+                return shiftDate !== today;
+            });
+            
+            if (shiftsToClose.length > 0) {
+                console.log('[AutoClose] Menutup', shiftsToClose.length, 'shift karena sudah lewat jam 12 malam');
+                // Save shift history untuk setiap shift yang ditutup
+                shiftsToClose.forEach(shift => {
+                    this.saveShiftHistory(shift);
+                });
+                
+                // Filter out shifts yang sudah ditutup
+                this.data.kasir.activeShifts = this.data.kasir.activeShifts.filter(shift => {
+                    const shiftDate = new Date(shift.openTime).toDateString();
+                    return shiftDate === today;
+                });
+                
+                if (this.data.kasir.activeShifts.length === 0) {
+                    this.data.kasir.isOpen = false;
+                }
+                this.data.kasir.date = today;
                 this.save();
                 return true;
             }
@@ -226,7 +258,7 @@ const dataManager = {
             _meta: { 
                 lastModified: new Date().toISOString(), 
                 deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', 
-                version: '1.0' 
+                version: '2.0' // ✅ Updated version for multi-user
             }
         };
     },
@@ -242,7 +274,28 @@ const dataManager = {
         if (cleanData.shiftHistory) this.data.shiftHistory = cleanData.shiftHistory;
         if (cleanData.loginHistory) this.data.loginHistory = cleanData.loginHistory;
         if (cleanData.settings) this.data.settings = { ...this.data.settings, ...cleanData.settings };
-        if (cleanData.kasir) this.data.kasir = { ...this.data.kasir, ...cleanData.kasir };
+        
+        // ✅ PERUBAHAN: Handle struktur kasir baru
+        if (cleanData.kasir) {
+            if (cleanData.kasir.activeShifts) {
+                this.data.kasir = cleanData.kasir;
+            } else {
+                // Migrate dari struktur lama
+                this.data.kasir = {
+                    isOpen: cleanData.kasir.isOpen || false,
+                    activeShifts: cleanData.kasir.isOpen && cleanData.kasir.currentUser ? [{
+                        userId: cleanData.kasir.currentUser,
+                        userName: cleanData.kasir.userName || 'Unknown',
+                        userRole: cleanData.kasir.userRole || 'kasir',
+                        openTime: cleanData.kasir.openTime,
+                        modalAwal: cleanData.settings?.modalAwal || 0,
+                        currentCash: cleanData.settings?.modalAwal || 0
+                    }] : [],
+                    date: cleanData.kasir.date,
+                    lastCheckDate: cleanData.kasir.lastCheckDate
+                };
+            }
+        }
         this.save();
         if (typeof app !== 'undefined' && app.data) {
             app.data = this.data;
@@ -323,7 +376,6 @@ const dataManager = {
     
     getUsers() { 
         const users = JSON.parse(localStorage.getItem(this.USERS_KEY));
-        // PERBAIKAN: Pastikan selalu return array
         if (!users || !Array.isArray(users)) {
             this.initUsers();
             return this.defaultUsers;
@@ -350,7 +402,6 @@ const dataManager = {
         const userIndex = users.findIndex(u => u.id === userId);
         if (userIndex === -1) return false;
         
-        // PERBAIKAN: Cek duplikat username saat update
         if (updateData.username) {
             const existingUser = users.find(u => u.username === updateData.username && u.id !== userId);
             if (existingUser) {
@@ -368,14 +419,12 @@ const dataManager = {
     },
 
     deleteUser(userId) {
-        // PERBAIKAN: Cegah hapus user yang sedang login
         const currentUser = this.getCurrentUser();
         if (currentUser && currentUser.userId === userId) {
             console.error('[DataManager] Cannot delete currently logged in user');
             return false;
         }
         
-        // PERBAIKAN: Cegah hapus owner terakhir
         const users = this.getUsers();
         const userToDelete = users.find(u => u.id === userId);
         if (userToDelete && userToDelete.role === 'owner') {
@@ -396,14 +445,12 @@ const dataManager = {
     login(username, password) {
         console.log('[DataManager] Login attempt:', username);
         
-        // PERBAIKAN: Validasi input
         if (!username || !password) {
             return { success: false, message: 'Username dan password wajib diisi!' };
         }
         
         const users = this.getUsers();
         
-        // PERBAIKAN: Cari user dengan case-insensitive username
         const user = users.find(u => 
             u.username.toLowerCase() === username.toLowerCase() && 
             u.password === password
@@ -430,6 +477,11 @@ const dataManager = {
     },
 
     logout() {
+        // ✅ PERUBAHAN: Tutup shift user ini saat logout
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+            this.closeKasir(currentUser.userId);
+        }
         this.save();
         localStorage.removeItem(this.CURRENT_USER_KEY);
     },
@@ -470,7 +522,6 @@ const dataManager = {
         
         data.loginHistory.push(loginRecord);
         
-        // Update last login di users
         const users = this.getUsers();
         const userIndex = users.findIndex(u => u.id === userId);
         if (userIndex !== -1) {
@@ -478,7 +529,6 @@ const dataManager = {
             this.saveUsers(users);
         }
         
-        // Cleanup: Hanya simpan 6 bulan terakhir (180 hari)
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
         data.loginHistory = data.loginHistory.filter(log => 
@@ -493,10 +543,8 @@ const dataManager = {
         const data = this.getData();
         let history = data.loginHistory || [];
         
-        // Sort by timestamp desc (terbaru dulu)
         history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
-        // Apply filters
         if (filters.startDate) {
             history = history.filter(log => new Date(log.timestamp) >= filters.startDate);
         }
@@ -524,7 +572,6 @@ const dataManager = {
         }
     },
 
-    // Untuk backup module
     getAllLoginHistoryForBackup() {
         const data = this.getData();
         return data.loginHistory || [];
@@ -536,29 +583,24 @@ const dataManager = {
         this.saveData(data);
     },
 
-    // ========== KASIR MANAGEMENT ==========
+    // ========== KASIR MANAGEMENT - MULTI USER ==========
     
+    // ✅ PERUBAHAN: Check status kasir untuk user tertentu
     checkKasirStatusForUser(userId) {
         const today = new Date().toDateString();
-        const kasir = this.data.kasir;
         this.checkAutoCloseMidnight();
         
-        if (!kasir.isOpen) {
-            return { 
-                canOpen: true, 
-                shouldReset: true, 
-                reason: 'closed',
-                message: 'Kasir tutup. Silakan buka kasir untuk memulai shift.' 
-            };
-        }
+        // Cek apakah user sudah punya shift aktif
+        const userShift = this.data.kasir.activeShifts.find(s => s.userId === userId);
         
-        if (kasir.currentUser === userId) {
-            if (kasir.date === today) {
+        if (userShift) {
+            const shiftDate = new Date(userShift.openTime).toDateString();
+            if (shiftDate === today) {
                 return { 
                     canOpen: false, 
                     shouldReset: false, 
                     reason: 'already_open_same_user', 
-                    message: 'Kasir sudah buka dengan akun Anda. Lanjutkan shift.' 
+                    message: 'Anda sudah memiliki shift aktif hari ini. Lanjutkan shift.' 
                 };
             } else {
                 return { 
@@ -570,113 +612,225 @@ const dataManager = {
             }
         }
         
+        // User belum punya shift, bisa buka kasir baru
         return { 
-            canOpen: false, 
-            shouldReset: false, 
-            reason: 'different_user', 
-            message: 'Kasir sedang digunakan oleh user lain. Silakan tunggu atau hubungi admin.' 
+            canOpen: true, 
+            shouldReset: true, 
+            reason: 'new_shift',
+            message: 'Buka kasir untuk memulai shift baru.' 
         };
     },
 
+    // ✅ PERUBAHAN: Buka kasir untuk user tertentu
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
+        const users = this.getUsers();
+        const user = users.find(u => u.id === userId);
         
-        if (status.reason === 'already_open_same_user') {
-            this.data.kasir.currentUser = userId;
-            this.data.kasir.lastLoginTime = new Date().toISOString();
-            this.save();
-            return { 
-                success: true, 
-                reset: false, 
-                message: 'Selamat datang kembali! Shift Anda dilanjutkan.' 
-            };
+        if (!user) {
+            return { success: false, message: 'User tidak ditemukan!' };
         }
         
-        if (status.shouldReset || forceReset) {
-            if (this.data.kasir.date && this.data.kasir.date !== today) {
-                this.saveShiftHistory();
+        // Cek apakah user sudah punya shift aktif hari ini
+        const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
+        
+        if (existingShiftIndex !== -1) {
+            const existingShift = this.data.kasir.activeShifts[existingShiftIndex];
+            const shiftDate = new Date(existingShift.openTime).toDateString();
+            
+            if (shiftDate === today) {
+                // Update last active time
+                this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
+                this.save();
+                return { 
+                    success: true, 
+                    reset: false, 
+                    message: 'Selamat datang kembali! Shift Anda dilanjutkan.' 
+                };
             }
-            this.data.settings.modalAwal = 0;
         }
         
-        this.data.kasir = { 
-            isOpen: true, 
-            openTime: new Date().toISOString(), 
-            closeTime: null, 
-            date: today, 
-            currentUser: userId, 
-            lastLoginTime: new Date().toISOString(), 
-            lastCheckDate: today 
+        // Buat shift baru
+        const newShift = {
+            userId: userId,
+            userName: user.name,
+            userRole: user.role,
+            openTime: new Date().toISOString(),
+            lastActive: new Date().toISOString(),
+            modalAwal: 0,
+            currentCash: 0,
+            transactionCount: 0,
+            totalSales: 0
         };
+        
+        this.data.kasir.activeShifts.push(newShift);
+        this.data.kasir.isOpen = true;
+        this.data.kasir.date = today;
+        
         this.save();
         
         return { 
             success: true, 
-            reset: status.shouldReset, 
-            message: status.shouldReset ? 'Kasir dibuka dengan shift baru!' : 'Kasir dibuka!' 
+            reset: true, 
+            message: 'Kasir dibuka! Shift baru dimulai.' 
         };
     },
 
-    saveShiftHistory() {
+    // ✅ PERUBAHAN: Tutup kasir untuk user tertentu
+    closeKasir(userId) {
+        const shiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
+        
+        if (shiftIndex === -1) {
+            return { success: false, message: 'Anda tidak memiliki shift aktif!' };
+        }
+        
+        const shift = this.data.kasir.activeShifts[shiftIndex];
+        this.saveShiftHistory(shift);
+        
+        // Hapus shift dari active shifts
+        this.data.kasir.activeShifts.splice(shiftIndex, 1);
+        
+        // Update global status
+        if (this.data.kasir.activeShifts.length === 0) {
+            this.data.kasir.isOpen = false;
+        }
+        
+        this.save();
+        return { success: true, message: 'Kasir ditutup. Shift berakhir. Data tersimpan.' };
+    },
+
+    // ✅ PERUBAHAN: Save shift history untuk satu shift
+    saveShiftHistory(shift) {
         if (!this.data.shiftHistory) this.data.shiftHistory = [];
-        const kasirDate = this.data.kasir.date;
-        const dayTrans = this.data.transactions.filter(t => 
-            new Date(t.date).toDateString() === kasirDate && 
-            t.status !== 'voided'
-        );
+        
+        const today = new Date().toDateString();
+        const dayTrans = this.data.transactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === today && 
+                   t.status !== 'voided' && 
+                   t.userId === shift.userId; // Hanya transaksi dari user ini
+        });
 
         const shiftSummary = {
-            date: kasirDate,
-            userId: this.data.kasir.currentUser,
-            openTime: this.data.kasir.openTime,
+            date: today,
+            userId: shift.userId,
+            userName: shift.userName,
+            userRole: shift.userRole,
+            openTime: shift.openTime,
             closeTime: new Date().toISOString(),
             totalSales: dayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
             totalProfit: dayTrans.reduce((sum, t) => sum + (t.profit || 0), 0),
             transactionCount: dayTrans.length,
-            modalAwal: this.data.settings.modalAwal,
-            cashEnd: this.data.settings.currentCash
+            modalAwal: shift.modalAwal,
+            cashEnd: shift.currentCash
         };
 
-        const existingIndex = this.data.shiftHistory.findIndex(s => s.date === kasirDate);
+        // Cek apakah sudah ada history untuk user ini hari ini
+        const existingIndex = this.data.shiftHistory.findIndex(s => 
+            s.date === today && s.userId === shift.userId
+        );
+        
         if (existingIndex !== -1) {
             this.data.shiftHistory[existingIndex] = shiftSummary;
         } else {
             this.data.shiftHistory.push(shiftSummary);
         }
+        
         this.save();
     },
 
-    closeKasir() {
-        if (!this.data.kasir.isOpen) {
-            return { success: false, message: 'Kasir sudah tutup!' };
+    // ✅ BARU: Get shift untuk user tertentu
+    getUserShift(userId) {
+        return this.data.kasir.activeShifts.find(s => s.userId === userId) || null;
+    },
+
+    // ✅ BARU: Update kasir data untuk user tertentu
+    updateUserShift(userId, updates) {
+        const shiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
+        if (shiftIndex !== -1) {
+            this.data.kasir.activeShifts[shiftIndex] = {
+                ...this.data.kasir.activeShifts[shiftIndex],
+                ...updates,
+                lastActive: new Date().toISOString()
+            };
+            this.save();
+            return true;
         }
-        this.saveShiftHistory();
-        this.data.kasir.isOpen = false;
-        this.data.kasir.closeTime = new Date().toISOString();
-        this.data.kasir.currentUser = null;
-        this.save();
-        return { success: true, message: 'Kasir ditutup. Shift berakhir. Data tersimpan.' };
+        return false;
+    },
+
+    // ✅ BARU: Get semua active shifts
+    getActiveShifts() {
+        return this.data.kasir.activeShifts || [];
+    },
+
+    // ✅ BARU: Get transactions untuk user tertentu (hanya hari ini)
+    getUserTransactions(userId, date = new Date()) {
+        const targetDate = new Date(date).toDateString();
+        return this.data.transactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === targetDate && 
+                   t.status !== 'deleted' && 
+                   t.status !== 'voided' &&
+                   t.userId === userId;
+        });
+    },
+
+    // ✅ BARU: Get transactions untuk owner/admin (semua user hari ini)
+    getAllTodayTransactions(date = new Date()) {
+        const targetDate = new Date(date).toDateString();
+        return this.data.transactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === targetDate && 
+                   t.status !== 'deleted' && 
+                   t.status !== 'voided';
+        });
     },
     
     // ========== STATS HELPERS ==========
     
-    getTodayStats() {
+    // ✅ PERUBAHAN: Get stats untuk user tertentu
+    getTodayStats(userId = null) {
         const today = new Date().toDateString();
-        const todayTrans = this.data.transactions.filter(t => 
-            new Date(t.date).toDateString() === today && 
-            t.status !== 'deleted' && 
-            t.status !== 'voided'
-        );
+        
+        let todayTrans;
+        if (userId) {
+            todayTrans = this.getUserTransactions(userId);
+        } else {
+            todayTrans = this.getAllTodayTransactions();
+        }
+        
         return {
             transactionCount: todayTrans.length,
             totalSales: todayTrans.reduce((sum, t) => sum + (t.total || 0), 0),
             totalProfit: todayTrans.reduce((sum, t) => sum + (t.profit || 0), 0)
         };
+    },
+
+    // ✅ BARU: Get stats per user untuk owner/admin
+    getTodayStatsPerUser() {
+        const today = new Date().toDateString();
+        const users = this.getUsers();
+        const stats = {};
+        
+        users.forEach(user => {
+            const userTrans = this.getUserTransactions(user.id);
+            stats[user.id] = {
+                userId: user.id,
+                userName: user.name,
+                userRole: user.role,
+                transactionCount: userTrans.length,
+                totalSales: userTrans.reduce((sum, t) => sum + (t.total || 0), 0),
+                totalProfit: userTrans.reduce((sum, t) => sum + (t.profit || 0), 0)
+            };
+        });
+        
+        return stats;
     }
 };
 
-// PERBAIKAN: Inisialisasi otomatis dengan pengecekan
+// Inisialisasi
 if (typeof dataManager !== 'undefined') {
     try {
         dataManager.init();
