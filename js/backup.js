@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.2)
-// FIX: Remove undefined values for Firebase compatibility
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.0.3)
+// FIX: Sync config (Firebase/GAS/Telegram) to cloud
 // ============================================
 
 const backupModule = {
@@ -46,13 +46,11 @@ const backupModule = {
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
     
-    syncedConfig: {
-        provider: 'local',
-        gasUrl: '',
-        sheetId: '',
-        firebaseConfig: {},
-        autoSync: false,
-        version: '4.0.2'
+    // Telegram config disimpan di sini juga untuk kemudahan akses
+    telegramConfig: {
+        botToken: '',
+        chatId: '',
+        enabled: false
     },
     
     SYNC_STATUS: {
@@ -83,8 +81,7 @@ const backupModule = {
         CLOUD_DATA_HASH: 'hifzi_cloud_data_hash',
         LAST_CLOUD_CHECK: 'hifzi_last_cloud_check',
         CLOUD_CHECK_COUNT: 'hifzi_cloud_check_count',
-        SYNCED_CONFIG: 'hifzi_synced_config',
-        CONFIG_SYNCED_AT: 'hifzi_config_synced_at'
+        TELEGRAM_CONFIG: 'hifzi_telegram_config'
     },
 
     init(forceReinit = false) {
@@ -95,7 +92,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.0.2 - Firebase Fix Ready...');
+        console.log('[Backup] Initializing v4.0.3 - Config Sync Ready...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -103,6 +100,12 @@ const backupModule = {
         this.cloudDataHash = localStorage.getItem(this.KEYS.CLOUD_DATA_HASH) || null;
         this.lastCloudCheck = localStorage.getItem(this.KEYS.LAST_CLOUD_CHECK) || null;
         this.cloudCheckCount = parseInt(localStorage.getItem(this.KEYS.CLOUD_CHECK_COUNT) || '0');
+        
+        // Load Telegram config
+        const savedTelegram = localStorage.getItem(this.KEYS.TELEGRAM_CONFIG);
+        if (savedTelegram) {
+            this.telegramConfig = JSON.parse(savedTelegram);
+        }
         
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
@@ -127,9 +130,7 @@ const backupModule = {
         
         this.setupNetworkListeners();
         this.setupDataChangeObserver();
-        
-        this.loadSyncedConfig();
-        
+
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
         } else if (this.currentProvider === 'googlesheet') {
@@ -172,157 +173,92 @@ const backupModule = {
     },
 
     // ============================================
-    // CONFIG SYNC
+    // CONFIG SYNC - BARU: Simpan config ke cloud
     // ============================================
     
-    async syncConfigToCloud() {
-        if (this.currentProvider === 'local') return;
-        
-        this.syncedConfig = {
+    getConfigForBackup() {
+        // Ambil config lengkap untuk disimpan ke cloud
+        return {
             provider: this.currentProvider,
             gasUrl: this.gasUrl,
             sheetId: this.sheetId,
             firebaseConfig: this.firebaseConfig,
             autoSync: this.isAutoSyncEnabled,
-            version: '4.0.2',
-            syncedAt: new Date().toISOString(),
-            syncedBy: this.deviceId
+            telegram: this.telegramConfig,
+            version: '4.0.3',
+            savedAt: new Date().toISOString(),
+            savedBy: this.deviceId
         };
-        
-        try {
-            if (this.currentProvider === 'firebase' && this.database && this.currentUser) {
-                const cleanConfig = this.cleanUndefined({
-                    ...this.syncedConfig,
-                    _meta: {
-                        lastModified: new Date().toISOString(),
-                        deviceId: this.deviceId
-                    }
-                });
-                
-                await this.database.ref('users/' + this.currentUser.uid + '/hifzi_config').set(cleanConfig);
-                console.log('[Backup] Config synced to Firebase');
-            } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
-                const payload = {
-                    action: 'syncConfig',
-                    config: this.syncedConfig,
-                    sheetId: this.cleanSheetId(this.sheetId),
-                    deviceId: this.deviceId
-                };
-                
-                await fetch(this.gasUrl, {
-                    method: 'POST',
-                    mode: 'cors',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
-                console.log('[Backup] Config synced to GAS');
-            }
-            
-            localStorage.setItem(this.KEYS.CONFIG_SYNCED_AT, new Date().toISOString());
-        } catch (err) {
-            console.error('[Backup] Failed to sync config:', err);
-        }
     },
 
-    async loadConfigFromCloud() {
-        if (this.currentProvider === 'local') return null;
+    applyConfigFromCloud(cloudConfig) {
+        if (!cloudConfig) return false;
         
-        try {
-            let cloudConfig = null;
-            
-            if (this.currentProvider === 'firebase' && this.database && this.currentUser) {
-                const snapshot = await this.database.ref('users/' + this.currentUser.uid + '/hifzi_config').once('value');
-                cloudConfig = snapshot.val();
-            } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
-                const payload = {
-                    action: 'getConfig',
-                    sheetId: this.cleanSheetId(this.sheetId),
-                    deviceId: this.deviceId
-                };
-                
-                const response = await fetch(this.gasUrl, {
-                    method: 'POST',
-                    mode: 'cors',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const result = await response.json();
-                if (result.success) {
-                    cloudConfig = result.config;
-                }
-            }
-            
-            if (cloudConfig) {
-                console.log('[Backup] Config loaded from cloud:', cloudConfig);
-                
-                const localConfigStr = JSON.stringify({
-                    provider: this.currentProvider,
-                    gasUrl: this.gasUrl,
-                    sheetId: this.sheetId,
-                    firebaseConfig: this.firebaseConfig,
-                    autoSync: this.isAutoSyncEnabled
-                });
-                
-                const cloudConfigStr = JSON.stringify({
-                    provider: cloudConfig.provider,
-                    gasUrl: cloudConfig.gasUrl,
-                    sheetId: cloudConfig.sheetId,
-                    firebaseConfig: cloudConfig.firebaseConfig,
-                    autoSync: cloudConfig.autoSync
-                });
-                
-                if (localConfigStr !== cloudConfigStr) {
-                    console.log('[Backup] Applying config from cloud...');
-                    
-                    const oldProvider = this.currentProvider;
-                    
-                    this.currentProvider = cloudConfig.provider || this.currentProvider;
-                    this.gasUrl = cloudConfig.gasUrl || this.gasUrl;
-                    this.sheetId = cloudConfig.sheetId || this.sheetId;
-                    this.firebaseConfig = cloudConfig.firebaseConfig || this.firebaseConfig;
-                    this.isAutoSyncEnabled = cloudConfig.autoSync || this.isAutoSyncEnabled;
-                    
-                    localStorage.setItem(this.KEYS.PROVIDER, this.currentProvider);
-                    localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
-                    localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
-                    localStorage.setItem(this.KEYS.FIREBASE_CONFIG, JSON.stringify(this.firebaseConfig));
-                    localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
-                    this.saveBackupSettings();
-                    
-                    if (oldProvider !== this.currentProvider) {
-                        if (this.currentProvider === 'firebase') {
-                            this.initFirebase(true);
-                        }
-                    }
-                    
-                    this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
-                    
-                    this.showToast('✅ Konfigurasi di-sync dari cloud!');
-                    return true;
-                }
-            }
-            
-            return false;
-        } catch (err) {
-            console.error('[Backup] Failed to load config from cloud:', err);
-            return false;
+        console.log('[Backup] Applying config from cloud:', cloudConfig);
+        
+        let hasChanges = false;
+        
+        // Apply provider jika berbeda
+        if (cloudConfig.provider && cloudConfig.provider !== this.currentProvider) {
+            this.currentProvider = cloudConfig.provider;
+            localStorage.setItem(this.KEYS.PROVIDER, this.currentProvider);
+            hasChanges = true;
         }
-    },
-
-    loadSyncedConfig() {
-        try {
-            const saved = localStorage.getItem(this.KEYS.SYNCED_CONFIG);
-            if (saved) {
-                this.syncedConfig = JSON.parse(saved);
-            }
-        } catch (e) {
-            console.log('[Backup] No synced config found');
+        
+        // Apply GAS config
+        if (cloudConfig.gasUrl && cloudConfig.gasUrl !== this.gasUrl) {
+            this.gasUrl = cloudConfig.gasUrl;
+            localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
+            hasChanges = true;
         }
+        
+        if (cloudConfig.sheetId && cloudConfig.sheetId !== this.sheetId) {
+            this.sheetId = this.cleanSheetId(cloudConfig.sheetId);
+            localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
+            hasChanges = true;
+        }
+        
+        // Apply Firebase config
+        if (cloudConfig.firebaseConfig && cloudConfig.firebaseConfig.apiKey) {
+            const newConfig = JSON.stringify(cloudConfig.firebaseConfig);
+            const oldConfig = JSON.stringify(this.firebaseConfig);
+            if (newConfig !== oldConfig) {
+                this.firebaseConfig = cloudConfig.firebaseConfig;
+                localStorage.setItem(this.KEYS.FIREBASE_CONFIG, JSON.stringify(this.firebaseConfig));
+                hasChanges = true;
+            }
+        }
+        
+        // Apply Telegram config
+        if (cloudConfig.telegram) {
+            this.telegramConfig = {
+                ...this.telegramConfig,
+                ...cloudConfig.telegram
+            };
+            localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.telegramConfig));
+            hasChanges = true;
+            
+            // Update juga ke dataManager jika ada
+            if (typeof dataManager !== 'undefined' && dataManager.data) {
+                dataManager.data.telegram = this.telegramConfig;
+            }
+        }
+        
+        // Apply auto sync setting
+        if (cloudConfig.autoSync !== undefined && cloudConfig.autoSync !== this.isAutoSyncEnabled) {
+            this.isAutoSyncEnabled = cloudConfig.autoSync;
+            localStorage.setItem(this.KEYS.AUTO_SYNC, this.isAutoSyncEnabled);
+            hasChanges = true;
+        }
+        
+        this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+        this.saveBackupSettings();
+        
+        return hasChanges;
     },
 
     // ============================================
-    // PREVIEW & DOWNLOAD FEATURES - EXCEL STYLE TABLE
+    // PREVIEW & DOWNLOAD FEATURES
     // ============================================
     
     async previewCloudData() {
@@ -393,6 +329,23 @@ const backupModule = {
         const debtsTable = this.generateDebtsTable(data.debts || []);
         const categoriesTable = this.generateCategoriesTable(data.categories || []);
         const usersTable = this.generateUsersTable(data.users || []);
+        
+        // Tampilkan juga config yang tersimpan
+        const configInfo = data._configMeta ? `
+        <div style="background: #e6fffa; border: 2px solid #81e6d9; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+            <div style="font-weight: 600; color: #234e52; margin-bottom: 8px;">⚙️ Config Tersimpan di Cloud</div>
+            <div style="font-size: 12px; color: #2d3748; line-height: 1.6;">
+                <div>Provider: ${data._configMeta.provider || '-'}</div>
+                <div>GAS URL: ${data._configMeta.gasUrl ? '✅ Ada' : '❌ Tidak ada'}</div>
+                <div>Firebase: ${data._configMeta.firebaseConfig?.apiKey ? '✅ Ada' : '❌ Tidak ada'}</div>
+                <div>Telegram: ${data._configMeta.telegram?.botToken ? '✅ Ada' : '❌ Tidak ada'}</div>
+                <div>Auto Sync: ${data._configMeta.autoSync ? '✅ Aktif' : '❌ Nonaktif'}</div>
+                <div style="margin-top: 8px; color: #718096; font-size: 11px;">
+                    Config disimpan: ${data._configMeta.savedAt ? new Date(data._configMeta.savedAt).toLocaleString('id-ID') : '-'}
+                </div>
+            </div>
+        </div>
+        ` : '';
         
         modal.innerHTML = `
             <div style="
@@ -502,6 +455,8 @@ const backupModule = {
                 </div>
                 
                 <div style="padding: 20px; overflow-y: auto; flex: 1; background: #f7fafc;">
+                    ${configInfo}
+                    
                     <div id="content-products" class="preview-content" style="display: block;">
                         ${productsTable}
                     </div>
@@ -932,16 +887,11 @@ const backupModule = {
         
         this.showToast('🔍 Mengecek update di cloud...');
         
-        const configUpdated = await this.loadConfigFromCloud();
         await this.checkCloudDataOnLoad(true);
-        
-        if (!configUpdated) {
-            this.showToast('✅ Config sudah up to date!');
-        }
     },
 
     // ============================================
-    // AUTO CHECK CLOUD DATA
+    // AUTO CHECK CLOUD DATA - DENGAN CONFIG SYNC
     // ============================================
     
     async checkCloudDataOnLoad(force = false) {
@@ -1011,6 +961,19 @@ const backupModule = {
                 return;
             }
             
+            // BARU: Apply config dari cloud terlebih dahulu
+            if (cloudData && cloudData._configMeta) {
+                console.log('[Backup] Config found in cloud data');
+                const configChanged = this.applyConfigFromCloud(cloudData._configMeta);
+                if (configChanged) {
+                    this.showToast('✅ Config diperbarui dari cloud!');
+                    // Re-init jika provider berubah
+                    if (cloudData._configMeta.provider === 'firebase' && !this.firebaseApp) {
+                        this.initFirebase(true);
+                    }
+                }
+            }
+            
             const currentLocalData = this.getBackupData();
             const currentLocalHash = this.generateDataHash(currentLocalData);
             
@@ -1074,6 +1037,14 @@ const backupModule = {
         const cloudDate = new Date(cloudTime).toLocaleString('id-ID');
         const localDate = this.lastSyncTime ? new Date(this.lastSyncTime).toLocaleString('id-ID') : 'Belum pernah sync';
         
+        // Cek apakah ada config baru di cloud
+        const hasNewConfig = cloudData && cloudData._configMeta;
+        const configNotice = hasNewConfig ? `
+        <div style="background: #e6fffa; border-left: 4px solid #38b2ac; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;">
+            <strong>📋 Config tersedia:</strong> Firebase, GAS, dan Telegram config akan ikut diterapkan.
+        </div>
+        ` : '';
+        
         const modal = document.createElement('div');
         modal.id = 'sync-conflict-modal';
         modal.style.cssText = `
@@ -1106,6 +1077,9 @@ const backupModule = {
                     <div style="background: #fff5f5; border-left: 4px solid #fc8181; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; color: #c53030;">
                         <strong>Perhatian:</strong> Data di cloud lebih baru dari data lokal Anda.
                     </div>
+                    
+                    ${configNotice}
+                    
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                         <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border: 2px solid #e2e8f0;">
                             <div style="font-size: 11px; color: #718096; margin-bottom: 4px;">💾 Data Lokal</div>
@@ -1117,7 +1091,7 @@ const backupModule = {
                         </div>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <button onclick="backupModule.resolveConflict('download')" style="padding: 14px; background: #48bb78; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">⬇️ Download & Ganti Data Lokal</button>
+                        <button onclick="backupModule.resolveConflict('download')" style="padding: 14px; background: #48bb78; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">⬇️ Download & Ganti Data Lokal (sertakan config)</button>
                         <button onclick="backupModule.resolveConflict('merge')" style="padding: 14px; background: #4299e1; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">🔄 Gabungkan Data</button>
                         <button onclick="backupModule.resolveConflict('upload')" style="padding: 12px; background: #ed8936; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">⬆️ Upload Lokal & Timpa Cloud</button>
                         <button onclick="backupModule.closeConflictModal()" style="padding: 12px; background: #e2e8f0; color: #4a5568; border: none; border-radius: 10px; cursor: pointer;">❌ Batal</button>
@@ -1165,6 +1139,11 @@ const backupModule = {
     async smartMergeData(cloudData) {
         const localData = this.getBackupData();
         
+        // BARU: Merge config juga
+        if (cloudData._configMeta) {
+            this.applyConfigFromCloud(cloudData._configMeta);
+        }
+        
         const merged = {
             products: this.mergeArrays(localData.products || [], cloudData.products || [], 'id', 'updatedAt'),
             transactions: this.mergeArrays(localData.transactions || [], cloudData.transactions || [], 'id', 'date'),
@@ -1180,7 +1159,7 @@ const backupModule = {
             telegram: cloudData.telegram || localData.telegram || { botToken: '', chatId: '', enabled: false },
             searchHistory: this.mergeArrays(localData.searchHistory || [], cloudData.searchHistory || [], 'id', 'timestamp'),
             _backupMeta: {
-                version: '4.0.2',
+                version: '4.0.3',
                 deviceId: this.deviceId,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider,
@@ -1252,7 +1231,13 @@ const backupModule = {
     async downloadFromCloudSilent(cloudData) {
         try {
             this.updateSyncStatus(this.SYNC_STATUS.SYNCING);
-            const { _syncMeta, _backupMeta, ...cleanData } = cloudData;
+            
+            // BARU: Apply config dari cloud
+            if (cloudData._configMeta) {
+                this.applyConfigFromCloud(cloudData._configMeta);
+            }
+            
+            const { _syncMeta, _backupMeta, _configMeta, ...cleanData } = cloudData;
             this.saveBackupData(cleanData);
             this.lastLocalDataHash = _syncMeta?.hash || this.generateDataHash(cleanData);
             localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
@@ -1348,7 +1333,6 @@ const backupModule = {
             localStorage.setItem(this.KEYS.LAST_DATA_HASH, this.lastLocalDataHash);
             this.updateSyncStatus(this.SYNC_STATUS.SYNCED);
             this.showToast('✅ Upload berhasil!');
-            await this.syncConfigToCloud();
         } catch (err) {
             this.updateSyncStatus(this.SYNC_STATUS.ERROR);
             this.showToast('❌ Upload gagal: ' + err.message);
@@ -1356,7 +1340,7 @@ const backupModule = {
     },
 
     // ============================================
-    // FIXED: getBackupData dengan cleanUndefined
+    // FIXED: getBackupData dengan config
     // ============================================
 
     getBackupData() {
@@ -1364,6 +1348,15 @@ const backupModule = {
         if (typeof dataManager !== 'undefined') {
             if (dataManager.getAllData) allData = dataManager.getAllData();
             else if (dataManager.data) allData = dataManager.data;
+        }
+        
+        // Update telegram config dari dataManager
+        if (allData.telegram) {
+            this.telegramConfig = {
+                ...this.telegramConfig,
+                ...allData.telegram
+            };
+            localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.telegramConfig));
         }
         
         // Helper untuk membersihkan undefined
@@ -1407,12 +1400,7 @@ const backupModule = {
             shiftId: t.shiftId || ''
         }));
 
-        const telegram = clean(allData.telegram || {
-            botToken: '',
-            chatId: '',
-            enabled: false,
-            lastTest: null
-        });
+        const telegram = clean(allData.telegram || this.telegramConfig);
 
         const searchHistory = (allData.searchHistory || []).map(item => clean({
             id: item.id || '',
@@ -1542,12 +1530,14 @@ const backupModule = {
             searchHistory: searchHistory,
             users: users,
             _backupMeta: {
-                version: '4.0.2',
+                version: '4.0.3',
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 backupDate: new Date().toISOString(),
                 provider: this.currentProvider
-            }
+            },
+            // BARU: Simpan config ke dalam data
+            _configMeta: this.getConfigForBackup()
         };
 
         // Final cleaning untuk memastikan tidak ada undefined
@@ -1559,7 +1549,9 @@ const backupModule = {
             if (dataManager.saveAllData) dataManager.saveAllData(backupData);
             else {
                 Object.keys(backupData).forEach(key => {
-                    if (key !== '_backupMeta') dataManager.data[key] = backupData[key];
+                    if (key !== '_backupMeta' && key !== '_configMeta' && key !== '_syncMeta') {
+                        dataManager.data[key] = backupData[key];
+                    }
                 });
                 if (dataManager.saveData) dataManager.saveData();
             }
@@ -1697,17 +1689,17 @@ const backupModule = {
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
                         <button onclick="backupModule.forceSyncNow()" style="padding:16px;background:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg,#667eea 0%,#764ba2 100%)'};color:white;border:none;border-radius:10px;cursor:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'};font-weight:600;" ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}>
                             <div>⬆️ Upload ke Cloud</div>
-                            <div style="font-size:11px;opacity:0.9;">Kirim data device ini</div>
+                            <div style="font-size:11px;opacity:0.9;">Kirim data + config device ini</div>
                         </button>
                         <button onclick="backupModule.manualDownload()" style="padding:16px;background:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? '#cbd5e0' : 'linear-gradient(135deg,#48bb78 0%,#38a169 100%)'};color:white;border:none;border-radius:10px;cursor:${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'not-allowed' : 'pointer'};font-weight:600;" ${(isFirebase && !isFBLoggedIn) || (isGAS && !isGASConfigured) ? 'disabled' : ''}>
                             <div>⬇️ Download dari Cloud</div>
-                            <div style="font-size:11px;opacity:0.9;">Ambil data device lain</div>
+                            <div style="font-size:11px;opacity:0.9;">Ambil data + config device lain</div>
                         </button>
                     </div>
                     <div style="background:#e6fffa;border:1px solid #81e6d9;border-radius:8px;padding:12px;font-size:12px;color:#234e52;">
                         <strong>💡 Cara Sync:</strong><br>
                         1. <strong>Device 1</strong>: Input transaksi → Klik <strong>Upload ke Cloud</strong><br>
-                        2. <strong>Device 2</strong>: Klik <strong>🔍 Cek Update</strong> → Download data baru
+                        2. <strong>Device 2</strong>: Klik <strong>🔍 Cek Update</strong> → Download data + config baru
                     </div>
                 </div>
                 
@@ -1865,9 +1857,7 @@ const backupModule = {
                     if (this.isAutoSyncEnabled) this.startAutoSync();
                     this.setupFirebaseRealtimeListener();
                     setTimeout(() => {
-                        this.loadConfigFromCloud().then(() => {
-                            this.checkCloudDataOnLoad(true);
-                        });
+                        this.checkCloudDataOnLoad(true);
                     }, 2000);
                 } else if (attemptAutoLogin) {
                     this.attemptAutoLogin();
@@ -1918,12 +1908,6 @@ const backupModule = {
             localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
             localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
             this.showToast('✅ Login berhasil!');
-            setTimeout(() => this.syncConfigToCloud(), 3000);
-            setTimeout(() => {
-                this.loadConfigFromCloud().then(() => {
-                    this.checkCloudDataOnLoad(true);
-                });
-            }, 2000);
             this.render();
             return cred.user;
         }).catch((err) => {
@@ -1939,7 +1923,6 @@ const backupModule = {
             localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
             localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
             this.showToast('✅ Daftar berhasil!');
-            setTimeout(() => this.syncConfigToCloud(), 3000);
             this.uploadToFirebase(this.getBackupData(), true);
             this.render();
             return cred.user;
@@ -1970,7 +1953,7 @@ const backupModule = {
     },
 
     // ============================================
-    // FIXED: uploadToFirebase dengan cleanUndefined
+    // FIXED: uploadToFirebase dengan config
     // ============================================
 
     async uploadToFirebase(data, silent = false) {
@@ -1984,7 +1967,7 @@ const backupModule = {
                 deviceId: this.deviceId,
                 deviceName: this.deviceName,
                 hash: this.generateDataHash(data),
-                version: '4.0.2'
+                version: '4.0.3'
             }
         });
         
@@ -2005,7 +1988,12 @@ const backupModule = {
         
         if (!data) throw new Error('No data in Firebase');
         
-        const { _syncMeta, ...cleanData } = data;
+        // BARU: Apply config dari cloud
+        if (data._configMeta) {
+            this.applyConfigFromCloud(data._configMeta);
+        }
+        
+        const { _syncMeta, _backupMeta, _configMeta, ...cleanData } = data;
         this.saveBackupData(cleanData);
         
         if (!silent) {
@@ -2141,6 +2129,11 @@ const backupModule = {
         if (!result.success) throw new Error(result.message || 'Download failed');
         
         if (!previewOnly && result.data) {
+            // BARU: Apply config dari cloud
+            if (result.data._configMeta) {
+                this.applyConfigFromCloud(result.data._configMeta);
+            }
+            
             this.saveBackupData(result.data);
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
@@ -2232,7 +2225,6 @@ const backupModule = {
             this.showToast('⏸️ Auto-sync dimatikan');
         }
         
-        this.syncConfigToCloud();
         this.render();
     },
 
@@ -2352,6 +2344,12 @@ const backupModule = {
             this.isAutoSyncEnabled = localStorage.getItem(this.KEYS.AUTO_SYNC) === 'true';
             this.firebaseConfig = JSON.parse(localStorage.getItem(this.KEYS.FIREBASE_CONFIG) || '{}');
         }
+        
+        // Load Telegram config
+        const savedTelegram = localStorage.getItem(this.KEYS.TELEGRAM_CONFIG);
+        if (savedTelegram) {
+            this.telegramConfig = JSON.parse(savedTelegram);
+        }
     },
 
     saveBackupSettings() {
@@ -2399,6 +2397,12 @@ const backupModule = {
         reader.onload = (e) => {
             try {
                 const data = JSON.parse(e.target.result);
+                
+                // BARU: Apply config dari file import juga
+                if (data._configMeta) {
+                    this.applyConfigFromCloud(data._configMeta);
+                }
+                
                 this.saveBackupData(data);
                 this.showToast('✅ Import berhasil! Reload...');
                 setTimeout(() => location.reload(), 1500);
@@ -2426,7 +2430,6 @@ const backupModule = {
         this.firebaseConfig = config;
         localStorage.setItem(this.KEYS.FIREBASE_CONFIG, JSON.stringify(config));
         this.saveBackupSettings();
-        this.syncConfigToCloud();
         this.showToast('✅ Config Firebase disimpan!');
         this.initFirebase(true);
         this.render();
@@ -2450,7 +2453,6 @@ const backupModule = {
         
         this._gasConfigValid = url && validation.cleaned && validation.cleaned.length === 44;
         this.saveBackupSettings();
-        this.syncConfigToCloud();
         this.showToast(this.sheetId ? '✅ Konfigurasi disimpan!' : '✅ Disimpan (tapi Sheet ID invalid)');
         
         if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
@@ -2537,4 +2539,4 @@ if (document.readyState === 'loading') {
 
 window.backupModule = backupModule;
 
-console.log('[Backup] v4.0.2 loaded - Firebase Undefined Fix Ready');
+console.log('[Backup] v4.0.3 loaded - Config Sync Ready');
