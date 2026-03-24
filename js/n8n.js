@@ -1,6 +1,7 @@
 // ============================================
 // N8N DATA MANAGEMENT MODULE - TELEGRAM BRIDGE
 // VERSI FIXED - SEARCH & COPY FEATURE
+// + ROLE-BASED CONFIGURATION SYSTEM
 // ============================================
 
 const n8nModule = (function() {
@@ -16,7 +17,10 @@ const n8nModule = (function() {
         SHEET_ID: 'n8n_sheet_id',
         SHEET_NAME: 'n8n_sheet_name',
         GAS_URL: 'n8n_gas_url',
-        CONFIG: 'n8n_config'
+        CONFIG: 'n8n_config',
+        // NEW: Role-based config storage
+        OWNER_CONFIG: 'n8n_owner_config',
+        CONFIG_VERSION: 'n8n_config_version'
     };
 
     const state = {
@@ -31,7 +35,10 @@ const n8nModule = (function() {
             gasUrl: ''
         },
         isLoading: false,
-        currentProxyIndex: 0
+        currentProxyIndex: 0,
+        // NEW: Current user role
+        userRole: 'kasir', // default: kasir, admin, owner
+        isConfigLocked: true // default locked untuk non-owner
     };
 
     const PROXY_LIST = [
@@ -39,6 +46,154 @@ const n8nModule = (function() {
         'https://api.codetabs.com/v1/proxy?quest=',
         'https://corsproxy.io/?'
     ];
+
+    // ============================================
+    // ROLE MANAGEMENT SYSTEM
+    // ============================================
+
+    // Fungsi untuk mendeteksi role user saat ini
+    function detectUserRole() {
+        // Cek dari localStorage jika ada data login
+        const userData = localStorage.getItem('hifzi_user_data');
+        if (userData) {
+            try {
+                const parsed = JSON.parse(userData);
+                if (parsed.role) {
+                    state.userRole = parsed.role.toLowerCase();
+                    console.log('[n8nModule] Role detected from user data:', state.userRole);
+                    return state.userRole;
+                }
+            } catch (e) {
+                console.error('[n8nModule] Error parsing user data:', e);
+            }
+        }
+
+        // Fallback: cek dari session/global app variable
+        if (typeof currentUser !== 'undefined' && currentUser.role) {
+            state.userRole = currentUser.role.toLowerCase();
+            return state.userRole;
+        }
+
+        // Default ke kasir untuk safety
+        state.userRole = 'kasir';
+        return 'kasir';
+    }
+
+    // Cek apakah user adalah owner
+    function isOwner() {
+        return state.userRole === 'owner';
+    }
+
+    // Cek apakah user adalah admin (bukan owner)
+    function isAdmin() {
+        return state.userRole === 'admin';
+    }
+
+    // Cek apakah user adalah kasir
+    function isKasir() {
+        return state.userRole === 'kasir';
+    }
+
+    // ============================================
+    // SYNC CONFIGURATION SYSTEM
+    // ============================================
+
+    // Owner: Simpan konfigurasi ke storage pusat
+    function saveOwnerConfig() {
+        if (!isOwner()) {
+            showNotification('⚠️ Hanya Owner yang bisa menyimpan konfigurasi!', 'warning');
+            return false;
+        }
+
+        const ownerConfig = {
+            botToken: state.config.botToken,
+            chatId: state.config.chatId,
+            sheetId: state.config.sheetId,
+            sheetName: state.config.sheetName,
+            gasUrl: state.config.gasUrl,
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'owner',
+            version: Date.now() // timestamp sebagai version
+        };
+
+        // Simpan ke localStorage dengan key khusus owner
+        localStorage.setItem(CONFIG_KEYS.OWNER_CONFIG, JSON.stringify(ownerConfig));
+        localStorage.setItem(CONFIG_KEYS.CONFIG_VERSION, ownerConfig.version.toString());
+        
+        // Broadcast ke tab lain (untuk multi-tab sync)
+        broadcastConfigUpdate(ownerConfig);
+        
+        console.log('[n8nModule] Owner config saved:', ownerConfig);
+        showNotification('✅ Konfigurasi tersimpan & tersinkron untuk semua user!', 'success');
+        return true;
+    }
+
+    // Non-Owner: Load konfigurasi dari owner
+    function loadOwnerConfig() {
+        const ownerConfigStr = localStorage.getItem(CONFIG_KEYS.OWNER_CONFIG);
+        const configVersion = localStorage.getItem(CONFIG_KEYS.CONFIG_VERSION);
+        
+        if (ownerConfigStr) {
+            try {
+                const ownerConfig = JSON.parse(ownerConfigStr);
+                
+                // Update state.config dengan data owner
+                Object.assign(state.config, {
+                    botToken: ownerConfig.botToken || '',
+                    chatId: ownerConfig.chatId || '',
+                    sheetId: ownerConfig.sheetId || '',
+                    sheetName: ownerConfig.sheetName || 'Data Base Hifzi Cell',
+                    gasUrl: ownerConfig.gasUrl || ''
+                });
+
+                // Simpan juga ke key individual untuk kompatibilitas
+                localStorage.setItem(CONFIG_KEYS.BOT_TOKEN, state.config.botToken);
+                localStorage.setItem(CONFIG_KEYS.CHAT_ID, state.config.chatId);
+                localStorage.setItem(CONFIG_KEYS.SHEET_ID, state.config.sheetId);
+                localStorage.setItem(CONFIG_KEYS.SHEET_NAME, state.config.sheetName);
+                localStorage.setItem(CONFIG_KEYS.GAS_URL, state.config.gasUrl);
+                localStorage.setItem(CONFIG_KEYS.CONFIG, JSON.stringify(state.config));
+                localStorage.setItem(CONFIG_KEYS.CONFIG_VERSION, configVersion || Date.now().toString());
+
+                console.log('[n8nModule] Owner config loaded for', state.userRole);
+                return true;
+            } catch (e) {
+                console.error('[n8nModule] Error loading owner config:', e);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    // Broadcast config update ke tab lain menggunakan BroadcastChannel (jika tersedia)
+    function broadcastConfigUpdate(config) {
+        if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('n8n_config_sync');
+            channel.postMessage({
+                type: 'CONFIG_UPDATE',
+                config: config,
+                timestamp: new Date().toISOString()
+            });
+            channel.close();
+        }
+    }
+
+    // Listen untuk broadcast update (untuk real-time sync antar tab)
+    function setupBroadcastListener() {
+        if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('n8n_config_sync');
+            channel.onmessage = (event) => {
+                if (event.data && event.data.type === 'CONFIG_UPDATE') {
+                    console.log('[n8nModule] Received broadcast config update');
+                    if (!isOwner()) {
+                        loadOwnerConfig();
+                        setFormValues();
+                        showNotification('🔄 Konfigurasi diperbarui oleh Owner', 'info');
+                    }
+                }
+            };
+        }
+    }
 
     // ============================================
     // UTILITY FUNCTIONS
@@ -136,10 +291,38 @@ const n8nModule = (function() {
     }
 
     // ============================================
-    // LOAD & SAVE CONFIG
+    // LOAD & SAVE CONFIG (MODIFIED)
     // ============================================
 
     function loadConfig() {
+        // Step 1: Detect user role terlebih dahulu
+        detectUserRole();
+        
+        // Step 2: Jika bukan owner, coba load dari owner config terlebih dahulu
+        if (!isOwner()) {
+            const loaded = loadOwnerConfig();
+            if (loaded) {
+                console.log('[n8nModule] Config loaded from owner settings');
+                state.isConfigLocked = true;
+            } else {
+                // Fallback ke individual config jika owner config belum ada
+                loadIndividualConfig();
+                state.isConfigLocked = false; // Unlock sementara sampai owner set
+            }
+        } else {
+            // Owner: load dari individual config atau owner config
+            loadIndividualConfig();
+            state.isConfigLocked = false;
+        }
+
+        // Setup broadcast listener untuk real-time sync
+        setupBroadcastListener();
+
+        console.log('[n8nModule] Config loaded:', state.config);
+        console.log('[n8nModule] User role:', state.userRole, 'Config locked:', state.isConfigLocked);
+    }
+
+    function loadIndividualConfig() {
         state.config.botToken = localStorage.getItem(CONFIG_KEYS.BOT_TOKEN) || '';
         state.config.chatId = localStorage.getItem(CONFIG_KEYS.CHAT_ID) || '';
         state.config.sheetId = localStorage.getItem(CONFIG_KEYS.SHEET_ID) || '';
@@ -155,11 +338,15 @@ const n8nModule = (function() {
                 console.error('[n8nModule] Error parsing config:', e);
             }
         }
-
-        console.log('[n8nModule] Config loaded:', state.config);
     }
 
     function saveConfig() {
+        // Jika bukan owner, tolak
+        if (!isOwner()) {
+            showNotification('⚠️ Hanya Owner yang bisa mengubah konfigurasi!', 'warning');
+            return;
+        }
+
         const inputs = {
             botToken: document.getElementById('botToken')?.value.trim() || '',
             chatId: document.getElementById('chatId')?.value.trim() || '',
@@ -170,22 +357,105 @@ const n8nModule = (function() {
 
         Object.assign(state.config, inputs);
         
-        localStorage.setItem(CONFIG_KEYS.BOT_TOKEN, inputs.botToken);
-        localStorage.setItem(CONFIG_KEYS.CHAT_ID, inputs.chatId);
-        localStorage.setItem(CONFIG_KEYS.SHEET_ID, inputs.sheetId);
-        localStorage.setItem(CONFIG_KEYS.SHEET_NAME, inputs.sheetName);
-        localStorage.setItem(CONFIG_KEYS.GAS_URL, inputs.gasUrl);
-        localStorage.setItem(CONFIG_KEYS.CONFIG, JSON.stringify(inputs));
-
-        showNotification('✅ Konfigurasi berhasil disimpan!', 'success');
+        // Simpan sebagai owner config (akan tersinkron ke semua user)
+        saveOwnerConfig();
+        
+        // Update form values
+        setFormValues();
     }
 
     function setFormValues() {
         const fields = ['botToken', 'chatId', 'sheetId', 'sheetName', 'gasUrl'];
         fields.forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.value = state.config[id] || '';
+            if (el) {
+                el.value = state.config[id] || '';
+                
+                // Jika bukan owner, set readonly/disabled
+                if (!isOwner()) {
+                    el.setAttribute('readonly', 'true');
+                    el.style.background = '#f3f4f6';
+                    el.style.cursor = 'not-allowed';
+                } else {
+                    el.removeAttribute('readonly');
+                    el.style.background = 'white';
+                    el.style.cursor = 'text';
+                }
+            }
         });
+
+        // Update UI indicators untuk role
+        updateRoleIndicators();
+    }
+
+    function updateRoleIndicators() {
+        const roleBadge = document.getElementById('roleBadge');
+        const configLockIndicator = document.getElementById('configLockIndicator');
+        
+        if (roleBadge) {
+            const roleText = state.userRole.toUpperCase();
+            const roleColor = isOwner() ? '#10b981' : (isAdmin() ? '#f59e0b' : '#6b7280');
+            roleBadge.innerHTML = `<span style="background: ${roleColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">${roleText}</span>`;
+        }
+
+        if (configLockIndicator) {
+            if (!isOwner()) {
+                configLockIndicator.innerHTML = `
+                    <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 8px; padding: 12px; margin-bottom: 15px; color: #1e40af; font-size: 13px;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px;">
+                            <span>🔒</span>
+                            <span>Konfigurasi Terkunci</span>
+                        </div>
+                        <div>Konfigurasi diatur oleh Owner. Semua perubahan otomatis tersinkron.</div>
+                    </div>
+                `;
+            } else {
+                configLockIndicator.innerHTML = `
+                    <div style="background: #d1fae5; border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-bottom: 15px; color: #065f46; font-size: 13px;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px;">
+                            <span>🔓</span>
+                            <span>Mode Owner Aktif</span>
+                        </div>
+                        <div>Anda dapat mengubah konfigurasi. Perubahan akan tersinkron ke semua Kasir & Admin.</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Update button states berdasarkan role
+        const btnSaveConfig = document.getElementById('btnSaveConfig');
+        const btnTestTelegram = document.getElementById('btnTestTelegram');
+        const btnTestGAS = document.getElementById('btnTestGAS');
+        const btnGenerateGAS = document.getElementById('btnGenerateGAS');
+        const btnCopyGAS = document.getElementById('btnCopyGAS');
+        const btnOpenGAS = document.getElementById('btnOpenGAS');
+
+        const configButtons = [btnSaveConfig, btnTestTelegram, btnTestGAS, btnGenerateGAS];
+        configButtons.forEach(btn => {
+            if (btn) {
+                if (!isOwner()) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'not-allowed';
+                    btn.title = 'Hanya Owner yang dapat mengubah konfigurasi';
+                } else {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                    btn.title = '';
+                }
+            }
+        });
+
+        // Tombol Copy GAS dan Open GAS tetap aktif untuk semua (read-only actions)
+        if (btnCopyGAS) {
+            btnCopyGAS.disabled = false;
+            btnCopyGAS.style.opacity = '1';
+        }
+        if (btnOpenGAS) {
+            btnOpenGAS.disabled = false;
+            btnOpenGAS.style.opacity = '1';
+        }
     }
 
     // ============================================
@@ -316,6 +586,12 @@ const n8nModule = (function() {
     }
 
     async function getChatId() {
+        // Hanya owner yang bisa test dan update chat ID
+        if (!isOwner()) {
+            showNotification('ℹ️ Konfigurasi Telegram diatur oleh Owner', 'info');
+            return;
+        }
+
         const { botToken } = state.config;
         
         if (!botToken) {
@@ -356,7 +632,8 @@ const n8nModule = (function() {
                 const chatInput = document.getElementById('chatId');
                 if (chatInput) chatInput.value = chatId;
                 
-                localStorage.setItem(CONFIG_KEYS.CHAT_ID, chatId);
+                // Simpan ke owner config
+                saveOwnerConfig();
                 
                 setStatus('🟢', 'Terhubung ke Telegram');
                 showNotification(`✅ Chat ID: ${chatId}`, 'success');
@@ -365,6 +642,7 @@ const n8nModule = (function() {
                     `✅ *KONEKSI BERHASIL*\n\n` +
                     `Web POS Hifzi Cell terhubung ke Telegram.\n` +
                     `Chat ID: ${chatId}\n` +
+                    `Role: ${state.userRole.toUpperCase()}\n` +
                     `Waktu: ${new Date().toLocaleString('id-ID')}`
                 );
                 
@@ -429,7 +707,7 @@ const n8nModule = (function() {
         const { gasUrl, sheetId } = state.config;
         
         if (!gasUrl || !sheetId) {
-            showNotification('⚠️ Sheet ID dan GAS URL harus diisi!', 'warning');
+            showNotification('⚠️ Sheet ID dan GAS URL belum dikonfigurasi oleh Owner!', 'warning');
             return null;
         }
 
@@ -832,12 +1110,25 @@ const n8nModule = (function() {
     // ============================================
 
     function generateGAS() {
+        // Hanya owner yang bisa regenerate, tapi semua bisa lihat
+        if (!isOwner()) {
+            showNotification('ℹ️ Hanya Owner yang bisa generate ulang kode GAS', 'info');
+            // Tetap tampilkan kode yang ada jika sudah pernah digenerate
+            const editor = document.getElementById('gasCodeEditor');
+            if (editor && !editor.value.trim()) {
+                // Jika belum ada, tampilkan pesan
+                editor.value = '// Kode GAS akan digenerate oleh Owner...\n// Hubungi Owner untuk setup konfigurasi.';
+            }
+            return;
+        }
+
         const sheetName = state.config.sheetName || 'Data Base Hifzi Cell';
         
         const code = `/**
  * GOOGLE APPS SCRIPT - N8N Telegram Bridge
  * Auto-generated: ${new Date().toLocaleString('id-ID')}
  * Sheet: ${sheetName}
+ * Generated by: ${state.userRole.toUpperCase()}
  */
 
 const SHEET_NAME = '${sheetName}';
@@ -983,6 +1274,7 @@ function doOptions(e) {
     // ============================================
 
     async function testConnection() {
+        // Non-owner tetap bisa test tapi tidak bisa ubah
         const result = await makeRequest('test');
         
         if (result?.success) {
@@ -1017,6 +1309,13 @@ function doOptions(e) {
         if (section.style.display === 'none' || section.style.display === '') {
             section.style.display = 'block';
             arrow.textContent = '▲';
+            
+            // Update role indicators saat section dibuka
+            setTimeout(() => {
+                setFormValues();
+                updateRoleIndicators();
+            }, 10);
+            
             const editor = document.getElementById('gasCodeEditor');
             if (editor && !editor.value.trim()) generateGAS();
         } else {
@@ -1074,7 +1373,7 @@ function doOptions(e) {
     }
 
     // ============================================
-    // HTML TEMPLATE
+    // HTML TEMPLATE (MODIFIED WITH ROLE UI)
     // ============================================
 
     function getHTML() {
@@ -1093,13 +1392,21 @@ function doOptions(e) {
             </div>
         ` : '';
 
+        // Role badge display
+        const roleBadgeHtml = `<span id="roleBadge" style="margin-left: 10px;"></span>`;
+
         return `
             <div class="n8n-container" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
                 ${fileWarning}
                 
-                <div style="margin-bottom: 20px;">
-                    <h2 style="margin: 0; color: #333;">🔍 N8N Data Management</h2>
-                    <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Kelola data via Google Sheets</p>
+                <div style="margin-bottom: 20px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <h2 style="margin: 0; color: #333; display: inline-flex; align-items: center;">
+                            🔍 N8N Data Management
+                            ${roleBadgeHtml}
+                        </h2>
+                        <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Kelola data via Google Sheets</p>
+                    </div>
                 </div>
 
                 <!-- TELEGRAM STATUS CARD -->
@@ -1108,7 +1415,7 @@ function doOptions(e) {
                         <div>
                             <div style="font-weight: 600; margin-bottom: 4px;">📱 Status Telegram</div>
                             <div id="telegramStatusText" style="font-size: 14px; opacity: 0.9;">
-                                ${state.config.botToken ? '⏳ Menunggu koneksi...' : '⚠️ Belum dikonfigurasi'}
+                                ${state.config.botToken ? '⏳ Menunggu koneksi...' : '⚠️ Belum dikonfigurasi oleh Owner'}
                             </div>
                         </div>
                         <div style="display: flex; gap: 10px;">
@@ -1180,6 +1487,7 @@ function doOptions(e) {
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span>⚙️</span>
                             <span>Konfigurasi Telegram & GAS</span>
+                            ${!isOwner() ? '<span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">SYNCED</span>' : ''}
                         </div>
                         <span id="configArrow">▼</span>
                     </button>
@@ -1188,6 +1496,9 @@ function doOptions(e) {
                 <!-- CONFIGURATION SECTION -->
                 <div id="configSection" style="display: none; margin-top: 20px;">
                     
+                    <!-- ROLE LOCK INDICATOR -->
+                    <div id="configLockIndicator"></div>
+
                     <!-- STEP 1: TELEGRAM -->
                     <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
@@ -1196,14 +1507,18 @@ function doOptions(e) {
                         </div>
                         
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Bot Token <span style="color: #ef4444;">*</span></label>
-                            <input type="password" id="botToken" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" 
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">
+                                Bot Token ${isOwner() ? '<span style="color: #ef4444;">*</span>' : '<span style="color: #6b7280; font-weight: normal;">(Owner only)</span>'}
+                            </label>
+                            <input type="password" id="botToken" placeholder="${isOwner() ? '123456789:ABCdefGHIjklMNOpqrsTUVwxyz' : 'Dikonfigurasi oleh Owner'}" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
 
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Chat ID (Auto-detect)</label>
-                            <input type="text" id="chatId" placeholder="Kirim pesan ke bot, lalu klik Test" readonly 
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">
+                                Chat ID ${isOwner() ? '(Auto-detect)' : '<span style="color: #6b7280; font-weight: normal;">(Owner only)</span>'}
+                            </label>
+                            <input type="text" id="chatId" placeholder="${isOwner() ? 'Kirim pesan ke bot, lalu klik Test' : 'Dikonfigurasi oleh Owner'}" readonly 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; background: #f9fafb; box-sizing: border-box;">
                         </div>
 
@@ -1222,20 +1537,26 @@ function doOptions(e) {
                         </div>
 
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Google Sheet ID <span style="color: #ef4444;">*</span></label>
-                            <input type="text" id="sheetId" placeholder="1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE" 
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">
+                                Google Sheet ID ${isOwner() ? '<span style="color: #ef4444;">*</span>' : '<span style="color: #6b7280; font-weight: normal;">(Owner only)</span>'}
+                            </label>
+                            <input type="text" id="sheetId" placeholder="${isOwner() ? '1cPolj_xpBztq6RU3XVi_CZm1j_Kqo-zQC-wsbIYrLXE' : 'Dikonfigurasi oleh Owner'}" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
 
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Sheet Name</label>
-                            <input type="text" id="sheetName" placeholder="Data Base Hifzi Cell" 
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">
+                                Sheet Name ${isOwner() ? '' : '<span style="color: #6b7280; font-weight: normal;">(Owner only)</span>'}
+                            </label>
+                            <input type="text" id="sheetName" placeholder="${isOwner() ? 'Data Base Hifzi Cell' : 'Dikonfigurasi oleh Owner'}" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                         </div>
 
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">GAS Web App URL <span style="color: #ef4444;">*</span></label>
-                            <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" 
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">
+                                GAS Web App URL ${isOwner() ? '<span style="color: #ef4444;">*</span>' : '<span style="color: #6b7280; font-weight: normal;">(Owner only)</span>'}
+                            </label>
+                            <input type="text" id="gasUrl" placeholder="${isOwner() ? 'https://script.google.com/macros/s/XXXX/exec' : 'Dikonfigurasi oleh Owner'}" 
                                    style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
                             <div id="gasStatusInfo"></div>
                         </div>
@@ -1245,7 +1566,7 @@ function doOptions(e) {
                                 🔗 Test Koneksi GAS
                             </button>
                             <button id="btnSaveConfig" style="background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                💾 Simpan Konfigurasi
+                                💾 Simpan & Sync ke Semua User
                             </button>
                         </div>
                     </div>
@@ -1254,12 +1575,12 @@ function doOptions(e) {
                     <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
                             <span style="background: #667eea; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">3</span>
-                            <h3 style="margin: 0;">📜 Generate Kode GAS</h3>
+                            <h3 style="margin: 0;">📜 Kode GAS ${!isOwner() ? '<span style="color: #6b7280; font-size: 14px; font-weight: normal;">(View Only)</span>' : ''}</h3>
                         </div>
                         
                         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                             <button id="btnGenerateGAS" style="background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
-                                🔄 Regenerate
+                                🔄 ${isOwner() ? 'Regenerate' : 'Refresh'}
                             </button>
                             <button id="btnCopyGAS" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px;">
                                 📋 Copy Kode
@@ -1269,7 +1590,7 @@ function doOptions(e) {
                             </button>
                         </div>
 
-                        <textarea id="gasCodeEditor" readonly placeholder="Klik 'Regenerate' untuk generate kode GAS..." 
+                        <textarea id="gasCodeEditor" readonly placeholder="${isOwner() ? 'Klik \'Regenerate\' untuk generate kode GAS...' : 'Menunggu Owner generate kode GAS...'}" 
                                   style="width: 100%; height: 300px; padding: 15px; border: 2px solid #e5e7eb; border-radius: 8px; font-family: monospace; font-size: 12px; resize: vertical; box-sizing: border-box;"></textarea>
                     </div>
                 </div>
@@ -1348,8 +1669,14 @@ function doOptions(e) {
         
         if (state.config.sheetName) generateGAS();
         
-        if (state.config.botToken && !state.config.chatId) {
+        // Jika owner dan belum ada chatId, auto-detect
+        if (isOwner() && state.config.botToken && !state.config.chatId) {
             setTimeout(() => getChatId(), 1500);
+        }
+
+        // Tampilkan notifikasi sinkronisasi untuk non-owner
+        if (!isOwner() && state.config.botToken) {
+            showNotification(`✅ Konfigurasi tersinkron (Owner: ${state.config.updatedBy || 'System'})`, 'success', 4000);
         }
     }
 
@@ -1359,7 +1686,7 @@ function doOptions(e) {
 
     return {
         init: function() {
-            console.log('[n8nModule] ✅ N8N Telegram Bridge v2.5 Fixed Loaded');
+            console.log('[n8nModule] ✅ N8N Telegram Bridge v3.0 (Role-Based) Loaded');
             loadConfig();
         },
         
@@ -1374,6 +1701,34 @@ function doOptions(e) {
         getConfig: function() { return state.config; },
         saveConfig: saveConfig,
         copyNumber: copyToClipboard,
+        
+        // NEW: Role management functions
+        setRole: function(role) {
+            state.userRole = role.toLowerCase();
+            console.log('[n8nModule] Role set to:', state.userRole);
+            // Re-render jika sudah ada page
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent && mainContent.innerHTML.includes('n8n-container')) {
+                renderPage();
+            }
+        },
+        
+        getRole: function() {
+            return state.userRole;
+        },
+        
+        forceSync: function() {
+            // Fungsi untuk force sync dari owner config
+            if (!isOwner()) {
+                const loaded = loadOwnerConfig();
+                if (loaded) {
+                    setFormValues();
+                    showNotification('🔄 Konfigurasi berhasil disinkron ulang!', 'success');
+                } else {
+                    showNotification('⚠️ Belum ada konfigurasi dari Owner', 'warning');
+                }
+            }
+        },
         
         // Debug
         getState: function() { 
