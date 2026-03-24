@@ -1,5 +1,5 @@
 /* ============================================
-   CASH MODULE - MODERN REDESIGN
+   CASH MODULE - STYLES
    ============================================ */
 
 :root {
@@ -20,7 +20,7 @@
     --cash-radius-sm: 12px;
 }
 
-/* HERO CARD - Kas Info Utama */
+/* HERO CARD */
 .cash-hero {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: var(--cash-radius);
@@ -472,6 +472,155 @@
     text-align: center;
 }
 
+/* MODAL KASIR SETTINGS */
+.modal-kasir-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.modal-kasir-card {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 20px;
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s;
+}
+
+.modal-kasir-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.modal-kasir-card.active {
+    border-color: #22c55e;
+    background: #f0fdf4;
+}
+
+.modal-kasir-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.modal-kasir-name {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--cash-text);
+}
+
+.modal-kasir-username {
+    font-size: 13px;
+    color: var(--cash-text-secondary);
+}
+
+.modal-kasir-status {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.modal-kasir-status.online {
+    background: #22c55e;
+    color: white;
+}
+
+.modal-kasir-status.offline {
+    background: #94a3b8;
+    color: white;
+}
+
+.modal-kasir-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.modal-kasir-stat {
+    background: white;
+    padding: 12px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.modal-kasir-stat-label {
+    font-size: 11px;
+    color: var(--cash-text-secondary);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.modal-kasir-stat-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--cash-text);
+}
+
+.modal-kasir-input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.modal-kasir-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.modal-kasir-input:focus {
+    border-color: #3b82f6;
+}
+
+.modal-kasir-save-btn {
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.modal-kasir-save-btn:hover {
+    transform: scale(1.02);
+}
+
+.modal-kasir-save-all {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 20px;
+}
+
+.modal-kasir-save-all:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.modal-kasir-save-all:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+    transform: none;
+}
+
 /* ANIMATIONS */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -489,4 +638,5 @@
     .cash-profit-grid { grid-template-columns: 1fr; }
     .cash-transaction-delete { opacity: 1; }
     .cash-user-shift-stats { grid-template-columns: 1fr; }
+    .modal-kasir-grid { grid-template-columns: 1fr; }
 }
