@@ -215,11 +215,13 @@ const cashModule = {
         
         // Jumlahkan dari semua shift aktif kasir
         activeShifts.forEach(shift => {
-            totalCash += parseInt(shift.currentCash) || 0;
+            // ✅ Gunakan calculateShiftCash untuk menghitung cash real-time
+            const shiftCash = dataManager.calculateShiftCash(shift.userId, shift.modalAwal);
+            totalCash += shiftCash;
             totalModal += parseInt(shift.modalAwal) || 0;
         });
         
-        // ✅ TAMBAHAN: Tambahkan modal dari settings (modal owner/admin)
+        // Tambahkan modal dari settings (modal owner/admin)
         const settingsModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
         const settingsCash = parseInt(dataManager.data.settings?.currentCash) || 0;
         
@@ -262,8 +264,8 @@ const cashModule = {
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
         } else if (userShift) {
-            // Kasir lihat kas shift sendiri
-            currentCash = userShift.currentCash || 0;
+            // ✅ Kasir lihat kas shift sendiri - hitung real-time
+            currentCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
             modalAwal = userShift.modalAwal || 0;
         }
         
@@ -342,7 +344,9 @@ const cashModule = {
                     👥 User dengan Shift Aktif <span style="background: #4caf50; color: white; padding: 2px 10px; border-radius: 12px; font-size: 12px;">${activeShifts.length}</span>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
-                    ${activeShifts.map(s => `
+                    ${activeShifts.map(s => {
+                        const shiftCash = dataManager.calculateShiftCash(s.userId, s.modalAwal);
+                        return `
                         <div class="cash-user-shift-card">
                             <div class="cash-user-shift-header">
                                 <span class="cash-user-shift-name">${s.userName}</span>
@@ -355,14 +359,14 @@ const cashModule = {
                                 </div>
                                 <div class="cash-user-shift-stat cash">
                                     <div class="cash-user-shift-stat-label" style="color: #1565c0;">💵 Kas</div>
-                                    <div class="cash-user-shift-stat-value">Rp ${utils.formatNumber(s.currentCash || 0)}</div>
+                                    <div class="cash-user-shift-stat-value">Rp ${utils.formatNumber(shiftCash)}</div>
                                 </div>
                             </div>
                             <div class="cash-user-shift-time">
                                 🕐 Buka: ${new Date(s.openTime).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}
                             </div>
                         </div>
-                    `).join('')}
+                    `}).join('')}
                 </div>
             </div>
         ` : '';
@@ -583,7 +587,7 @@ const cashModule = {
         let kasirListHtml = users.map(user => {
             const shift = activeShifts.find(s => s.userId === user.id);
             const currentModal = shift ? (shift.modalAwal || 0) : (dataManager.data.pendingModals?.[user.id] || 0);
-            const currentCash = shift ? (shift.currentCash || 0) : 0;
+            const currentCash = shift ? dataManager.calculateShiftCash(user.id, shift.modalAwal) : 0;
             const isActive = !!shift;
             
             return `
@@ -693,10 +697,9 @@ const cashModule = {
                 const oldModal = shift.modalAwal || 0;
                 shift.modalAwal = newModal;
                 
-                // Jika kasir baru buka (currentCash sama dengan modal lama), update currentCash juga
-                if (shift.currentCash === oldModal || shift.currentCash === 0) {
-                    shift.currentCash = newModal;
-                }
+                // ✅ Hitung ulang currentCash berdasarkan modal baru + transaksi
+                const newCash = dataManager.calculateShiftCash(user.id, newModal);
+                shift.currentCash = newCash;
                 
                 dataManager.updateUserShift(user.id, shift);
                 updatedCount++;
@@ -1184,12 +1187,13 @@ const cashModule = {
         let modalAwal = 0;
         
         if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            // ✅ PERBAIKAN: Gunakan calculateGlobalCash untuk owner/admin
+            // ✅ Gunakan calculateGlobalCash untuk owner/admin
             const globalCash = this.calculateGlobalCash();
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
         } else if (userShift) {
-            currentCash = userShift.currentCash || 0;
+            // ✅ Hitung real-time untuk kasir
+            currentCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
             modalAwal = userShift.modalAwal || 0;
         }
         
@@ -1270,20 +1274,30 @@ const cashModule = {
         }
 
         const currentUser = dataManager.getCurrentUser();
-        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
-        const calculated = this.calculateActualCash();
-        dataManager.data.settings.currentCash = calculated;
-        
-        // Update user shift juga
-        if (userShift) {
-            userShift.currentCash = calculated;
-            dataManager.updateUserShift(currentUser.userId, userShift);
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            // Owner/Admin: recalculate global
+            const activeShifts = dataManager.getActiveShifts();
+            activeShifts.forEach(shift => {
+                const newCash = dataManager.calculateShiftCash(shift.userId, shift.modalAwal);
+                dataManager.updateUserShift(shift.userId, { currentCash: newCash });
+            });
+            
+            // Update settings juga
+            const globalCash = this.calculateGlobalCash();
+            dataManager.data.settings.currentCash = globalCash.cash;
+        } else {
+            // Kasir: recalculate shift sendiri
+            const userShift = dataManager.getUserShift(currentUser.userId);
+            if (userShift) {
+                const newCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
+                dataManager.updateUserShift(currentUser.userId, { currentCash: newCash });
+            }
         }
         
         dataManager.save();
         
-        app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(calculated)}`);
+        app.showToast('✅ Kas direcalculate');
         this.renderHTML();
         this.renderTransactions();
         app.updateHeader();
@@ -1778,10 +1792,10 @@ const cashModule = {
         // Simpan modal lama untuk perhitungan
         const oldModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
 
-        // ✅ PERBAIKAN: Update modal global di settings
+        // Update modal global di settings
         dataManager.data.settings.modalAwal = newModal;
         
-        // ✅ PERBAIKAN: Update currentCash di settings juga (untuk owner/admin)
+        // Update currentCash di settings juga (untuk owner/admin)
         const oldCash = parseInt(dataManager.data.settings?.currentCash) || 0;
         const diff = newModal - oldModal;
         dataManager.data.settings.currentCash = oldCash + diff;
@@ -1789,12 +1803,13 @@ const cashModule = {
         // Update user shift jika ada (untuk kasir)
         if (userShift && currentUser && currentUser.role === 'kasir') {
             userShift.modalAwal = newModal;
-            const shiftOldCash = userShift.currentCash || 0;
-            userShift.currentCash = shiftOldCash + diff;
+            // ✅ Hitung ulang currentCash dari modal baru + transaksi
+            const newCash = dataManager.calculateShiftCash(currentUser.userId, newModal);
+            userShift.currentCash = newCash;
             dataManager.updateUserShift(currentUser.userId, userShift);
         }
         
-        // ✅ PERBAIKAN: Update shift owner/admin jika ada
+        // Update shift owner/admin jika ada
         if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
             const ownerShift = dataManager.getUserShift(currentUser.userId);
             if (ownerShift) {
@@ -1835,7 +1850,7 @@ const cashModule = {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
-        // ✅ PERBAIKAN: Gunakan calculateGlobalCash untuk owner/admin
+        // Gunakan calculateGlobalCash untuk owner/admin
         let currentCash = 0;
         let modalAwal = 0;
         
@@ -1844,7 +1859,7 @@ const cashModule = {
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
         } else if (userShift) {
-            currentCash = userShift.currentCash || 0;
+            currentCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
             modalAwal = userShift.modalAwal || 0;
         }
 
@@ -1940,7 +1955,7 @@ const cashModule = {
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
         } else if (userShift) {
-            currentCash = userShift.currentCash || 0;
+            currentCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
             modalAwal = userShift.modalAwal || 0;
         }
 
@@ -2091,15 +2106,13 @@ const cashModule = {
             dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) - parseInt(amount);
         }
         
-        // Update user shift jika ada
+        // Update user shift jika ada - hitung ulang dari transaksi
         if (currentUser) {
             const userShift = dataManager.getUserShift(currentUser.userId);
             if (userShift) {
-                if (type === 'in' || type === 'modal_in' || type === 'topup') {
-                    userShift.currentCash = (userShift.currentCash || 0) + parseInt(amount);
-                } else if (type === 'out') {
-                    userShift.currentCash = (userShift.currentCash || 0) - parseInt(amount);
-                }
+                // ✅ Hitung ulang currentCash dari modal + semua transaksi
+                const newCash = dataManager.calculateShiftCash(currentUser.userId, userShift.modalAwal);
+                userShift.currentCash = newCash;
                 dataManager.updateUserShift(currentUser.userId, userShift);
             }
         }
