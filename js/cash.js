@@ -1,5 +1,5 @@
 // ============================================
-// CASH MODULE - Hifzi Cell POS
+// CASH MODULE - Hifzi Cell POS - Multi-User Edition
 // ============================================
 
 const cashModule = {
@@ -12,7 +12,6 @@ const cashModule = {
         showHistory: false
     },
     
-    // ========== PROVIDERS CONFIGURATION ==========
     providers: {
         ewallet: [
             { value: 'dana', label: 'DANA', icon: '💜' },
@@ -53,11 +52,9 @@ const cashModule = {
 
     ensureCashInitialized() {
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.settings) {
-            // Inisialisasi currentCash jika belum ada
             if (typeof dataManager.data.settings.currentCash !== 'number' || isNaN(dataManager.data.settings.currentCash)) {
                 dataManager.data.settings.currentCash = 0;
             }
-            // Inisialisasi modalAwal jika belum ada
             if (typeof dataManager.data.settings.modalAwal !== 'number' || isNaN(dataManager.data.settings.modalAwal)) {
                 dataManager.data.settings.modalAwal = 0;
             }
@@ -74,14 +71,11 @@ const cashModule = {
             return;
         }
         
-        // Jika hari berganti, tampilkan notifikasi untuk setup shift baru
         if (lastActiveDate !== today) {
-            // Tidak auto reset, biarkan user memilih
             console.log('Hari baru terdeteksi, menunggu user setup shift');
         }
     },
 
-    // ========== CUSTOM PROVIDERS ==========
     loadCustomProviders() {
         const saved = localStorage.getItem('hifzi_custom_providers');
         if (saved) {
@@ -213,7 +207,7 @@ const cashModule = {
         return html;
     },
 
-    // ========== RENDER HTML ==========
+    // ✅ PERUBAHAN: Render HTML dengan user info
     renderHTML() {
         const periodLabel = this.getFilterLabel();
         const { startDate, endDate } = this.getDateRange();
@@ -221,14 +215,28 @@ const cashModule = {
         const periodStats = this.calculatePeriodStats(startDate, endDate);
         const dateRangeText = this.getDateRangeText(startDate, endDate);
         
-        // ✅ PERBAIKAN: Hitung kas aktual yang benar
-        const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-        const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        // ✅ PERUBAHAN: Ambil current user dan shift
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        // ✅ PERUBAHAN: Tampilkan kas berdasarkan role
+        let currentCash = 0;
+        let modalAwal = 0;
+        
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            // Owner/Admin lihat total kas global
+            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        } else if (userShift) {
+            // Kasir lihat kas shift sendiri
+            currentCash = userShift.currentCash || 0;
+            modalAwal = userShift.modalAwal || 0;
+        }
+        
         const calculatedCash = this.calculateActualCash();
         const todayCashSales = this.getTodayCashSales();
         const todayNonCashSales = this.getTodayNonCashSales();
         
-        // Deteksi selisih
         const selisih = currentCash - calculatedCash;
         const needsRepair = Math.abs(selisih) > 100;
         
@@ -236,8 +244,28 @@ const cashModule = {
         const today = new Date().toDateString();
         const isNewDay = lastActiveDate && lastActiveDate !== today;
 
+        // ✅ PERUBAHAN: Info user aktif
+        const activeShifts = dataManager.getActiveShifts();
+        const userInfoHtml = currentUser ? `
+            <div style="background: #e3f2fd; border-radius: 12px; padding: 12px 16px; margin-bottom: 15px; border-left: 4px solid #2196f3;">
+                <div style="font-size: 13px; color: #1565c0; font-weight: 600;">
+                    👤 ${currentUser.name} (${currentUser.role})
+                </div>
+                ${userShift ? `
+                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                        Shift aktif sejak: ${new Date(userShift.openTime).toLocaleTimeString('id-ID')}
+                    </div>
+                ` : `
+                    <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                        Anda belum membuka kasir
+                    </div>
+                `}
+            </div>
+        ` : '';
+
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
+                ${userInfoHtml}
                 
                 ${isNewDay ? `
                 <div style="background: #fff3e0; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
@@ -258,13 +286,13 @@ const cashModule = {
                 </div>
                 ` : ''}
 
-                <!-- ✅ PERBAIKAN: Info Kas di Tangan yang Detail -->
+                <!-- ✅ PERUBAHAN: Info Kas di Tangan -->
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 24px; margin-bottom: 20px; 
                      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); color: white;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
                         <div>
                             <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">
-                                💰 Kas di Tangan (Aktual)
+                                💰 Kas di Tangan ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '(Global)' : '(Shift Anda)'}
                             </div>
                             <div style="font-size: 36px; font-weight: 700; margin-bottom: 8px;">
                                 Rp ${utils.formatNumber(currentCash)}
@@ -321,6 +349,24 @@ const cashModule = {
                         <button onclick="cashModule.recalculateCash()" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
                             🔄 Recalculate
                         </button>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- User Aktif Info (Owner/Admin only) -->
+                ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && activeShifts.length > 0 ? `
+                <div style="background: #e8f5e9; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
+                     box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #4caf50;">
+                    <div style="font-size: 14px; font-weight: 600; color: #2e7d32; margin-bottom: 8px;">
+                        👥 User dengan Shift Aktif (${activeShifts.length})
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px;">
+                        ${activeShifts.map(s => `
+                            <div style="background: white; padding: 10px; border-radius: 8px; font-size: 13px;">
+                                <div style="font-weight: 600;">${s.userName}</div>
+                                <div style="color: #666; font-size: 11px;">${s.userRole} • Kas: Rp ${utils.formatNumber(s.currentCash || 0)}</div>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
                 ` : ''}
@@ -488,280 +534,148 @@ const cashModule = {
         }
     },
 
-    // ========== POS INTEGRATION - TAMBAHAN BARU ==========
-    
-    /**
-     * ✅ FUNGSI BARU: Dipanggil dari posModule saat transaksi berhasil
-     * Menambah currentCash otomatis untuk pembayaran cash
-     */
-    addPosTransaction(transaction) {
-        if (!transaction) return;
-        
-        const paymentMethod = transaction.paymentMethod || 'cash';
-        const total = parseInt(transaction.total) || 0;
-        
-        // Hanya tambah ke kas jika pembayaran cash
-        if (paymentMethod === 'cash' && total > 0) {
-            let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-            dataManager.data.settings.currentCash = currentCash + total;
-            
-            // Simpan juga sebagai transaksi kas dengan tipe khusus
-            dataManager.data.cashTransactions.push({
-                id: Date.now(),
-                date: transaction.date || new Date().toISOString(),
-                type: 'pos_sale',
-                amount: total,
-                category: 'penjualan_pos',
-                note: `Penjualan POS - ${transaction.id || 'TRX'}`,
-                source: 'pos_sale',
-                transactionId: transaction.id,
-                paymentMethod: 'cash'
-            });
-            
-            dataManager.save();
-            app.updateHeader();
-            
-            console.log(`✅ Kas bertambah Rp ${utils.formatNumber(total)} dari penjualan POS`);
+    getDateRange() {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        let startDate, endDate;
+
+        switch(this.filterState.preset) {
+            case 'today':
+                startDate = today;
+                endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+                break;
+            case 'yesterday':
+                startDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+                endDate = new Date(today.getTime() - 1);
+                break;
+            case 'week':
+                const dayOfWeek = today.getDay();
+                const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+                startDate = new Date(today.setDate(diff));
+                endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+                break;
+            case 'month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+                break;
+            case 'year':
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+                break;
+            case 'custom':
+                const startInput = document.getElementById('filterStartDate');
+                const endInput = document.getElementById('filterEndDate');
+                if (startInput && startInput.value) {
+                    startDate = new Date(startInput.value);
+                    startDate.setHours(0, 0, 0, 0);
+                } else {
+                    startDate = today;
+                }
+                if (endInput && endInput.value) {
+                    endDate = new Date(endInput.value);
+                    endDate.setHours(23, 59, 59, 999);
+                } else {
+                    endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+                }
+                break;
+            default:
+                startDate = today;
+                endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
         }
+
+        return { startDate, endDate };
     },
 
-    /**
-     * ✅ FUNGSI BARU: Dipanggil saat transaksi POS dihapus/void
-     */
-    removePosTransaction(transaction) {
-        if (!transaction || transaction.paymentMethod !== 'cash') return;
-        
-        const total = parseInt(transaction.total) || 0;
-        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-        
-        // Kurangi kas
-        dataManager.data.settings.currentCash = currentCash - total;
-        
-        // Hapus dari cashTransactions
-        dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(t => 
-            !(t.source === 'pos_sale' && t.transactionId === transaction.id)
-        );
-        
-        // Tambah transaksi pembatalan
-        dataManager.data.cashTransactions.push({
-            id: Date.now(),
-            date: new Date().toISOString(),
-            type: 'pos_void',
-            amount: total,
-            category: 'pembatalan_pos',
-            note: `Pembatalan POS - ${transaction.id || 'TRX'}`,
-            source: 'pos_void',
-            transactionId: transaction.id
-        });
-        
-        dataManager.save();
-        app.updateHeader();
-        
-        console.log(`✅ Kas berkurang Rp ${utils.formatNumber(total)} karena pembatalan POS`);
-    },
-
-    /**
-     * ✅ FUNGSI BARU: Update transaksi POS yang diedit
-     */
-    updatePosTransaction(oldTransaction, newTransaction) {
-        // Hapus yang lama
-        this.removePosTransaction(oldTransaction);
-        // Tambah yang baru
-        this.addPosTransaction(newTransaction);
-    },
-
-    // ========== RESET OPTIONS ==========
-    showResetOptions() {
-        const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-        const currentModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
-        const todayCashSales = this.getTodayCashSales();
-        
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="resetOptionsModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="modal-title" style="font-size: 18px; font-weight: 700; color: #333;">🔄 Pengaturan Shift Baru</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('resetOptionsModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999;">×</button>
-                    </div>
-                    
-                    <div style="padding: 24px;">
-                        <div style="background: #f5f5f5; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-                            <div style="font-size: 13px; color: #666; margin-bottom: 8px;">Kas Saat Ini</div>
-                            <div style="font-size: 24px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(currentCash)}</div>
-                            <div style="font-size: 12px; color: #999; margin-top: 4px;">
-                                Modal: Rp ${utils.formatNumber(currentModal)} | Penjualan Cash Hari Ini: Rp ${utils.formatNumber(todayCashSales)}
-                            </div>
-                        </div>
-
-                        <div style="display: grid; gap: 12px;">
-                            <button onclick="cashModule.resetToZero()" 
-                                    style="padding: 16px; background: #ffebee; border: 2px solid #f44336; border-radius: 12px; cursor: pointer; text-align: left;">
-                                <div style="font-weight: 700; color: #c62828; margin-bottom: 4px;">🗑️ Reset ke Rp 0</div>
-                                <div style="font-size: 12px; color: #666;">Kas dan modal direset ke 0. Gunakan ini untuk hari baru.</div>
-                            </button>
-                            
-                            <button onclick="cashModule.setNewModal()" 
-                                    style="padding: 16px; background: #e8f5e9; border: 2px solid #4caf50; border-radius: 12px; cursor: pointer; text-align: left;">
-                                <div style="font-weight: 700; color: #2e7d32; margin-bottom: 4px;">💰 Input Modal Baru</div>
-                                <div style="font-size: 12px; color: #666;">Reset lalu input modal awal untuk shift hari ini.</div>
-                            </button>
-                            
-                            <button onclick="cashModule.carryOverCash()" 
-                                    style="padding: 16px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 12px; cursor: pointer; text-align: left;">
-                                <div style="font-weight: 700; color: #1565c0; margin-bottom: 4px;">➡️ Gunakan Kas Kemarin</div>
-                                <div style="font-size: 12px; color: #666;">Kas saat ini dijadikan modal untuk hari ini.</div>
-                            </button>
-                            
-                            <button onclick="cashModule.closeModal('resetOptionsModal')" 
-                                    style="padding: 12px; background: #f5f5f5; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; color: #666; margin-top: 8px;">
-                                Batal
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-    },
-
-    saveDayClosing(dateStr) {
-        if (!dataManager.data.dailyClosing) {
-            dataManager.data.dailyClosing = [];
-        }
-        
-        const transactions = dataManager.data.cashTransactions || [];
-        const yesterday = new Date(dateStr);
-        yesterday.setHours(0,0,0,0);
-        
-        const yesterdayTrans = transactions.filter(t => {
-            const tDate = new Date(t.date);
-            tDate.setHours(0,0,0,0);
-            return tDate.getTime() === yesterday.getTime();
-        });
-        
-        const labaKemarin = yesterdayTrans.reduce((sum, t) => {
-            if (t.type === 'topup' || t.category === 'tarik_tunai') {
-                return sum + (parseInt(t.details?.adminFee) || 0);
-            }
-            return sum;
-        }, 0);
-        
-        const closingData = {
-            date: dateStr,
-            closingCash: parseInt(dataManager.data.settings?.currentCash) || 0,
-            modalAwal: parseInt(dataManager.data.settings?.modalAwal) || 0,
-            laba: labaKemarin,
-            timestamp: new Date().toISOString()
+    getFilterLabel() {
+        const labels = {
+            'today': 'Hari Ini',
+            'yesterday': 'Kemarin',
+            'week': 'Minggu Ini',
+            'month': 'Bulan Ini',
+            'year': 'Tahun Ini',
+            'custom': 'Custom'
         };
-        
-        dataManager.data.dailyClosing.push(closingData);
-        
-        if (dataManager.data.dailyClosing.length > 30) {
-            dataManager.data.dailyClosing = dataManager.data.dailyClosing.slice(-30);
-        }
-        
-        dataManager.save();
+        return labels[this.filterState.preset] || 'Hari Ini';
     },
 
-    resetToZero() {
-        if (!confirm('⚠️ Yakin reset Kas dan Modal ke Rp 0?\\n\\nSemua transaksi hari ini akan tetap tersimpan tapi kas diatur ke 0.')) {
-            return;
+    getDateRangeText(startDate, endDate) {
+        if (this.filterState.preset === 'today') {
+            return startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        } else if (this.filterState.preset === 'yesterday') {
+            return startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        } else if (this.filterState.preset === 'custom') {
+            const startStr = startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+            const endStr = endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+            return `${startStr} - ${endStr}`;
+        } else {
+            return startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) + ' s/d ' + 
+                   endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         }
+    },
 
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        this.saveDayClosing(yesterday.toDateString());
+    groupByDate(transactions) {
+        const grouped = {};
+        transactions.forEach(t => {
+            const date = new Date(t.date);
+            const dateKey = date.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            
+            if (!grouped[dateKey]) {
+                grouped[dateKey] = [];
+            }
+            grouped[dateKey].push(t);
+        });
+        return grouped;
+    },
 
-        dataManager.data.settings.currentCash = 0;
-        dataManager.data.settings.modalAwal = 0;
+    applyFilter() {
+        const preset = document.getElementById('filterPreset').value;
+        this.filterState.preset = preset;
         
-        localStorage.setItem('hifzi_last_active_date', new Date().toDateString());
+        const customRange = document.getElementById('customDateRange');
+        if (customRange) {
+            customRange.style.display = preset === 'custom' ? 'flex' : 'none';
+        }
         
-        dataManager.save();
-        app.updateHeader();
-        this.closeModal('resetOptionsModal');
         this.renderHTML();
         this.renderTransactions();
-        
-        app.showToast('✅ Kas & Modal direset ke Rp 0');
     },
 
-    setNewModal() {
-        const newModal = parseInt(prompt('Masukkan Modal Awal untuk hari ini:', '0')) || 0;
-        
-        if (newModal < 0) {
-            app.showToast('Modal tidak boleh negatif!');
-            return;
-        }
-
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        this.saveDayClosing(yesterday.toDateString());
-
-        dataManager.data.settings.modalAwal = newModal;
-        dataManager.data.settings.currentCash = newModal;
-        
-        if (newModal > 0) {
-            dataManager.data.cashTransactions.push({
-                id: Date.now(),
-                date: new Date().toISOString(),
-                type: 'modal_in',
-                amount: newModal,
-                category: 'modal_awal',
-                note: 'Modal Awal Shift Baru'
-            });
-        }
-        
-        localStorage.setItem('hifzi_last_active_date', new Date().toDateString());
-        
-        dataManager.save();
-        app.updateHeader();
-        this.closeModal('resetOptionsModal');
-        this.renderHTML();
-        this.renderTransactions();
-        
-        app.showToast(`✅ Modal baru: Rp ${utils.formatNumber(newModal)}`);
-    },
-
-    carryOverCash() {
-        const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-        
-        if (currentCash <= 0) {
-            app.showToast('Kas saat ini Rp 0, tidak bisa carry over!');
-            return;
-        }
-
-        if (!confirm(`Gunakan Rp ${utils.formatNumber(currentCash)} sebagai modal hari ini?`)) {
-            return;
-        }
-
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        this.saveDayClosing(yesterday.toDateString());
-
-        dataManager.data.settings.modalAwal = currentCash;
-        
-        localStorage.setItem('hifzi_last_active_date', new Date().toDateString());
-        
-        dataManager.save();
-        app.updateHeader();
-        this.closeModal('resetOptionsModal');
-        this.renderHTML();
-        this.renderTransactions();
-        
-        app.showToast(`✅ Kas Rp ${utils.formatNumber(currentCash)} jadi modal hari ini`);
-    },
-
-    // ========== FILTER & STATS ==========
     toggleHistory() {
         this.filterState.showHistory = !this.filterState.showHistory;
-        this.renderHTML();
+        const icon = document.getElementById('historyToggleIcon');
+        const list = document.getElementById('cashTransactionList');
+        
+        if (icon) {
+            icon.style.transform = this.filterState.showHistory ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+        
+        if (list) {
+            if (this.filterState.showHistory) {
+                list.style.maxHeight = 'none';
+                list.style.minHeight = '200px';
+            } else {
+                list.style.maxHeight = '0px';
+                list.style.minHeight = '0px';
+            }
+        }
+        
         this.renderTransactions();
     },
 
+    // ✅ PERUBAHAN: Calculate Period Stats dengan filter user
     calculatePeriodStats(startDate, endDate) {
-        const transactions = dataManager.data.cashTransactions.filter(t => {
+        const currentUser = dataManager.getCurrentUser();
+        
+        let transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
-            return tDate >= startDate && tDate <= endDate;
+            const inRange = tDate >= startDate && tDate <= endDate;
+            
+            // ✅ PERUBAHAN: Jika bukan owner/admin, hanya lihat transaksi sendiri
+            if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+                return inRange && (t.userId === currentUser.userId || !t.userId);
+            }
+            
+            return inRange;
         });
         
         // Kas masuk manual (bukan dari POS, bukan modal)
@@ -811,122 +725,7 @@ const cashModule = {
         };
     },
 
-    getDateRangeText(startDate, endDate) {
-        const options = { day: 'numeric', month: 'short', year: 'numeric' };
-        
-        if (this.filterState.preset === 'today') {
-            return startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        } else if (this.filterState.preset === 'yesterday') {
-            return startDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        } else if (startDate.toDateString() === endDate.toDateString()) {
-            return startDate.toLocaleDateString('id-ID', options);
-        } else {
-            return `${startDate.toLocaleDateString('id-ID', options)} - ${endDate.toLocaleDateString('id-ID', options)}`;
-        }
-    },
-
-    applyFilter() {
-        const preset = document.getElementById('filterPreset').value;
-        const customRange = document.getElementById('customDateRange');
-        
-        if (preset === 'custom') {
-            customRange.style.display = 'flex';
-        } else {
-            customRange.style.display = 'none';
-        }
-        
-        this.filterState.preset = preset;
-        
-        this.renderHTML();
-        this.renderTransactions();
-    },
-
-    getDateRange() {
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        let startDate, endDate;
-        
-        switch (this.filterState.preset) {
-            case 'today':
-                startDate = new Date(today);
-                endDate = new Date(today);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-                
-            case 'yesterday':
-                startDate = new Date(today);
-                startDate.setDate(startDate.getDate() - 1);
-                endDate = new Date(startDate);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-                
-            case 'week':
-                const dayOfWeek = today.getDay();
-                const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-                startDate = new Date(today.setDate(diff));
-                endDate = new Date();
-                endDate.setHours(23, 59, 59, 999);
-                break;
-                
-            case 'month':
-                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-                
-            case 'year':
-                startDate = new Date(now.getFullYear(), 0, 1);
-                endDate = new Date(now.getFullYear(), 11, 31);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-                
-            case 'custom':
-                const startInput = document.getElementById('filterStartDate').value;
-                const endInput = document.getElementById('filterEndDate').value;
-                if (startInput && endInput) {
-                    startDate = new Date(startInput);
-                    endDate = new Date(endInput);
-                    endDate.setHours(23, 59, 59, 999);
-                } else {
-                    startDate = today;
-                    endDate = new Date(today);
-                    endDate.setHours(23, 59, 59, 999);
-                }
-                break;
-                
-            default:
-                startDate = today;
-                endDate = new Date(today);
-                endDate.setHours(23, 59, 59, 999);
-        }
-        
-        return { startDate, endDate };
-    },
-
-    updateStats() {
-        const { startDate, endDate } = this.getDateRange();
-        const stats = this.calculatePeriodStats(startDate, endDate);
-        
-        const incomeEl = document.getElementById('todayIncome');
-        const expenseEl = document.getElementById('todayExpense');
-        
-        if (incomeEl) incomeEl.textContent = 'Rp ' + utils.formatNumber(stats.kasMasuk);
-        if (expenseEl) expenseEl.textContent = 'Rp ' + utils.formatNumber(stats.kasKeluar);
-    },
-
-    getFilterLabel() {
-        const labels = {
-            'today': 'Hari Ini',
-            'yesterday': 'Kemarin',
-            'week': 'Minggu Ini',
-            'month': 'Bulan Ini',
-            'year': 'Tahun Ini',
-            'custom': 'Custom'
-        };
-        return labels[this.filterState.preset] || 'Hari Ini';
-    },
-
-    // ========== TRANSACTIONS ==========
+    // ✅ PERUBAHAN: Render Transactions dengan filter user
     renderTransactions() {
         const container = document.getElementById('cashTransactionList');
         if (!container) return;
@@ -940,10 +739,19 @@ const cashModule = {
         container.style.maxHeight = 'none';
         
         const { startDate, endDate } = this.getDateRange();
+        const currentUser = dataManager.getCurrentUser();
         
+        // ✅ PERUBAHAN: Filter berdasarkan user role
         let transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
-            return tDate >= startDate && tDate <= endDate;
+            const inRange = tDate >= startDate && tDate <= endDate;
+            
+            // Jika bukan owner/admin, hanya lihat transaksi sendiri
+            if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+                return inRange && (t.userId === currentUser.userId || !t.userId);
+            }
+            
+            return inRange;
         }).sort((a, b) => new Date(b.date) - new Date(a.date));
         
         // Hitung summary
@@ -981,6 +789,7 @@ const cashModule = {
                     <div>
                         <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px;">
                             Ringkasan ${periodLabel}
+                            ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '' : '<span style="font-size: 12px; color: #999;">(Shift Anda)</span>'}
                         </div>
                         <div style="font-size: 13px; color: #666;">
                             ${transactions.length} transaksi kas
@@ -1055,6 +864,15 @@ const cashModule = {
                 let labaBadge = '';
                 let modalBadge = '';
                 let posBadge = '';
+                let userBadge = '';
+                
+                // ✅ PERUBAHAN: Tampilkan info user untuk owner/admin
+                if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && t.userId) {
+                    const user = dataManager.getUsers().find(u => u.id === t.userId);
+                    if (user) {
+                        userBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-left: 8px;">👤 ${user.name}</span>`;
+                    }
+                }
                 
                 if (t.type === 'modal_in') {
                     typeLabel = ' (Modal)';
@@ -1081,7 +899,6 @@ const cashModule = {
                 
                 const timeStr = new Date(t.date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                 
-                // Untuk POS transaction, jangan tampilkan tombol hapus
                 const showDelete = t.type !== 'pos_sale' && t.type !== 'pos_void';
                 
                 html += `
@@ -1092,6 +909,7 @@ const cashModule = {
                                 ${labaBadge}
                                 ${modalBadge}
                                 ${posBadge}
+                                ${userBadge}
                             </div>
                             <div class="transaction-meta" style="font-size: 12px; color: #999;">${timeStr}</div>
                         </div>
@@ -1119,593 +937,928 @@ const cashModule = {
         this.attachDeleteListeners();
     },
 
-    groupByDate(transactions) {
-        const grouped = {};
-        
-        transactions.forEach(t => {
-            const date = new Date(t.date);
-            const dateKey = date.toLocaleDateString('id-ID', { 
-                weekday: 'short', 
-                day: 'numeric', 
-                month: 'short',
-                year: 'numeric'
-            });
-            
-            if (!grouped[dateKey]) {
-                grouped[dateKey] = [];
-            }
-            grouped[dateKey].push(t);
-        });
-        
-        return grouped;
-    },
-
     attachDeleteListeners() {
-        const deleteButtons = document.querySelectorAll('.btn-delete-cash');
-        
-        deleteButtons.forEach(btn => {
-            btn.onclick = (e) => {
-                e.preventDefault();
+        document.querySelectorAll('.btn-delete-cash').forEach(btn => {
+            btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const transactionId = parseInt(btn.getAttribute('data-transaction-id'));
-                this.deleteTransaction(transactionId);
-            };
-        });
-    },
-
-    deleteTransaction(transactionId) {
-        const t = dataManager.data.cashTransactions.find(tr => {
-            return tr.id === transactionId || tr.id === transactionId.toString();
-        });
-        
-        if (!t) {
-            app.showToast('Transaksi tidak ditemukan!');
-            return;
-        }
-        
-        // Jangan hapus transaksi POS dari sini
-        if (t.source === 'pos_sale') {
-            app.showToast('Transaksi POS hanya bisa dihapus dari menu Transaksi!');
-            return;
-        }
-        
-        const confirmMsg = `Hapus transaksi "${t.note || t.category}"?\\n\\nRp ${utils.formatNumber(t.amount)}\\n\\nKas akan disesuaikan.`;
-        
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-        
-        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-        
-        if (t.type === 'in' || t.type === 'topup') {
-            currentCash -= parseInt(t.amount) || 0;
-        } else if (t.type === 'out') {
-            currentCash += parseInt(t.amount) || 0;
-        } else if (t.type === 'modal_in') {
-            currentCash -= parseInt(t.amount) || 0;
-            dataManager.data.settings.modalAwal = (dataManager.data.settings.modalAwal || 0) - parseInt(t.amount) || 0;
-        }
-        
-        dataManager.data.settings.currentCash = currentCash;
-        
-        dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(
-            tr => tr.id !== transactionId && tr.id !== transactionId.toString()
-        );
-        
-        if (t.details && t.details.adminFee > 0) {
-            dataManager.data.transactions = dataManager.data.transactions.filter(tr => {
-                if (tr.type === 'topup_fee' || tr.type === 'tarik_tunai_fee') {
-                    const trTime = new Date(tr.date).getTime();
-                    const cashTime = new Date(t.date).getTime();
-                    return Math.abs(trTime - cashTime) > 2000;
-                }
-                return true;
+                const id = btn.getAttribute('data-transaction-id');
+                this.deleteTransaction(id);
             });
-        }
-        
-        dataManager.save();
-        app.updateHeader();
-        this.renderHTML();
-        this.renderTransactions();
-        app.showToast('Transaksi dihapus! Kas disesuaikan.');
+        });
     },
 
-    openHistory() {
-        this.filterState.showHistory = true;
-        this.filterState.preset = 'today';
-        this.renderHTML();
-        this.renderTransactions();
-        setTimeout(() => {
-            document.getElementById('cashTransactionList')?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-    },
+    deleteTransaction(id) {
+        const transaction = dataManager.data.cashTransactions.find(t => t.id === id);
+        if (!transaction) return;
 
-    // ========== MODALS ==========
-    openModal(type) {
-        const isIn = type === 'in';
-        
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="cashModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">${isIn ? '💵 Kas Masuk' : '💸 Kas Keluar'}</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('cashModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s;">×</button>
-                    </div>
-                    
-                    <div style="padding: 24px;">
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Jumlah (Rp)</label>
-                            <input type="number" id="cashAmount" placeholder="0" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 18px; font-weight: 600; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
-                        </div>
-                        
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Kategori</label>
-                            <select id="cashCategory" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white; cursor: pointer;">
-                                ${isIn ? `
-                                    <option value="penjualan">Penjualan</option>
-                                    <option value="lainnya">Lainnya</option>
-                                ` : `
-                                    <option value="operasional">Biaya Operasional</option>
-                                    <option value="gaji">Gaji Karyawan</option>
-                                    <option value="lainnya">Lainnya</option>
-                                `}
-                            </select>
-                        </div>
-                        
-                        <div class="form-group" style="margin-bottom: 24px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Keterangan</label>
-                            <textarea id="cashNote" rows="3" placeholder="Catatan transaksi..." style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; resize: vertical; font-family: inherit;"></textarea>
-                        </div>
-                        
-                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
-                            <button class="btn btn-primary" onclick="cashModule.saveTransaction('${type}')" style="padding: 12px 24px; border-radius: 10px; border: none; background: ${isIn ? '#4caf50' : '#f44336'}; color: white; font-weight: 600; cursor: pointer; font-size: 15px;">Simpan Transaksi</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-    },
-
-    saveTransaction(type) {
-        const amount = parseInt(document.getElementById('cashAmount').value) || 0;
-        const category = document.getElementById('cashCategory').value;
-        const note = document.getElementById('cashNote').value;
-        
-        if (amount <= 0) {
-            app.showToast('Jumlah tidak valid!');
+        if (!confirm(`Hapus transaksi "${transaction.note || transaction.category}" sebesar Rp ${utils.formatNumber(transaction.amount)}?`)) {
             return;
         }
-        
-        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-        
-        // ✅ PERBAIKAN: Kas bisa minus, hapus pengecekan ini
-        // if (type === 'out' && amount > currentCash) {
-        //     app.showToast('Kas tidak mencukupi!');
-        //     return;
-        // }
-        
-        dataManager.data.cashTransactions.push({
-            id: Date.now(),
-            date: new Date().toISOString(),
-            type: type,
-            amount: amount,
-            category: category,
-            note: note
-        });
-        
-        if (type === 'in') {
-            dataManager.data.settings.currentCash = currentCash + amount;
-        } else {
-            dataManager.data.settings.currentCash = currentCash - amount;
-        }
-        
-        dataManager.save();
-        app.updateHeader();
-        this.closeModal('cashModal');
-        this.renderHTML();
-        this.renderTransactions();
-        app.showToast('Transaksi kas tersimpan!');
-    },
 
-    openModalAwal() {
-        const today = new Date();
-        today.setHours(0,0,0,0);
+        const currentUser = dataManager.getCurrentUser();
         
-        const existingModal = dataManager.data.cashTransactions.find(t => {
-            if (t.type !== 'modal_in') return false;
-            const tDate = new Date(t.date);
-            tDate.setHours(0,0,0,0);
-            return tDate.getTime() === today.getTime();
-        });
-        
-        if (existingModal) {
-            if (!confirm(`⚠️ Sudah ada modal hari ini: Rp ${utils.formatNumber(existingModal.amount)}\\n\\nInput modal lagi akan menambah kas. Lanjutkan?`)) {
-                return;
+        // Reverse the transaction effect
+        if (transaction.type === 'in' || transaction.type === 'modal_in' || transaction.type === 'topup') {
+            dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) - parseInt(transaction.amount);
+            
+            // ✅ PERUBAHAN: Update user shift
+            if (currentUser) {
+                const userShift = dataManager.getUserShift(currentUser.userId);
+                if (userShift) {
+                    userShift.currentCash = (userShift.currentCash || 0) - parseInt(transaction.amount);
+                    dataManager.updateUserShift(currentUser.userId, userShift);
+                }
+            }
+        } else if (transaction.type === 'out') {
+            dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) + parseInt(transaction.amount);
+            
+            // ✅ PERUBAHAN: Update user shift
+            if (currentUser) {
+                const userShift = dataManager.getUserShift(currentUser.userId);
+                if (userShift) {
+                    userShift.currentCash = (userShift.currentCash || 0) + parseInt(transaction.amount);
+                    dataManager.updateUserShift(currentUser.userId, userShift);
+                }
             }
         }
-        
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="modalAwalModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">💰 Input Modal Awal</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('modalAwalModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
-                    </div>
-                    
-                    <div style="padding: 24px;">
-                        <div style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="font-weight: 600; color: #f57f17; margin-bottom: 4px; font-size: 14px;">📌 Modal Awal Shift</div>
-                            <div style="color: #666; font-size: 13px; line-height: 1.5;">
-                                ${existingModal ? 
-                                    '⚠️ <strong>PERHATIAN:</strong> Sudah ada modal hari ini. Input baru akan menambah kas.' : 
-                                    'Modal akan menjadi dasar kas saat ini.<br><strong>Tidak masuk ke perhitungan laba.</strong>'
-                                }
-                            </div>
-                        </div>
 
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Jumlah Modal (Rp)</label>
-                            <input type="number" id="modalAwalAmount" placeholder="Contoh: 500000" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 18px; font-weight: 600;">
-                        </div>
-                        
-                        <div class="form-group" style="margin-bottom: 24px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Keterangan</label>
-                            <textarea id="modalAwalNote" rows="2" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; resize: vertical; font-family: inherit;"></textarea>
-                        </div>
-                        
-                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
-                            <button class="btn btn-warning" onclick="cashModule.saveModalAwal()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #ffc107; color: #333; font-weight: 600; cursor: pointer; font-size: 15px;">
-                                ${existingModal ? 'Tambah Modal' : 'Simpan Modal'}
-                            </button>
-                        </div>
+        dataManager.data.cashTransactions = dataManager.data.cashTransactions.filter(t => t.id !== id);
+        dataManager.save();
+
+        app.showToast('✅ Transaksi dihapus');
+        this.renderHTML();
+        this.renderTransactions();
+        app.updateHeader();
+    },
+
+    // ✅ PERUBAHAN: Update stats dengan mempertimbangkan user
+    updateStats() {
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        let currentCash = 0;
+        let modalAwal = 0;
+        
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        } else if (userShift) {
+            currentCash = userShift.currentCash || 0;
+            modalAwal = userShift.modalAwal || 0;
+        }
+        
+        const currentCashEl = document.getElementById('currentCash');
+        const modalAwalEl = document.getElementById('modalAwal');
+        
+        if (currentCashEl) currentCashEl.textContent = 'Rp ' + utils.formatNumber(currentCash);
+        if (modalAwalEl) modalAwalEl.textContent = 'Rp ' + utils.formatNumber(modalAwal);
+    },
+
+    calculateActualCash() {
+        const currentUser = dataManager.getCurrentUser();
+        
+        let transactions = dataManager.data.cashTransactions;
+        
+        // ✅ PERUBAHAN: Filter untuk non-owner/admin
+        if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+            transactions = transactions.filter(t => t.userId === currentUser.userId || !t.userId);
+        }
+        
+        const income = transactions
+            .filter(t => t.type === 'in' || t.type === 'modal_in' || t.type === 'topup' || t.type === 'pos_sale')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+            
+        const expense = transactions
+            .filter(t => t.type === 'out' || t.type === 'pos_void')
+            .reduce((sum, t) => sum + (parseInt(t.amount) || 0), 0);
+        
+        return income - expense;
+    },
+
+    getTodayCashSales() {
+        const today = new Date().toDateString();
+        const currentUser = dataManager.getCurrentUser();
+        
+        return dataManager.data.transactions
+            .filter(t => {
+                const tDate = new Date(t.date).toDateString();
+                const isToday = tDate === today;
+                const isCash = t.paymentMethod === 'cash';
+                
+                if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+                    return isToday && isCash && t.userId === currentUser.userId;
+                }
+                
+                return isToday && isCash;
+            })
+            .reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
+    },
+
+    getTodayNonCashSales() {
+        const today = new Date().toDateString();
+        const currentUser = dataManager.getCurrentUser();
+        
+        return dataManager.data.transactions
+            .filter(t => {
+                const tDate = new Date(t.date).toDateString();
+                const isToday = tDate === today;
+                const isNonCash = t.paymentMethod !== 'cash';
+                
+                if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+                    return isToday && isNonCash && t.userId === currentUser.userId;
+                }
+                
+                return isToday && isNonCash;
+            })
+            .reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
+    },
+
+    recalculateCash() {
+        if (!confirm('Recalculate akan menghitung ulang kas berdasarkan semua transaksi. Lanjutkan?')) {
+            return;
+        }
+
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        const calculated = this.calculateActualCash();
+        dataManager.data.settings.currentCash = calculated;
+        
+        // ✅ PERUBAHAN: Update user shift juga
+        if (userShift) {
+            userShift.currentCash = calculated;
+            dataManager.updateUserShift(currentUser.userId, userShift);
+        }
+        
+        dataManager.save();
+        
+        app.showToast(`✅ Kas direcalculate: Rp ${utils.formatNumber(calculated)}`);
+        this.renderHTML();
+        this.renderTransactions();
+        app.updateHeader();
+    },
+
+    openModal(type) {
+        // ✅ PERUBAHAN: Check apakah user ini punya shift aktif
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        if (!userShift && currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+            app.showToast('⚠️ Kasir belum dibuka! Silakan buka kasir terlebih dahulu.');
+            return;
+        }
+
+        const isIncome = type === 'in';
+        const title = isIncome ? '⬇️ Kas Masuk' : '⬆️ Kas Keluar';
+        const color = isIncome ? '#4caf50' : '#f44336';
+        
+        const modalHTML = `
+            <div class="modal active" id="cashModal" style="display: flex; z-index: 2000;">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <span class="modal-title" style="color: ${color};">${title}</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('cashModal')">×</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Jumlah (Rp) *</label>
+                        <input type="number" id="cashAmount" placeholder="0" autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Kategori *</label>
+                        <select id="cashCategory">
+                            ${isIncome ? `
+                                <option value="penjualan">Penjualan</option>
+                                <option value="modal">Modal Masuk</option>
+                                <option value="lainnya">Lainnya</option>
+                            ` : `
+                                <option value="belanja">Belanja/Restock</option>
+                                <option value="operasional">Operasional</option>
+                                <option value="gaji">Gaji</option>
+                                <option value="lainnya">Lainnya</option>
+                            `}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Keterangan</label>
+                        <textarea id="cashNote" rows="2" placeholder="Keterangan tambahan..."></textarea>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('cashModal')">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveCash('${type}')" style="background: ${color}; border-color: ${color};">
+                            💾 Simpan
+                        </button>
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        setTimeout(() => document.getElementById('cashAmount')?.focus(), 100);
     },
 
-    saveModalAwal() {
-        const amount = parseInt(document.getElementById('modalAwalAmount').value) || 0;
-        const note = document.getElementById('modalAwalNote').value || 'Modal Awal Shift';
-        
+    saveCash(type) {
+        const amount = parseInt(document.getElementById('cashAmount')?.value) || 0;
+        const category = document.getElementById('cashCategory')?.value;
+        const note = document.getElementById('cashNote')?.value;
+
         if (amount <= 0) {
-            app.showToast('Jumlah modal harus lebih dari 0!');
+            app.showToast('❌ Jumlah harus lebih dari 0!');
             return;
         }
-        
-        const today = new Date();
-        today.setHours(0,0,0,0);
-        
-        const existingModal = dataManager.data.cashTransactions.find(t => {
-            if (t.type !== 'modal_in') return false;
-            const tDate = new Date(t.date);
-            tDate.setHours(0,0,0,0);
-            return tDate.getTime() === today.getTime();
-        });
-        
-        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-        
-        if (existingModal) {
-            dataManager.data.settings.modalAwal = (dataManager.data.settings.modalAwal || 0) + amount;
-            dataManager.data.settings.currentCash = currentCash + amount;
-            app.showToast(`✅ Tambahan modal Rp ${utils.formatNumber(amount)}. Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
-        } else {
-            dataManager.data.settings.modalAwal = amount;
-            dataManager.data.settings.currentCash = currentCash + amount; // Tambah ke kas existing, tidak overwrite
-            app.showToast(`✅ Modal awal Rp ${utils.formatNumber(amount)}. Kas sekarang: Rp ${utils.formatNumber(dataManager.data.settings.currentCash)}`);
-        }
-        
-        dataManager.data.cashTransactions.push({
-            id: Date.now(),
-            date: new Date().toISOString(),
-            type: 'modal_in',
-            amount: amount,
-            category: 'modal_awal',
-            note: existingModal ? `${note} (Tambahan)` : note
-        });
-        
-        dataManager.save();
-        app.updateHeader();
-        this.closeModal('modalAwalModal');
-        this.renderHTML();
-        this.renderTransactions();
+
+        this.saveTransaction(type, amount, category, note);
+        this.closeModal('cashModal');
+        app.showToast(`✅ Kas ${type === 'in' ? 'masuk' : 'keluar'} tersimpan!`);
     },
 
     openTopUp() {
-        this.loadCustomProviders();
+        // ✅ PERUBAHAN: Check shift
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="topUpModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">💜 Top Up / Transfer</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('topUpModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
+        if (!userShift && currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+            app.showToast('⚠️ Kasir belum dibuka!');
+            return;
+        }
+
+        const providerOptions = this.generateProviderOptions();
+
+        const modalHTML = `
+            <div class="modal active" id="topUpModal" style="display: flex; z-index: 2000;">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <span class="modal-title" style="color: #9c27b0;">💜 Top Up E-Wallet</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('topUpModal')">×</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Provider *</label>
+                        <select id="topUpProvider">
+                            ${providerOptions}
+                        </select>
                     </div>
                     
-                    <div style="padding: 24px;">
-                        <div style="background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="font-weight: 600; color: #6a1b9a; margin-bottom: 4px; font-size: 14px;">💰 Admin Fee = Laba!</div>
-                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Total bayar = Nominal + Admin Fee<br>Admin fee masuk ke laba bersih</div>
-                        </div>
+                    <div style="text-align: right; margin-bottom: 15px;">
+                        <button onclick="cashModule.addCustomProvider('topup')" style="font-size: 12px; color: #667eea; background: none; border: none; cursor: pointer;">
+                            ➕ Tambah Provider Baru
+                        </button>
+                        ${this.providers.custom.length > 0 ? `
+                        <button onclick="cashModule.manageCustomProviders()" style="font-size: 12px; color: #f44336; background: none; border: none; cursor: pointer; margin-left: 10px;">
+                            ✏️ Kelola Provider
+                        </button>
+                        ` : ''}
+                    </div>
 
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <label style="font-weight: 600; color: #555; font-size: 14px;">Jenis / Provider</label>
-                                <div style="display: flex; gap: 8px;">
-                                    <button onclick="cashModule.addCustomProvider('topup')" style="padding: 6px 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 6px; color: #2e7d32; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#4caf50'; this.style.color='white';" onmouseout="this.style.background='#e8f5e9'; this.style.color='#2e7d32';">
-                                        ➕ Tambah
-                                    </button>
-                                    ${this.providers.custom.length > 0 ? `
-                                    <button onclick="cashModule.manageCustomProviders()" style="padding: 6px 12px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#ff9800'; this.style.color='white';" onmouseout="this.style.background='#fff3e0'; this.style.color='#e65100';">
-                                        ✏️ Kelola
-                                    </button>
-                                    ` : ''}
-                                </div>
-                            </div>
-                            <select id="topUpType" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white; cursor: pointer;">
-                                ${this.generateProviderOptions()}
+                    <div class="form-group">
+                        <label>Nomor HP / ID Pelanggan *</label>
+                        <input type="text" id="topUpPhone" placeholder="08xxxxxxxxx">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Nominal Top Up (Rp) *</label>
+                            <select id="topUpNominal" onchange="cashModule.handleTopUpNominalChange()">
+                                <option value="">Pilih nominal...</option>
+                                <option value="5000">Rp 5.000</option>
+                                <option value="10000">Rp 10.000</option>
+                                <option value="20000">Rp 20.000</option>
+                                <option value="25000">Rp 25.000</option>
+                                <option value="50000">Rp 50.000</option>
+                                <option value="100000">Rp 100.000</option>
+                                <option value="150000">Rp 150.000</option>
+                                <option value="200000">Rp 200.000</option>
+                                <option value="300000">Rp 300.000</option>
+                                <option value="500000">Rp 500.000</option>
+                                <option value="1000000">Rp 1.000.000</option>
+                                <option value="custom">Lainnya...</option>
                             </select>
                         </div>
+                        <div class="form-group" id="customNominalGroup" style="display: none;">
+                            <label>Nominal Lain (Rp)</label>
+                            <input type="number" id="topUpCustomNominal" placeholder="0" oninput="cashModule.calcTopUp()">
+                        </div>
+                    </div>
 
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Nominal (Rp)</label>
-                            <input type="number" id="topUpNominal" placeholder="50000" oninput="cashModule.calcTopUp()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
-                        </div>
+                    <div class="form-group">
+                        <label>Admin Fee (Rp)</label>
+                        <input type="number" id="topUpAdminFee" placeholder="0" value="0" oninput="cashModule.calcTopUp()">
+                    </div>
 
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Admin Fee (Rp)</label>
-                            <input type="number" id="topUpAdmin" placeholder="1500" oninput="cashModule.calcTopUp()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
+                    <div class="calculation-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <div class="calc-row">
+                            <span>Nominal Top Up:</span>
+                            <span id="topUpDisplayNominal">Rp 0</span>
                         </div>
-                        
-                        <div style="background: #f3e5f5; padding: 16px; border-radius: 10px; margin-bottom: 24px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px;">
-                                <span>Total Bayar:</span>
-                                <span id="topUpTotal" style="font-weight: 700;">Rp 0</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; color: #6a1b9a; font-weight: 700; font-size: 16px;">
-                                <span>💰 Laba (Admin):</span>
-                                <span id="topUpProfit">Rp 0</span>
-                            </div>
+                        <div class="calc-row">
+                            <span>Admin Fee:</span>
+                            <span id="topUpDisplayAdmin">Rp 0</span>
                         </div>
-                        
-                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
-                            <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #9c27b0; color: white; font-weight: 600; cursor: pointer; font-size: 15px;">Proses</button>
+                        <div class="calc-row" style="font-size: 20px; font-weight: 700; border-top: 2px solid rgba(255,255,255,0.3); padding-top: 10px; margin-top: 10px;">
+                            <span>Total Dibayar:</span>
+                            <span id="topUpTotal">Rp 0</span>
                         </div>
+                        <div class="calc-row" style="font-size: 14px; color: #a5d6a7;">
+                            <span>💰 Laba:</span>
+                            <span id="topUpLaba">Rp 0</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('topUpModal')">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveTopUp()" style="background: #9c27b0; border-color: #9c27b0;">
+                            💜 Proses Top Up
+                        </button>
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    handleTopUpNominalChange() {
+        const select = document.getElementById('topUpNominal');
+        const customGroup = document.getElementById('customNominalGroup');
+        const customInput = document.getElementById('topUpCustomNominal');
+        
+        if (select.value === 'custom') {
+            customGroup.style.display = 'block';
+            customInput.focus();
+        } else {
+            customGroup.style.display = 'none';
+            this.calcTopUp();
+        }
     },
 
     calcTopUp() {
-        const nominal = parseInt(document.getElementById('topUpNominal')?.value) || 0;
-        const admin = parseInt(document.getElementById('topUpAdmin')?.value) || 0;
+        const nominalSelect = document.getElementById('topUpNominal').value;
+        const customNominal = parseInt(document.getElementById('topUpCustomNominal')?.value) || 0;
+        const adminFee = parseInt(document.getElementById('topUpAdminFee')?.value) || 0;
         
-        const totalEl = document.getElementById('topUpTotal');
-        const profitEl = document.getElementById('topUpProfit');
-        
-        if (totalEl) totalEl.textContent = 'Rp ' + utils.formatNumber(nominal + admin);
-        if (profitEl) profitEl.textContent = 'Rp ' + utils.formatNumber(admin);
+        const nominal = nominalSelect === 'custom' ? customNominal : (parseInt(nominalSelect) || 0);
+        const total = nominal + adminFee;
+        const laba = adminFee;
+
+        document.getElementById('topUpDisplayNominal').textContent = 'Rp ' + utils.formatNumber(nominal);
+        document.getElementById('topUpDisplayAdmin').textContent = 'Rp ' + utils.formatNumber(adminFee);
+        document.getElementById('topUpTotal').textContent = 'Rp ' + utils.formatNumber(total);
+        document.getElementById('topUpLaba').textContent = 'Rp ' + utils.formatNumber(laba);
     },
 
     saveTopUp() {
-        const nominal = parseInt(document.getElementById('topUpNominal').value) || 0;
-        const admin = parseInt(document.getElementById('topUpAdmin').value) || 0;
-        const type = document.getElementById('topUpType').value;
+        const provider = document.getElementById('topUpProvider')?.value;
+        const phone = document.getElementById('topUpPhone')?.value?.trim();
+        const nominalSelect = document.getElementById('topUpNominal').value;
+        const customNominal = parseInt(document.getElementById('topUpCustomNominal')?.value) || 0;
+        const adminFee = parseInt(document.getElementById('topUpAdminFee')?.value) || 0;
         
-        if (nominal <= 0) {
-            app.showToast('Nominal wajib diisi!');
+        const nominal = nominalSelect === 'custom' ? customNominal : (parseInt(nominalSelect) || 0);
+        const total = nominal + adminFee;
+
+        if (!provider) {
+            app.showToast('❌ Pilih provider!');
             return;
         }
-        
-        let providerLabel = type.toUpperCase();
-        let providerIcon = '💳';
-        
-        const allProviders = [...this.providers.ewallet, ...this.providers.bank, ...this.providers.custom];
-        const provider = allProviders.find(p => p.value === type);
-        if (provider) {
-            providerLabel = provider.label;
-            providerIcon = provider.icon;
+        if (!phone) {
+            app.showToast('❌ Masukkan nomor HP!');
+            return;
         }
-        
-        const total = nominal + admin;
-        
-        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-        dataManager.data.settings.currentCash = currentCash + total;
-        
-        dataManager.data.cashTransactions.push({
-            id: Date.now(),
-            date: new Date().toISOString(),
-            type: 'topup',
-            amount: total,
-            category: 'topup_' + type,
-            note: `${providerIcon} Top Up ${providerLabel}`,
-            details: { 
-                nominal, 
-                adminFee: admin,
-                provider: type,
-                providerLabel: providerLabel
-            }
+        if (nominal <= 0) {
+            app.showToast('❌ Nominal tidak valid!');
+            return;
+        }
+
+        const providerLabel = this.getProviderLabel(provider);
+
+        this.saveTransaction('topup', total, 'topup_' + provider, `Top Up ${providerLabel} - ${phone}`, {
+            provider: provider,
+            phone: phone,
+            nominal: nominal,
+            adminFee: adminFee,
+            total: total
         });
-        
-        if (admin > 0) {
-            dataManager.data.transactions.push({
-                id: Date.now() + 1,
-                date: new Date().toISOString(),
-                items: [{
-                    name: `Admin Fee Top Up ${providerLabel}`,
-                    price: admin,
-                    cost: 0,
-                    qty: 1
-                }],
-                total: admin,
-                profit: admin,
-                paymentMethod: 'cash',
-                status: 'completed',
-                type: 'topup_fee'
-            });
-        }
-        
-        dataManager.save();
-        app.updateHeader();
+
         this.closeModal('topUpModal');
-        this.renderHTML();
-        this.renderTransactions();
-        app.showToast(`${providerIcon} Top up ${providerLabel} berhasil! Kas +Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
+        app.showToast(`✅ Top Up ${providerLabel} berhasil! Laba: Rp ${utils.formatNumber(adminFee)}`);
+    },
+
+    getProviderLabel(value) {
+        const allProviders = [...this.providers.ewallet, ...this.providers.bank, ...this.providers.custom];
+        const provider = allProviders.find(p => p.value === value);
+        return provider ? provider.label : value;
     },
 
     openTarikTunai() {
-        this.loadCustomProviders();
+        // ✅ PERUBAHAN: Check shift
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="tarikTunaiModal" style="display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
-                <div class="modal-content" style="background: white; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="modal-title" style="font-size: 20px; font-weight: 700; color: #333;">🏧 Tarik Tunai</span>
-                        <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
+        if (!userShift && currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+            app.showToast('⚠️ Kasir belum dibuka!');
+            return;
+        }
+
+        const providerOptions = this.generateProviderOptions();
+
+        const modalHTML = `
+            <div class="modal active" id="tarikTunaiModal" style="display: flex; z-index: 2000;">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <span class="modal-title" style="color: #2196f3;">🏧 Tarik Tunai</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('tarikTunaiModal')">×</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Provider *</label>
+                        <select id="tarikProvider">
+                            ${providerOptions}
+                        </select>
                     </div>
                     
-                    <div style="padding: 24px;">
-                        <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                            <div style="font-weight: 600; color: #1565c0; margin-bottom: 4px; font-size: 14px;">💰 Admin Fee = Laba!</div>
-                            <div style="color: #666; font-size: 13px; line-height: 1.5;">Nominal = Uang diberikan ke customer<br>Admin fee = Keuntungan konter</div>
-                        </div>
+                    <div style="text-align: right; margin-bottom: 15px;">
+                        <button onclick="cashModule.addCustomProvider('tarik')" style="font-size: 12px; color: #667eea; background: none; border: none; cursor: pointer;">
+                            ➕ Tambah Provider Baru
+                        </button>
+                        ${this.providers.custom.length > 0 ? `
+                        <button onclick="cashModule.manageCustomProviders()" style="font-size: 12px; color: #f44336; background: none; border: none; cursor: pointer; margin-left: 10px;">
+                            ✏️ Kelola Provider
+                        </button>
+                        ` : ''}
+                    </div>
 
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <label style="font-weight: 600; color: #555; font-size: 14px;">Provider / Tujuan</label>
-                                <div style="display: flex; gap: 8px;">
-                                    <button onclick="cashModule.addCustomProvider('tarik')" style="padding: 6px 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 6px; color: #2e7d32; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#4caf50'; this.style.color='white';" onmouseout="this.style.background='#e8f5e9'; this.style.color='#2e7d32';">
-                                        ➕ Tambah
-                                    </button>
-                                    ${this.providers.custom.length > 0 ? `
-                                    <button onclick="cashModule.manageCustomProviders()" style="padding: 6px 12px; background: #fff3e0; border: 1px solid #ff9800; border-radius: 6px; color: #e65100; font-size: 12px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#ff9800'; this.style.color='white';" onmouseout="this.style.background='#fff3e0'; this.style.color='#e65100';">
-                                        ✏️ Kelola
-                                    </button>
-                                    ` : ''}
-                                </div>
-                            </div>
-                            <select id="tarikType" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; background: white; cursor: pointer;">
-                                ${this.generateProviderOptions()}
-                            </select>
-                        </div>
+                    <div class="form-group">
+                        <label>Nomor Rekening / HP *</label>
+                        <input type="text" id="tarikRekening" placeholder="Nomor rekening atau HP">
+                    </div>
 
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Nominal Tarik (Rp)</label>
-                            <input type="number" id="tarikNominal" placeholder="100000" oninput="cashModule.calcTarik()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
-                        </div>
+                    <div class="form-group">
+                        <label>Nama Pemilik Rekening *</label>
+                        <input type="text" id="tarikNama" placeholder="Nama sesuai rekening">
+                    </div>
 
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #555; font-size: 14px;">Admin Fee (Rp)</label>
-                            <input type="number" id="tarikAdmin" placeholder="2500" oninput="cashModule.calcTarik()" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px;">
+                    <div class="form-group">
+                        <label>Nominal Tarik (Rp) *</label>
+                        <input type="number" id="tarikNominal" placeholder="0" oninput="cashModule.calcTarik()">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Admin Fee (Rp)</label>
+                        <input type="number" id="tarikAdminFee" placeholder="0" value="0" oninput="cashModule.calcTarik()">
+                    </div>
+
+                    <div class="calculation-box" style="background: linear-gradient(135deg, #2196f3 0%, #1565c0 100%); color: white;">
+                        <div class="calc-row">
+                            <span>Nominal Tarik:</span>
+                            <span id="tarikDisplayNominal">Rp 0</span>
                         </div>
-                        
-                        <div style="background: #e3f2fd; padding: 16px; border-radius: 10px; margin-bottom: 24px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px;">
-                                <span>Total Keluar dari Kas:</span>
-                                <span id="tarikTotal" style="font-weight: 700; color: #f44336;">Rp 0</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; color: #1565c0; font-weight: 700; font-size: 16px;">
-                                <span>💰 Laba (Admin):</span>
-                                <span id="tarikProfit">Rp 0</span>
-                            </div>
+                        <div class="calc-row">
+                            <span>Admin Fee:</span>
+                            <span id="tarikDisplayAdmin">Rp 0</span>
                         </div>
-                        
-                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')" style="padding: 12px 24px; border-radius: 10px; border: 2px solid #e0e0e0; background: white; color: #666; font-weight: 600; cursor: pointer; font-size: 15px;">Batal</button>
-                            <button class="btn btn-info" onclick="cashModule.saveTarikTunai()" style="padding: 12px 24px; border-radius: 10px; border: none; background: #2196f3; color: white; font-weight: 600; cursor: pointer; font-size: 15px;">Proses</button>
+                        <div class="calc-row" style="font-size: 20px; font-weight: 700; border-top: 2px solid rgba(255,255,255,0.3); padding-top: 10px; margin-top: 10px;">
+                            <span>Total Diterima:</span>
+                            <span id="tarikTotal">Rp 0</span>
                         </div>
+                        <div class="calc-row" style="font-size: 14px; color: #a5d6a7;">
+                            <span>💰 Laba:</span>
+                            <span id="tarikLaba">Rp 0</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('tarikTunaiModal')">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveTarikTunai()" style="background: #2196f3; border-color: #2196f3;">
+                            🏧 Proses Tarik Tunai
+                        </button>
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
     calcTarik() {
         const nominal = parseInt(document.getElementById('tarikNominal')?.value) || 0;
-        const admin = parseInt(document.getElementById('tarikAdmin')?.value) || 0;
-        
-        const totalEl = document.getElementById('tarikTotal');
-        const profitEl = document.getElementById('tarikProfit');
-        
-        if (totalEl) totalEl.textContent = 'Rp ' + utils.formatNumber(nominal + admin);
-        if (profitEl) profitEl.textContent = 'Rp ' + utils.formatNumber(admin);
+        const adminFee = parseInt(document.getElementById('tarikAdminFee')?.value) || 0;
+        const total = nominal - adminFee;
+        const laba = adminFee;
+
+        document.getElementById('tarikDisplayNominal').textContent = 'Rp ' + utils.formatNumber(nominal);
+        document.getElementById('tarikDisplayAdmin').textContent = 'Rp ' + utils.formatNumber(adminFee);
+        document.getElementById('tarikTotal').textContent = 'Rp ' + utils.formatNumber(total);
+        document.getElementById('tarikLaba').textContent = 'Rp ' + utils.formatNumber(laba);
     },
 
     saveTarikTunai() {
-        const nominal = parseInt(document.getElementById('tarikNominal').value) || 0;
-        const admin = parseInt(document.getElementById('tarikAdmin').value) || 0;
-        const type = document.getElementById('tarikType').value;
-        const total = nominal + admin;
-        
-        if (nominal <= 0) {
-            app.showToast('Nominal wajib diisi!');
+        const provider = document.getElementById('tarikProvider')?.value;
+        const rekening = document.getElementById('tarikRekening')?.value?.trim();
+        const nama = document.getElementById('tarikNama')?.value?.trim();
+        const nominal = parseInt(document.getElementById('tarikNominal')?.value) || 0;
+        const adminFee = parseInt(document.getElementById('tarikAdminFee')?.value) || 0;
+        const total = nominal - adminFee;
+
+        if (!provider) {
+            app.showToast('❌ Pilih provider!');
             return;
         }
-        
-        let currentCash = parseInt(dataManager.data.settings.currentCash) || 0;
-        
-        // ✅ PERBAIKAN: Kas bisa minus, hanya warning saja
-        if (total > currentCash) {
-            if (!confirm(`⚠️ Kas akan minus!\\n\\nKas saat ini: Rp ${utils.formatNumber(currentCash)}\\nTotal keluar: Rp ${utils.formatNumber(total)}\\n\\nSisa kas: Rp ${utils.formatNumber(currentCash - total)}\\n\\nLanjutkan?`)) {
-                return;
-            }
+        if (!rekening) {
+            app.showToast('❌ Masukkan nomor rekening!');
+            return;
         }
-        
-        let providerLabel = type.toUpperCase();
-        let providerIcon = '💳';
-        
-        const allProviders = [...this.providers.ewallet, ...this.providers.bank, ...this.providers.custom];
-        const provider = allProviders.find(p => p.value === type);
-        if (provider) {
-            providerLabel = provider.label;
-            providerIcon = provider.icon;
+        if (!nama) {
+            app.showToast('❌ Masukkan nama pemilik rekening!');
+            return;
         }
-        
-        dataManager.data.settings.currentCash = currentCash - total;
-        
-        dataManager.data.cashTransactions.push({
-            id: Date.now(),
-            date: new Date().toISOString(),
-            type: 'out',
-            amount: total,
-            category: 'tarik_tunai',
-            note: `${providerIcon} Tarik Tunai ${providerLabel}`,
-            details: { 
-                nominal, 
-                adminFee: admin,
-                provider: type,
-                providerLabel: providerLabel
-            }
+        if (nominal <= 0) {
+            app.showToast('❌ Nominal tidak valid!');
+            return;
+        }
+
+        const providerLabel = this.getProviderLabel(provider);
+
+        // Tarik tunai = kas keluar (uang diberikan ke customer)
+        this.saveTransaction('out', nominal, 'tarik_tunai', `Tarik Tunai ${providerLabel} - ${nama} (${rekening})`, {
+            provider: provider,
+            rekening: rekening,
+            nama: nama,
+            nominal: nominal,
+            adminFee: adminFee,
+            totalDiterima: total
         });
+
+        this.closeModal('tarikTunaiModal');
+        app.showToast(`✅ Tarik Tunai ${providerLabel} berhasil! Laba: Rp ${utils.formatNumber(adminFee)}`);
+    },
+
+    openModalAwal() {
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
-        if (admin > 0) {
-            dataManager.data.transactions.push({
-                id: Date.now() + 1,
-                date: new Date().toISOString(),
-                items: [{
-                    name: `Admin Fee Tarik Tunai ${providerLabel}`,
-                    price: admin,
-                    cost: 0,
-                    qty: 1
-                }],
-                total: admin,
-                profit: admin,
-                paymentMethod: 'cash',
-                status: 'completed',
-                type: 'tarik_tunai_fee'
-            });
+        let currentModal = 0;
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            currentModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        } else if (userShift) {
+            currentModal = userShift.modalAwal || 0;
+        }
+
+        const modalHTML = `
+            <div class="modal active" id="modalAwalModal" style="display: flex; z-index: 2000;">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <span class="modal-title" style="color: #ffc107;">💰 Modal Awal</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('modalAwalModal')">×</button>
+                    </div>
+
+                    <div class="info-box" style="background: #fff8e1; border-left-color: #ffc107; margin-bottom: 20px;">
+                        <div class="info-title">ℹ️ Informasi</div>
+                        <div class="info-text">
+                            Modal awal adalah uang yang disiapkan di kasir sebelum memulai transaksi hari ini.
+                            Modal ini akan digunakan untuk menghitung laba bersih.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Modal Awal Saat Ini</label>
+                        <input type="text" value="Rp ${utils.formatNumber(currentModal)}" disabled style="background: #f5f5f5; color: #666;">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Modal Awal Baru (Rp) *</label>
+                        <input type="number" id="newModalAwal" placeholder="0" value="${currentModal}">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Keterangan (opsional)</label>
+                        <input type="text" id="modalNote" placeholder="Contoh: Modal hari Senin">
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('modalAwalModal')">Batal</button>
+                        <button class="btn btn-primary" onclick="cashModule.saveModalAwal()" style="background: #ffc107; border-color: #ffc107; color: #333;">
+                            💾 Simpan Modal
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    saveModalAwal() {
+        const newModal = parseInt(document.getElementById('newModalAwal')?.value) || 0;
+        const note = document.getElementById('modalNote')?.value;
+
+        if (newModal < 0) {
+            app.showToast('❌ Modal tidak boleh negatif!');
+            return;
+        }
+
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+
+        // Simpan modal lama untuk perhitungan
+        const oldModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+
+        // Update modal global
+        dataManager.data.settings.modalAwal = newModal;
+
+        // ✅ PERUBAHAN: Update user shift
+        if (userShift) {
+            userShift.modalAwal = newModal;
+            dataManager.updateUserShift(currentUser.userId, userShift);
+        }
+
+        // Jika modal bertambah, catat sebagai kas masuk
+        if (newModal > oldModal) {
+            const diff = newModal - oldModal;
+            this.saveTransaction('modal_in', diff, 'modal_tambahan', note || 'Penambahan modal awal');
+        }
+
+        dataManager.save();
+        this.closeModal('modalAwalModal');
+        app.showToast(`✅ Modal awal diupdate: Rp ${utils.formatNumber(newModal)}`);
+        this.renderHTML();
+        this.renderTransactions();
+        app.updateHeader();
+    },
+
+    openHistory() {
+        this.filterState.showHistory = true;
+        this.renderHTML();
+        this.renderTransactions();
+        
+        // Scroll ke bagian riwayat
+        setTimeout(() => {
+            const historySection = document.getElementById('cashTransactionList');
+            if (historySection) {
+                historySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    },
+
+    showResetOptions() {
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        let currentCash = 0;
+        let modalAwal = 0;
+        
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        } else if (userShift) {
+            currentCash = userShift.currentCash || 0;
+            modalAwal = userShift.modalAwal || 0;
+        }
+
+        const modalHTML = `
+            <div class="modal active" id="resetOptionsModal" style="display: flex; z-index: 2000;">
+                <div class="modal-content" style="max-width: 450px;">
+                    <div class="modal-header">
+                        <span class="modal-title">⚙️ Pengaturan Shift & Kas</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('resetOptionsModal')">×</button>
+                    </div>
+
+                    <div style="background: #e3f2fd; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                        <div style="font-size: 14px; color: #1565c0; margin-bottom: 8px;">
+                            📊 Status Saat Ini ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '(Global)' : '(Shift Anda)'}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div>
+                                <div style="font-size: 12px; color: #666;">Kas di Tangan</div>
+                                <div style="font-size: 18px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(currentCash)}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #666;">Modal Awal</div>
+                                <div style="font-size: 18px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(modalAwal)}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; gap: 12px;">
+                        <button onclick="cashModule.saveDayClosing()" style="padding: 16px; background: #4caf50; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">📋 Tutup Shift Hari Ini</div>
+                            <div style="font-size: 13px; opacity: 0.9;">Simpan laporan penutupan dan tutup kasir untuk shift ini</div>
+                        </button>
+
+                        <button onclick="cashModule.setNewModal()" style="padding: 16px; background: #2196f3; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">💰 Atur Modal Awal Baru</div>
+                            <div style="font-size: 13px; opacity: 0.9;">Set ulang modal awal untuk shift baru</div>
+                        </button>
+
+                        ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? `
+                        <button onclick="cashModule.carryOverCash()" style="padding: 16px; background: #ff9800; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">🔄 Carry Over Kas</div>
+                            <div style="font-size: 13px; opacity: 0.9;">Lanjutkan kas ke hari berikutnya (tanpa reset)</div>
+                        </button>
+                        ` : ''}
+
+                        <button onclick="cashModule.resetToZero()" style="padding: 16px; background: #f44336; color: white; border: none; border-radius: 12px; cursor: pointer; text-align: left;">
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 4px;">🗑️ Reset Kas ke 0</div>
+                            <div style="font-size: 13px; opacity: 0.9;">HAPUS SEMUA kas dan mulai dari nol (hati-hati!)</div>
+                        </button>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('resetOptionsModal')">Batal</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    saveDayClosing() {
+        if (!confirm('Simpan laporan penutupan shift? Kas akan direset untuk shift berikutnya.')) {
+            return;
+        }
+
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        
+        let currentCash = 0;
+        let modalAwal = 0;
+        
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        } else if (userShift) {
+            currentCash = userShift.currentCash || 0;
+            modalAwal = userShift.modalAwal || 0;
+        }
+
+        const today = new Date();
+        const todayStr = today.toDateString();
+
+        // Hitung statistik hari ini
+        const todayStats = this.calculatePeriodStats(
+            new Date(today.getFullYear(), today.getMonth(), today.getDate()),
+            new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+        );
+
+        // Simpan ke history
+        if (!dataManager.data.shiftHistory) {
+            dataManager.data.shiftHistory = [];
+        }
+
+        const closingRecord = {
+            date: today.toISOString(),
+            dateStr: todayStr,
+            userId: currentUser ? currentUser.userId : null,
+            userName: currentUser ? currentUser.name : 'Unknown',
+            modalAwal: modalAwal,
+            kasAkhir: currentCash,
+            laba: todayStats.laba,
+            totalTransaksi: todayStats.totalTransactions,
+            status: 'closed'
+        };
+
+        dataManager.data.shiftHistory.push(closingRecord);
+
+        // Reset kas dan modal
+        dataManager.data.settings.currentCash = 0;
+        dataManager.data.settings.modalAwal = 0;
+
+        // ✅ PERUBAHAN: Reset user shift
+        if (userShift) {
+            userShift.currentCash = 0;
+            userShift.modalAwal = 0;
+            userShift.transactionCount = 0;
+            userShift.totalSales = 0;
+            dataManager.updateUserShift(currentUser.userId, userShift);
+        }
+
+        // Tutup shift di dataManager
+        if (currentUser) {
+            dataManager.closeKasir(currentUser.userId);
+        }
+
+        dataManager.save();
+
+        this.closeModal('resetOptionsModal');
+        app.showToast('✅ Shift ditutup dan laporan disimpan!');
+        
+        // Redirect ke halaman tutup
+        if (typeof app !== 'undefined' && app.showKasirClosedPage) {
+            app.showKasirClosedPage();
+        }
+    },
+
+    resetToZero() {
+        if (!confirm('⚠️ PERINGATAN!\n\nSemua kas akan dihapus dan diatur ke 0.\nTindakan ini tidak dapat dibatalkan.\n\nLanjutkan?')) {
+            return;
+        }
+
+        const confirmation = prompt('Ketik "RESET" untuk konfirmasi:');
+        if (confirmation !== 'RESET') {
+            app.showToast('❌ Reset dibatalkan');
+            return;
+        }
+
+        const currentUser = dataManager.getCurrentUser();
+        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+
+        dataManager.data.settings.currentCash = 0;
+        dataManager.data.settings.modalAwal = 0;
+
+        // ✅ PERUBAHAN: Reset user shift
+        if (userShift) {
+            userShift.currentCash = 0;
+            userShift.modalAwal = 0;
+            userShift.transactionCount = 0;
+            userShift.totalSales = 0;
+            dataManager.updateUserShift(currentUser.userId, userShift);
+        }
+
+        dataManager.save();
+
+        this.closeModal('resetOptionsModal');
+        app.showToast('🗑️ Kas direset ke 0');
+        this.renderHTML();
+        this.renderTransactions();
+        app.updateHeader();
+    },
+
+    setNewModal() {
+        this.closeModal('resetOptionsModal');
+        this.openModalAwal();
+    },
+
+    carryOverCash() {
+        if (!confirm('Carry over akan mempertahankan kas saat ini untuk shift berikutnya.\n\nLanjutkan?')) {
+            return;
+        }
+
+        const currentUser = dataManager.getCurrentUser();
+        
+        // Simpan history carry over
+        if (!dataManager.data.shiftHistory) {
+            dataManager.data.shiftHistory = [];
+        }
+
+        const carryRecord = {
+            date: new Date().toISOString(),
+            userId: currentUser ? currentUser.userId : null,
+            userName: currentUser ? currentUser.name : 'Unknown',
+            type: 'carry_over',
+            status: 'carried'
+        };
+
+        dataManager.data.shiftHistory.push(carryRecord);
+        dataManager.save();
+
+        this.closeModal('resetOptionsModal');
+        app.showToast('✅ Kas di-carry over ke shift berikutnya');
+    },
+
+    // ✅ PERUBAHAN: Save transaction dengan userId
+    saveTransaction(type, amount, category, note, details = {}) {
+        const currentUser = dataManager.getCurrentUser();
+        
+        const transaction = {
+            id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+            type: type,
+            amount: parseInt(amount) || 0,
+            category: category,
+            note: note,
+            date: new Date().toISOString(),
+            details: details,
+            // ✅ PERUBAHAN: Tambahkan userId
+            userId: currentUser ? currentUser.userId : null
+        };
+
+        dataManager.data.cashTransactions.push(transaction);
+        
+        // Update kas global
+        if (type === 'in' || type === 'modal_in' || type === 'topup') {
+            dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) + parseInt(amount);
+        } else if (type === 'out') {
+            dataManager.data.settings.currentCash = (parseInt(dataManager.data.settings.currentCash) || 0) - parseInt(amount);
+        }
+        
+        // ✅ PERUBAHAN: Update user shift jika ada
+        if (currentUser) {
+            const userShift = dataManager.getUserShift(currentUser.userId);
+            if (userShift) {
+                if (type === 'in' || type === 'modal_in' || type === 'topup') {
+                    userShift.currentCash = (userShift.currentCash || 0) + parseInt(amount);
+                } else if (type === 'out') {
+                    userShift.currentCash = (userShift.currentCash || 0) - parseInt(amount);
+                }
+                dataManager.updateUserShift(currentUser.userId, userShift);
+            }
         }
         
         dataManager.save();
-        app.updateHeader();
-        this.closeModal('tarikTunaiModal');
-        this.renderHTML();
+        this.updateStats();
         this.renderTransactions();
-        app.showToast(`${providerIcon} Tarik tunai ${providerLabel} berhasil! Kas -Rp ${utils.formatNumber(total)}, Laba: Rp ${utils.formatNumber(admin)}`);
     },
 
     closeModal(id) {
@@ -1713,104 +1866,5 @@ const cashModule = {
         if (modal) {
             modal.remove();
         }
-    },
-
-    // ========== UTILITIES ==========
-    
-    /**
-     * ✅ PERBAIKAN: Hitung kas aktual yang benar
-     * Termasuk modal, transaksi manual, top up, dan penjualan POS
-     */
-    calculateActualCash() {
-        let cash = 0;
-        
-        // 1. Modal Awal
-        const modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
-        cash += modalAwal;
-        
-        // 2. Transaksi Kas Manual + POS
-        if (dataManager.data.cashTransactions && Array.isArray(dataManager.data.cashTransactions)) {
-            dataManager.data.cashTransactions.forEach(t => {
-                const amount = parseInt(t.amount) || 0;
-                
-                // Skip modal_in karena sudah dihitung di modalAwal
-                if (t.type === 'modal_in') return;
-                
-                // POS Sale masuk sebagai kas
-                if (t.type === 'in' || t.type === 'topup' || t.type === 'pos_sale') {
-                    cash += amount;
-                } else if (t.type === 'out' || t.type === 'pos_void') {
-                    cash -= amount;
-                }
-            });
-        }
-        
-        return cash;
-    },
-
-    /**
-     * ✅ PERBAIKAN: Recalculate yang lebih akurat
-     */
-    recalculateCash() {
-        const currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-        const calculatedCash = this.calculateActualCash();
-        const selisih = currentCash - calculatedCash;
-
-        // Hitung penjualan hari ini
-        const todayCashSales = this.getTodayCashSales();
-        const todayNonCashSales = this.getTodayNonCashSales();
-
-        if (!confirm(`🔄 Recalculate Kas?
-
-Kas Tercatat: Rp ${utils.formatNumber(currentCash)}
-Hitungan Ulang: Rp ${utils.formatNumber(calculatedCash)}
-Selisih: Rp ${utils.formatNumber(selisih)}
-
-Penjualan Cash hari ini: Rp ${utils.formatNumber(todayCashSales)}
-Penjualan Non-Cash hari ini: Rp ${utils.formatNumber(todayNonCashSales)}
-
-Lanjutkan sinkronisasi?`)) {
-            return;
-        }
-
-        // Sinkronkan currentCash dengan calculatedCash
-        dataManager.data.settings.currentCash = calculatedCash;
-        dataManager.save();
-        
-        app.updateHeader();
-        this.renderHTML();
-        this.renderTransactions();
-        
-        app.showToast(`✅ Kas tersinkron: Rp ${utils.formatNumber(calculatedCash)}`);
-    },
-
-    /**
-     * ✅ HELPER: Hitung penjualan cash hari ini
-     */
-    getTodayCashSales() {
-        const today = new Date().toDateString();
-        return (dataManager.data.transactions || [])
-            .filter(t => {
-                if (t.status === 'deleted' || t.status === 'voided') return false;
-                if (t.paymentMethod !== 'cash') return false;
-                const tDate = new Date(t.date).toDateString();
-                return tDate === today;
-            })
-            .reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
-    },
-
-    /**
-     * ✅ HELPER: Hitung penjualan non-cash hari ini
-     */
-    getTodayNonCashSales() {
-        const today = new Date().toDateString();
-        return (dataManager.data.transactions || [])
-            .filter(t => {
-                if (t.status === 'deleted' || t.status === 'voided') return false;
-                if (t.paymentMethod === 'cash') return false;
-                const tDate = new Date(t.date).toDateString();
-                return tDate === today;
-            })
-            .reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
     }
 };
