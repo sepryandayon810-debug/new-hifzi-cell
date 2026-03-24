@@ -260,7 +260,7 @@ const app = {
         location.reload();
     },
 
-    // ✅ PERUBAHAN: Update header dengan data per user
+    // ✅ PERBAIKAN: Update header dengan TOTAL GLOBAL dari semua transaksi (POS + Cash)
     updateHeader() {
         if (!this.data) return;
         
@@ -270,21 +270,16 @@ const app = {
         if (headerStoreName) headerStoreName.textContent = this.data.settings.storeName || 'HIFZI CELL';
         if (headerStoreAddress) headerStoreAddress.textContent = this.data.settings.address || 'Alamat Belum Diatur';
         
-        // ✅ PERUBAHAN: Ambil data dari shift user ini
-        const userShift = this.currentUser ? dataManager.getUserShift(this.currentUser.userId) : null;
-        const currentCash = userShift ? (userShift.currentCash || 0) : 0;
-        const modalAwal = userShift ? (userShift.modalAwal || 0) : 0;
+        // ✅ PERBAIKAN: Hitung TOTAL GLOBAL kas dari semua shift aktif + settings
+        const globalCash = this.calculateGlobalCash();
+        const currentCash = globalCash.cash;
+        const modalAwal = globalCash.modal;
         
-        // ✅ PERUBAHAN: Hitung laba hanya dari transaksi user ini (atau semua untuk owner)
-        let todayTransactions = [];
-        if (this.currentUser && (this.currentUser.role === 'owner' || this.currentUser.role === 'admin')) {
-            todayTransactions = dataManager.getAllTodayTransactions();
-        } else if (this.currentUser) {
-            todayTransactions = dataManager.getUserTransactions(this.currentUser.userId);
-        }
-        
-        const todayProfit = todayTransactions.reduce((sum, t) => sum + (parseInt(t.profit) || 0), 0);
-        const totalSales = todayTransactions.reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
+        // ✅ PERBAIKAN: Hitung TOTAL GLOBAL laba dari semua transaksi hari ini (POS + Cash)
+        const todayStats = this.calculateTodayGlobalStats();
+        const todayProfit = todayStats.totalProfit;
+        const totalSales = todayStats.totalSales;
+        const transactionCount = todayStats.transactionCount;
         
         // Update DOM
         const currentCashEl = document.getElementById('currentCash');
@@ -305,7 +300,7 @@ const app = {
         updateWithHighlight(currentCashEl, currentCash, 'Rp ');
         updateWithHighlight(modalAwalEl, modalAwal, 'Rp ');
         updateWithHighlight(headerProfitEl, todayProfit, 'Rp ');
-        updateWithHighlight(transCountEl, todayTransactions.length, '');
+        updateWithHighlight(transCountEl, transactionCount, '');
         
         const userInfoHeader = document.getElementById('userInfoHeader');
         const headerUserName = document.getElementById('headerUserName');
@@ -320,6 +315,84 @@ const app = {
         }
 
         this.updateKasirButton();
+    },
+
+    // ✅ FUNGSI BARU: Hitung total kas global dari semua shift + settings
+    calculateGlobalCash() {
+        const activeShifts = dataManager.getActiveShifts();
+        let totalCash = 0;
+        let totalModal = 0;
+        
+        // Jumlahkan dari semua shift aktif
+        activeShifts.forEach(shift => {
+            const shiftCash = dataManager.calculateShiftCash(shift.userId, shift.modalAwal);
+            totalCash += shiftCash;
+            totalModal += parseInt(shift.modalAwal) || 0;
+        });
+        
+        // Tambahkan dari settings (untuk owner/admin yang tidak punya shift terpisah)
+        const settingsModal = parseInt(this.data.settings?.modalAwal) || 0;
+        const settingsCash = parseInt(this.data.settings?.currentCash) || 0;
+        
+        // Cek apakah owner/admin sudah ada di activeShifts
+        const currentUser = dataManager.getCurrentUser();
+        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+            const ownerShift = activeShifts.find(s => s.userId === currentUser.userId);
+            if (!ownerShift) {
+                // Owner/admin belum punya shift, tambahkan dari settings
+                totalModal += settingsModal;
+                totalCash += settingsCash;
+            }
+        }
+        
+        return {
+            cash: totalCash,
+            modal: totalModal
+        };
+    },
+
+    // ✅ FUNGSI BARU: Hitung total statistik global hari ini (POS + Cash)
+    calculateTodayGlobalStats() {
+        const today = new Date().toDateString();
+        
+        // 1. Hitung dari transaksi POS (semua user)
+        const todayPosTrans = this.data.transactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === today && t.status !== 'voided' && t.status !== 'deleted';
+        });
+        
+        const posSales = todayPosTrans.reduce((sum, t) => sum + (parseInt(t.total) || 0), 0);
+        const posProfit = todayPosTrans.reduce((sum, t) => sum + (parseInt(t.profit) || 0), 0);
+        const posCount = todayPosTrans.length;
+        
+        // 2. Hitung dari transaksi Cash (laba dari admin fee top up & tarik tunai)
+        const todayCashTrans = this.data.cashTransactions.filter(t => {
+            const tDate = new Date(t.date).toDateString();
+            return tDate === today;
+        });
+        
+        // Laba dari admin fee top up
+        const topUpProfit = todayCashTrans
+            .filter(t => t.type === 'topup')
+            .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
+        
+        // Laba dari admin fee tarik tunai
+        const tarikTunaiProfit = todayCashTrans
+            .filter(t => t.category === 'tarik_tunai')
+            .reduce((sum, t) => sum + (parseInt(t.details?.adminFee) || 0), 0);
+        
+        const cashProfit = topUpProfit + tarikTunaiProfit;
+        
+        // Total keseluruhan
+        return {
+            totalSales: posSales, // Penjualan dari POS
+            totalProfit: posProfit + cashProfit, // Laba POS + Laba Cash
+            transactionCount: posCount, // Jumlah transaksi POS
+            posProfit: posProfit,
+            cashProfit: cashProfit,
+            topUpProfit: topUpProfit,
+            tarikTunaiProfit: tarikTunaiProfit
+        };
     },
 
     // ✅ PERUBAHAN: Update tombol kasir berdasarkan status user ini
