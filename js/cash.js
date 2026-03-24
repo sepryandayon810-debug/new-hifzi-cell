@@ -207,7 +207,7 @@ const cashModule = {
         return html;
     },
 
-    // ✅ PERUBAHAN: Render HTML dengan user info
+    // ✅ PERUBAHAN: Render HTML dengan user info dan sembunyikan Modal Awal untuk kasir
     renderHTML() {
         const periodLabel = this.getFilterLabel();
         const { startDate, endDate } = this.getDateRange();
@@ -219,11 +219,16 @@ const cashModule = {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
+        // ✅ PERUBAHAN: Cek apakah user adalah kasir (untuk sembunyikan Modal Awal)
+        const isKasir = currentUser && currentUser.role === 'kasir';
+        const isOwner = currentUser && currentUser.role === 'owner';
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        
         // ✅ PERUBAHAN: Tampilkan kas berdasarkan role
         let currentCash = 0;
         let modalAwal = 0;
         
-        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+        if (isOwner || isAdmin) {
             // Owner/Admin lihat total kas global
             currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
             modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
@@ -263,6 +268,24 @@ const cashModule = {
             </div>
         ` : '';
 
+        // ✅ PERUBAHAN: Tombol Modal Awal - sembunyikan untuk kasir
+        const modalAwalButtonHtml = !isKasir ? `
+            <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()"
+                    style="background: #fff8e1; border: 2px solid #ffc107; color: #f57f17; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                <span style="font-size: 28px;">💰</span>
+                <span style="font-size: 14px; font-weight: 600;">Modal Awal</span>
+            </button>
+        ` : '';
+
+        // ✅ BARU: Tombol Atur Modal Kasir untuk Owner
+        const aturModalKasirButtonHtml = isOwner ? `
+            <button class="cash-btn atur-modal-kasir" onclick="cashModule.showAturModalKasir()"
+                    style="background: #e8f5e9; border: 2px solid #4caf50; color: #2e7d32; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
+                <span style="font-size: 28px;">👥</span>
+                <span style="font-size: 14px; font-weight: 600;">Atur Modal Kasir</span>
+            </button>
+        ` : '';
+
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="cashSection">
                 ${userInfoHtml}
@@ -292,7 +315,7 @@ const cashModule = {
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
                         <div>
                             <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">
-                                💰 Kas di Tangan ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '(Global)' : '(Shift Anda)'}
+                                💰 Kas di Tangan ${isOwner || isAdmin ? '(Global)' : '(Shift Anda)'}
                             </div>
                             <div style="font-size: 36px; font-weight: 700; margin-bottom: 8px;">
                                 Rp ${utils.formatNumber(currentCash)}
@@ -354,7 +377,7 @@ const cashModule = {
                 ` : ''}
 
                 <!-- User Aktif Info (Owner/Admin only) -->
-                ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && activeShifts.length > 0 ? `
+                ${(isOwner || isAdmin) && activeShifts.length > 0 ? `
                 <div style="background: #e8f5e9; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; 
                      box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #4caf50;">
                     <div style="font-size: 14px; font-weight: 600; color: #2e7d32; margin-bottom: 8px;">
@@ -364,7 +387,7 @@ const cashModule = {
                         ${activeShifts.map(s => `
                             <div style="background: white; padding: 10px; border-radius: 8px; font-size: 13px;">
                                 <div style="font-weight: 600;">${s.userName}</div>
-                                <div style="color: #666; font-size: 11px;">${s.userRole} • Kas: Rp ${utils.formatNumber(s.currentCash || 0)}</div>
+                                <div style="color: #666; font-size: 11px;">${s.userRole} • Kas: Rp ${utils.formatNumber(s.currentCash || 0)} • Modal: Rp ${utils.formatNumber(s.modalAwal || 0)}</div>
                             </div>
                         `).join('')}
                     </div>
@@ -482,11 +505,9 @@ const cashModule = {
                             <span style="font-size: 14px; font-weight: 600;">Top Up</span>
                         </button>
                         
-                        <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()"
-                                style="background: #fff8e1; border: 2px solid #ffc107; color: #f57f17; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
-                            <span style="font-size: 28px;">💰</span>
-                            <span style="font-size: 14px; font-weight: 600;">Modal Awal</span>
-                        </button>
+                        ${modalAwalButtonHtml}
+                        
+                        ${aturModalKasirButtonHtml}
                         
                         <button class="cash-btn history" onclick="cashModule.openHistory()"
                                 style="background: #eceff1; border: 2px solid #607d8b; color: #37474f; padding: 16px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;">
@@ -532,6 +553,134 @@ const cashModule = {
         if (customRange) {
             customRange.style.display = this.filterState.preset === 'custom' ? 'flex' : 'none';
         }
+    },
+
+    // ✅ BARU: Modal untuk Owner mengatur modal per kasir
+    showAturModalKasir() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser || currentUser.role !== 'owner') {
+            app.showToast('❌ Hanya Owner yang dapat mengatur modal kasir!');
+            return;
+        }
+
+        const users = dataManager.getUsers().filter(u => u.role === 'kasir');
+        const activeShifts = dataManager.getActiveShifts();
+
+        let kasirListHtml = '';
+        
+        if (users.length === 0) {
+            kasirListHtml = `
+                <div style="text-align: center; padding: 30px; color: #999;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">👤</div>
+                    <p>Belum ada user kasir</p>
+                    <p style="font-size: 12px;">Tambahkan user kasir di menu Users</p>
+                </div>
+            `;
+        } else {
+            kasirListHtml = users.map(user => {
+                const shift = activeShifts.find(s => s.userId === user.id);
+                const currentModal = shift ? (shift.modalAwal || 0) : 0;
+                const currentCash = shift ? (shift.currentCash || 0) : 0;
+                const isActive = !!shift;
+                
+                return `
+                    <div style="background: ${isActive ? '#e8f5e9' : '#f5f5f5'}; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid ${isActive ? '#4caf50' : '#e0e0e0'};">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-weight: 600; font-size: 15px; color: #333;">${user.name}</div>
+                                <div style="font-size: 12px; color: #666;">@${user.username}</div>
+                            </div>
+                            <span style="background: ${isActive ? '#4caf50' : '#9e9e9e'}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                                ${isActive ? '🟢 Aktif' : '⚪ Offline'}
+                            </span>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                            <div style="background: white; padding: 10px; border-radius: 8px;">
+                                <div style="font-size: 11px; color: #666;">Modal Saat Ini</div>
+                                <div style="font-size: 16px; font-weight: 700; color: #333;">Rp ${utils.formatNumber(currentModal)}</div>
+                            </div>
+                            <div style="background: white; padding: 10px; border-radius: 8px;">
+                                <div style="font-size: 11px; color: #666;">Kas Saat Ini</div>
+                                <div style="font-size: 16px; font-weight: 700; color: ${currentCash >= 0 ? '#2e7d32' : '#c62828'};">Rp ${utils.formatNumber(currentCash)}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px;">
+                            <input type="number" id="modalInput_${user.id}" placeholder="Modal baru..." 
+                                   style="flex: 1; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+                            <button onclick="cashModule.setModalForKasir('${user.id}')" 
+                                    style="padding: 10px 16px; background: #4caf50; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">
+                                💾 Set
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        const modalHTML = `
+            <div class="modal active" id="aturModalKasirModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
+                <div class="modal-content" style="max-width: 500px; max-height: 85vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <span class="modal-title" style="color: #4caf50;">👥 Atur Modal Per Kasir</span>
+                        <button class="close-btn" onclick="cashModule.closeModal('aturModalKasirModal')">×</button>
+                    </div>
+                    
+                    <div style="background: #e3f2fd; border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 13px; color: #1565c0;">
+                        ℹ️ Atur modal awal untuk setiap kasir. Modal akan diterapkan saat kasir membuka shift.
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        ${kasirListHtml}
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="cashModule.closeModal('aturModalKasirModal')">Tutup</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    // ✅ BARU: Set modal untuk kasir tertentu
+    setModalForKasir(userId) {
+        const input = document.getElementById(`modalInput_${userId}`);
+        const newModal = parseInt(input?.value) || 0;
+        
+        if (newModal < 0) {
+            app.showToast('❌ Modal tidak boleh negatif!');
+            return;
+        }
+
+        // Update shift jika kasir sedang aktif
+        const shift = dataManager.getUserShift(userId);
+        if (shift) {
+            shift.modalAwal = newModal;
+            // Jika kasir baru buka, set currentCash juga ke modal
+            if (shift.currentCash === 0 || shift.currentCash === shift.modalAwal) {
+                shift.currentCash = newModal;
+            }
+            dataManager.updateUserShift(userId, shift);
+        } else {
+            // Simpan ke pending modal untuk kasir (akan diterapkan saat buka kasir)
+            if (!dataManager.data.pendingModals) {
+                dataManager.data.pendingModals = {};
+            }
+            dataManager.data.pendingModals[userId] = newModal;
+            dataManager.save();
+        }
+
+        const users = dataManager.getUsers();
+        const user = users.find(u => u.id === userId);
+        
+        app.showToast(`✅ Modal untuk ${user?.name || 'Kasir'} diatur: Rp ${utils.formatNumber(newModal)}`);
+        
+        // Refresh modal
+        this.closeModal('aturModalKasirModal');
+        this.showAturModalKasir();
     },
 
     getDateRange() {
@@ -665,13 +814,15 @@ const cashModule = {
     // ✅ PERUBAHAN: Calculate Period Stats dengan filter user
     calculatePeriodStats(startDate, endDate) {
         const currentUser = dataManager.getCurrentUser();
+        const isOwner = currentUser && currentUser.role === 'owner';
+        const isAdmin = currentUser && currentUser.role === 'admin';
         
         let transactions = dataManager.data.cashTransactions.filter(t => {
             const tDate = new Date(t.date);
             const inRange = tDate >= startDate && tDate <= endDate;
             
             // ✅ PERUBAHAN: Jika bukan owner/admin, hanya lihat transaksi sendiri
-            if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+            if (!isOwner && !isAdmin) {
                 return inRange && (t.userId === currentUser.userId || !t.userId);
             }
             
@@ -740,6 +891,8 @@ const cashModule = {
         
         const { startDate, endDate } = this.getDateRange();
         const currentUser = dataManager.getCurrentUser();
+        const isOwner = currentUser && currentUser.role === 'owner';
+        const isAdmin = currentUser && currentUser.role === 'admin';
         
         // ✅ PERUBAHAN: Filter berdasarkan user role
         let transactions = dataManager.data.cashTransactions.filter(t => {
@@ -747,7 +900,7 @@ const cashModule = {
             const inRange = tDate >= startDate && tDate <= endDate;
             
             // Jika bukan owner/admin, hanya lihat transaksi sendiri
-            if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+            if (!isOwner && !isAdmin) {
                 return inRange && (t.userId === currentUser.userId || !t.userId);
             }
             
@@ -789,7 +942,7 @@ const cashModule = {
                     <div>
                         <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px;">
                             Ringkasan ${periodLabel}
-                            ${currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') ? '' : '<span style="font-size: 12px; color: #999;">(Shift Anda)</span>'}
+                            ${isOwner || isAdmin ? '' : '<span style="font-size: 12px; color: #999;">(Shift Anda)</span>'}
                         </div>
                         <div style="font-size: 13px; color: #666;">
                             ${transactions.length} transaksi kas
@@ -867,7 +1020,7 @@ const cashModule = {
                 let userBadge = '';
                 
                 // ✅ PERUBAHAN: Tampilkan info user untuk owner/admin
-                if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && t.userId) {
+                if ((isOwner || isAdmin) && t.userId) {
                     const user = dataManager.getUsers().find(u => u.id === t.userId);
                     if (user) {
                         userBadge = `<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-left: 8px;">👤 ${user.name}</span>`;
@@ -1016,11 +1169,13 @@ const cashModule = {
 
     calculateActualCash() {
         const currentUser = dataManager.getCurrentUser();
+        const isOwner = currentUser && currentUser.role === 'owner';
+        const isAdmin = currentUser && currentUser.role === 'admin';
         
         let transactions = dataManager.data.cashTransactions;
         
         // ✅ PERUBAHAN: Filter untuk non-owner/admin
-        if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+        if (!isOwner && !isAdmin) {
             transactions = transactions.filter(t => t.userId === currentUser.userId || !t.userId);
         }
         
@@ -1038,6 +1193,8 @@ const cashModule = {
     getTodayCashSales() {
         const today = new Date().toDateString();
         const currentUser = dataManager.getCurrentUser();
+        const isOwner = currentUser && currentUser.role === 'owner';
+        const isAdmin = currentUser && currentUser.role === 'admin';
         
         return dataManager.data.transactions
             .filter(t => {
@@ -1045,7 +1202,7 @@ const cashModule = {
                 const isToday = tDate === today;
                 const isCash = t.paymentMethod === 'cash';
                 
-                if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+                if (!isOwner && !isAdmin) {
                     return isToday && isCash && t.userId === currentUser.userId;
                 }
                 
@@ -1057,6 +1214,8 @@ const cashModule = {
     getTodayNonCashSales() {
         const today = new Date().toDateString();
         const currentUser = dataManager.getCurrentUser();
+        const isOwner = currentUser && currentUser.role === 'owner';
+        const isAdmin = currentUser && currentUser.role === 'admin';
         
         return dataManager.data.transactions
             .filter(t => {
@@ -1064,7 +1223,7 @@ const cashModule = {
                 const isToday = tDate === today;
                 const isNonCash = t.paymentMethod !== 'cash';
                 
-                if (currentUser && currentUser.role !== 'owner' && currentUser.role !== 'admin') {
+                if (!isOwner && !isAdmin) {
                     return isToday && isNonCash && t.userId === currentUser.userId;
                 }
                 
