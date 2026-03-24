@@ -207,6 +207,28 @@ const cashModule = {
         return html;
     },
 
+    // ✅ PERBAIKAN: Hitung total kas global dari semua shift aktif
+    calculateGlobalCash() {
+        const activeShifts = dataManager.getActiveShifts();
+        let totalCash = 0;
+        let totalModal = 0;
+        
+        activeShifts.forEach(shift => {
+            totalCash += parseInt(shift.currentCash) || 0;
+            totalModal += parseInt(shift.modalAwal) || 0;
+        });
+        
+        // Tambahkan kas global settings (untuk owner/admin transactions)
+        const settingsCash = parseInt(dataManager.data.settings?.currentCash) || 0;
+        const settingsModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+        
+        return {
+            cash: totalCash + settingsCash,
+            modal: totalModal + settingsModal,
+            shifts: activeShifts
+        };
+    },
+
     renderHTML() {
         const periodLabel = this.getFilterLabel();
         const { startDate, endDate } = this.getDateRange();
@@ -221,13 +243,18 @@ const cashModule = {
         const isOwner = currentUser && currentUser.role === 'owner';
         const isAdmin = currentUser && currentUser.role === 'admin';
         
+        // ✅ PERBAIKAN: Hitung kas global dari semua shift
+        const globalCash = this.calculateGlobalCash();
+        
         let currentCash = 0;
         let modalAwal = 0;
         
         if (isOwner || isAdmin) {
-            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+            // Owner/Admin lihat total kas global
+            currentCash = globalCash.cash;
+            modalAwal = globalCash.modal;
         } else if (userShift) {
+            // Kasir lihat kas shift sendiri
             currentCash = userShift.currentCash || 0;
             modalAwal = userShift.modalAwal || 0;
         }
@@ -294,13 +321,13 @@ const cashModule = {
                 <div class="cash-info-card-icon blue">🔄</div>
                 <div class="cash-info-card-content">
                     <div class="cash-info-card-title">Reset Kas & Modal</div>
-                    <div class="cash-info-card-text">Kas: Rp ${utils.formatNumber(currentCash)} | Modal: Rp ${utils.formatNumber(modalAwal)}</div>
+                    <div class="cash-info-card-text">Kas Global: Rp ${utils.formatNumber(currentCash)} | Modal Global: Rp ${utils.formatNumber(modalAwal)}</div>
                 </div>
                 <button class="cash-info-card-action" style="background: var(--cash-info); color: white;" onclick="cashModule.showResetOptions()">⚙️ Pengaturan Shift</button>
             </div>
         ` : '';
 
-        // User aktif dengan detail modal - hanya untuk Owner/Admin
+        // ✅ PERBAIKAN: Tampilkan semua user dengan shift aktif beserta modal mereka
         const userAktifHtml = (isOwner || isAdmin) && activeShifts.length > 0 ? `
             <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: var(--cash-radius); padding: 20px; margin-bottom: 20px; box-shadow: var(--cash-shadow);">
                 <div style="font-size: 16px; font-weight: 700; color: #2e7d32; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
@@ -529,6 +556,7 @@ const cashModule = {
         }
     },
 
+    // ✅ PERBAIKAN: Modal kasir dengan satu tombol save untuk semua
     showAturModalKasir() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser || currentUser.role !== 'owner') {
@@ -539,64 +567,57 @@ const cashModule = {
         const users = dataManager.getUsers().filter(u => u.role === 'kasir');
         const activeShifts = dataManager.getActiveShifts();
 
-        let kasirListHtml = '';
-        
         if (users.length === 0) {
-            kasirListHtml = `
-                <div style="text-align: center; padding: 40px; color: var(--cash-text-secondary);">
-                    <div style="font-size: 56px; margin-bottom: 16px;">👤</div>
-                    <p style="font-size: 16px; margin-bottom: 8px;">Belum ada user kasir</p>
-                    <p style="font-size: 13px;">Tambahkan user kasir di menu Users</p>
-                </div>
-            `;
-        } else {
-            kasirListHtml = users.map(user => {
-                const shift = activeShifts.find(s => s.userId === user.id);
-                const currentModal = shift ? (shift.modalAwal || 0) : 0;
-                const currentCash = shift ? (shift.currentCash || 0) : 0;
-                const isActive = !!shift;
-                
-                return `
-                    <div style="background: ${isActive ? '#f0fdf4' : '#f8fafc'}; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 2px solid ${isActive ? '#86efac' : '#e2e8f0'};">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <div>
-                                <div style="font-weight: 700; font-size: 16px; color: var(--cash-text);">${user.name}</div>
-                                <div style="font-size: 13px; color: var(--cash-text-secondary);">@${user.username}</div>
-                            </div>
-                            <span style="background: ${isActive ? '#22c55e' : '#94a3b8'}; color: white; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;">
-                                ${isActive ? '🟢 Aktif' : '⚪ Offline'}
-                            </span>
+            app.showToast('Belum ada user kasir!');
+            return;
+        }
+
+        let kasirListHtml = users.map(user => {
+            const shift = activeShifts.find(s => s.userId === user.id);
+            const currentModal = shift ? (shift.modalAwal || 0) : (dataManager.data.pendingModals?.[user.id] || 0);
+            const currentCash = shift ? (shift.currentCash || 0) : 0;
+            const isActive = !!shift;
+            
+            return `
+                <div class="modal-kasir-card ${isActive ? 'active' : ''}" data-user-id="${user.id}">
+                    <div class="modal-kasir-header">
+                        <div>
+                            <div class="modal-kasir-name">${user.name}</div>
+                            <div class="modal-kasir-username">@${user.username}</div>
                         </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-                            <div style="background: white; padding: 14px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                <div style="font-size: 12px; color: var(--cash-text-secondary); margin-bottom: 6px; font-weight: 600;">💰 Modal Saat Ini</div>
-                                <div style="font-size: 18px; font-weight: 800; color: var(--cash-text);">Rp ${utils.formatNumber(currentModal)}</div>
-                            </div>
-                            <div style="background: white; padding: 14px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                <div style="font-size: 12px; color: var(--cash-text-secondary); margin-bottom: 6px; font-weight: 600;">💵 Kas Saat Ini</div>
-                                <div style="font-size: 18px; font-weight: 800; color: ${currentCash >= 0 ? 'var(--cash-success)' : 'var(--cash-danger)'};">Rp ${utils.formatNumber(currentCash)}</div>
-                            </div>
+                        <span class="modal-kasir-status ${isActive ? 'online' : 'offline'}">
+                            ${isActive ? '🟢 Aktif' : '⚪ Offline'}
+                        </span>
+                    </div>
+                    
+                    <div class="modal-kasir-stats">
+                        <div class="modal-kasir-stat">
+                            <div class="modal-kasir-stat-label">💰 Modal Saat Ini</div>
+                            <div class="modal-kasir-stat-value" id="displayModal_${user.id}">Rp ${utils.formatNumber(currentModal)}</div>
                         </div>
-                        
-                        <div style="display: flex; gap: 10px;">
-                            <input type="number" id="modalInput_${user.id}" placeholder="Masukkan modal baru..." 
-                                   style="flex: 1; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 14px; outline: none; transition: all 0.2s;"
-                                   onfocus="this.style.borderColor='#22c55e'" onblur="this.style.borderColor='#e2e8f0'">
-                            <button onclick="cashModule.setModalForKasir('${user.id}')" 
-                                    style="padding: 12px 20px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 14px; transition: all 0.2s; white-space: nowrap;"
-                                    onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-                                💾 Simpan
-                            </button>
+                        <div class="modal-kasir-stat">
+                            <div class="modal-kasir-stat-label">💵 Kas Saat Ini</div>
+                            <div class="modal-kasir-stat-value" style="color: ${currentCash >= 0 ? 'var(--cash-success)' : 'var(--cash-danger)'};">
+                                Rp ${utils.formatNumber(currentCash)}
+                            </div>
                         </div>
                     </div>
-                `;
-            }).join('');
-        }
+                    
+                    <div class="modal-kasir-input-group">
+                        <input type="number" 
+                               id="modalInput_${user.id}" 
+                               class="modal-kasir-input" 
+                               placeholder="Masukkan modal baru..." 
+                               value="${currentModal > 0 ? currentModal : ''}"
+                               onchange="cashModule.updatePendingModal('${user.id}')">
+                    </div>
+                </div>
+            `;
+        }).join('');
 
         const modalHTML = `
             <div class="modal active" id="aturModalKasirModal" style="display: flex; z-index: 2000; align-items: flex-start; padding-top: 50px;">
-                <div class="modal-content" style="max-width: 520px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
+                <div class="modal-content" style="max-width: 700px; max-height: 85vh; overflow-y: auto; border-radius: 20px; padding: 0;">
                     <div class="modal-header" style="padding: 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);">
                         <span class="modal-title" style="color: #15803d; font-size: 18px; font-weight: 700;">👥 Atur Modal Per Kasir</span>
                         <button class="close-btn" onclick="cashModule.closeModal('aturModalKasirModal')" style="color: #15803d; font-size: 28px;">×</button>
@@ -605,12 +626,16 @@ const cashModule = {
                     <div style="padding: 24px;">
                         <div style="background: #dbeafe; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #1e40af; display: flex; align-items: center; gap: 12px;">
                             <span style="font-size: 20px;">ℹ️</span>
-                            <span>Atur modal awal untuk setiap kasir. Modal akan diterapkan saat kasir membuka shift.</span>
+                            <span>Masukkan modal untuk setiap kasir, kemudian klik <strong>"Simpan Semua Modal"</strong> di bawah. Modal akan diterapkan saat kasir membuka shift.</span>
                         </div>
 
-                        <div style="margin-bottom: 20px;">
+                        <div class="modal-kasir-grid">
                             ${kasirListHtml}
                         </div>
+
+                        <button class="modal-kasir-save-all" onclick="cashModule.saveAllModalKasir()">
+                            💾 Simpan Semua Modal
+                        </button>
                     </div>
 
                     <div class="modal-footer" style="padding: 20px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc;">
@@ -623,45 +648,70 @@ const cashModule = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    setModalForKasir(userId) {
+    // ✅ PERBAIKAN: Update pending modal saat input berubah (tanpa save)
+    updatePendingModal(userId) {
         const input = document.getElementById(`modalInput_${userId}`);
         const newModal = parseInt(input?.value) || 0;
         
-        if (newModal < 0) {
-            app.showToast('❌ Modal tidak boleh negatif!');
-            return;
+        // Update tampilan saja, belum save ke database
+        const displayEl = document.getElementById(`displayModal_${userId}`);
+        if (displayEl) {
+            displayEl.textContent = `Rp ${utils.formatNumber(newModal)}`;
         }
-
-        const shift = dataManager.getUserShift(userId);
-        if (shift) {
-            // Jika kasir sedang aktif, update langsung
-            const oldModal = shift.modalAwal || 0;
-            shift.modalAwal = newModal;
-            
-            // Jika kasir baru buka (currentCash sama dengan modal lama), update currentCash juga
-            if (shift.currentCash === oldModal) {
-                shift.currentCash = newModal;
-            }
-            
-            dataManager.updateUserShift(userId, shift);
-        } else {
-            // Simpan ke pending modal untuk kasir yang offline
-            if (!dataManager.data.pendingModals) {
-                dataManager.data.pendingModals = {};
-            }
-            dataManager.data.pendingModals[userId] = newModal;
-            dataManager.save();
-        }
-
-        const users = dataManager.getUsers();
-        const user = users.find(u => u.id === userId);
-        
-        app.showToast(`✅ Modal untuk ${user?.name || 'Kasir'} diatur: Rp ${utils.formatNumber(newModal)}`);
-        
-        // Refresh modal
-        this.closeModal('aturModalKasirModal');
-        this.showAturModalKasir();
     },
+
+    // ✅ PERBAIKAN: Save semua modal sekaligus
+    saveAllModalKasir() {
+        const users = dataManager.getUsers().filter(u => u.role === 'kasir');
+        const activeShifts = dataManager.getActiveShifts();
+        let savedCount = 0;
+        let updatedCount = 0;
+
+        // Inisialisasi pendingModals jika belum ada
+        if (!dataManager.data.pendingModals) {
+            dataManager.data.pendingModals = {};
+        }
+
+        users.forEach(user => {
+            const input = document.getElementById(`modalInput_${user.id}`);
+            const newModal = parseInt(input?.value) || 0;
+            
+            if (newModal < 0) return;
+
+            const shift = activeShifts.find(s => s.userId === user.id);
+            
+            if (shift) {
+                // Kasir sedang aktif - update langsung
+                const oldModal = shift.modalAwal || 0;
+                shift.modalAwal = newModal;
+                
+                // Jika kasir baru buka (currentCash sama dengan modal lama), update currentCash juga
+                if (shift.currentCash === oldModal || shift.currentCash === 0) {
+                    shift.currentCash = newModal;
+                }
+                
+                dataManager.updateUserShift(user.id, shift);
+                updatedCount++;
+            } else {
+                // Kasir offline - simpan ke pending
+                dataManager.data.pendingModals[user.id] = newModal;
+                savedCount++;
+            }
+        });
+
+        dataManager.save();
+
+        if (savedCount > 0 || updatedCount > 0) {
+            app.showToast(`✅ Berhasil! ${updatedCount} kasir aktif diupdate, ${savedCount} disimpan untuk shift berikutnya.`);
+            this.closeModal('aturModalKasirModal');
+            this.renderHTML();
+            this.renderTransactions();
+        } else {
+            app.showToast('⚠️ Tidak ada perubahan yang disimpan.');
+        }
+    },
+
+    // ... (fungsi lainnya tetap sama seperti sebelumnya)
 
     getDateRange() {
         const now = new Date();
@@ -1129,8 +1179,10 @@ const cashModule = {
         let modalAwal = 0;
         
         if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+            // ✅ PERBAIKAN: Gunakan calculateGlobalCash untuk owner/admin
+            const globalCash = this.calculateGlobalCash();
+            currentCash = globalCash.cash;
+            modalAwal = globalCash.modal;
         } else if (userShift) {
             currentCash = userShift.currentCash || 0;
             modalAwal = userShift.modalAwal || 0;
@@ -1760,12 +1812,14 @@ const cashModule = {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
         
+        // ✅ PERBAIKAN: Gunakan calculateGlobalCash untuk owner/admin
         let currentCash = 0;
         let modalAwal = 0;
         
         if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+            const globalCash = this.calculateGlobalCash();
+            currentCash = globalCash.cash;
+            modalAwal = globalCash.modal;
         } else if (userShift) {
             currentCash = userShift.currentCash || 0;
             modalAwal = userShift.modalAwal || 0;
@@ -1859,8 +1913,9 @@ const cashModule = {
         let modalAwal = 0;
         
         if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            currentCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-            modalAwal = parseInt(dataManager.data.settings?.modalAwal) || 0;
+            const globalCash = this.calculateGlobalCash();
+            currentCash = globalCash.cash;
+            modalAwal = globalCash.modal;
         } else if (userShift) {
             currentCash = userShift.currentCash || 0;
             modalAwal = userShift.modalAwal || 0;
