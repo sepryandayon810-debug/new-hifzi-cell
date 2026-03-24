@@ -207,30 +207,20 @@ const cashModule = {
         return html;
     },
 
-    // ✅ PERBAIKAN: Hitung total kas global dari semua shift aktif + modal owner
+    // ✅ PERBAIKAN: Hitung total kas global dari SEMUA shift aktif (kasir + owner)
+    // Admin tidak memiliki modal/kas sendiri
     calculateGlobalCash() {
         const activeShifts = dataManager.getActiveShifts();
         let totalCash = 0;
         let totalModal = 0;
         
-        // Jumlahkan dari semua shift aktif kasir
+        // Jumlahkan dari SEMUA shift aktif (kasir maupun owner)
         activeShifts.forEach(shift => {
             // ✅ Gunakan calculateShiftCash untuk menghitung cash real-time
             const shiftCash = dataManager.calculateShiftCash(shift.userId, shift.modalAwal);
             totalCash += shiftCash;
             totalModal += parseInt(shift.modalAwal) || 0;
         });
-        
-        // Tambahkan modal dari settings (modal owner/admin)
-        const settingsModal = parseInt(dataManager.data.settings?.modalAwal) || 0;
-        const settingsCash = parseInt(dataManager.data.settings?.currentCash) || 0;
-        
-        // Jika owner/admin yang login, hitung modal mereka juga
-        const currentUser = dataManager.getCurrentUser();
-        if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
-            totalModal += settingsModal;
-            totalCash += settingsCash;
-        }
         
         return {
             cash: totalCash,
@@ -259,8 +249,12 @@ const cashModule = {
         let currentCash = 0;
         let modalAwal = 0;
         
-        if (isOwner || isAdmin) {
-            // Owner/Admin lihat total kas global
+        if (isOwner) {
+            // ✅ Owner lihat total kas gabungan dari semua kasir
+            currentCash = globalCash.cash;
+            modalAwal = globalCash.modal;
+        } else if (isAdmin) {
+            // ✅ Admin tidak punya kas/modal sendiri, lihat global juga atau 0
             currentCash = globalCash.cash;
             modalAwal = globalCash.modal;
         } else if (userShift) {
@@ -291,7 +285,7 @@ const cashModule = {
                     <div class="cash-info-card-text">
                         ${userShift 
                             ? `Shift aktif sejak ${new Date(userShift.openTime).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}` 
-                            : 'Anda belum membuka kasir'}
+                            : (isOwner ? 'Melihat total kas gabungan semua shift' : 'Anda belum membuka kasir')}
                     </div>
                 </div>
             </div>
@@ -309,8 +303,8 @@ const cashModule = {
             </div>
         ` : '';
 
-        // Tombol Modal Awal - sembunyikan untuk kasir
-        const modalAwalButtonHtml = !isKasir ? `
+        // Tombol Modal Awal - sembunyikan untuk kasir dan admin
+        const modalAwalButtonHtml = (!isKasir && !isAdmin) ? `
             <button class="cash-btn modal-awal" onclick="cashModule.openModalAwal()">
                 <span class="cash-btn-icon">💰</span>
                 <span class="cash-btn-text">Modal Awal</span>
@@ -325,8 +319,8 @@ const cashModule = {
             </button>
         ` : '';
 
-        // Pengaturan Shift - hanya untuk Owner/Admin
-        const pengaturanShiftHtml = (isOwner || isAdmin) ? `
+        // Pengaturan Shift - hanya untuk Owner
+        const pengaturanShiftHtml = isOwner ? `
             <div class="cash-info-card" style="border-left: 4px solid var(--cash-info);">
                 <div class="cash-info-card-icon blue">🔄</div>
                 <div class="cash-info-card-content">
@@ -338,6 +332,7 @@ const cashModule = {
         ` : '';
 
         // ✅ PERBAIKAN: Tampilkan semua user dengan shift aktif beserta modal mereka
+        // Filter hanya kasir dan owner (admin tidak punya modal)
         const userAktifHtml = (isOwner || isAdmin) && activeShifts.length > 0 ? `
             <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: var(--cash-radius); padding: 20px; margin-bottom: 20px; box-shadow: var(--cash-shadow);">
                 <div style="font-size: 16px; font-weight: 700; color: #2e7d32; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
@@ -346,6 +341,8 @@ const cashModule = {
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
                     ${activeShifts.map(s => {
                         const shiftCash = dataManager.calculateShiftCash(s.userId, s.modalAwal);
+                        // Admin tidak ditampilkan karena tidak punya modal
+                        if (s.userRole === 'admin') return '';
                         return `
                         <div class="cash-user-shift-card">
                             <div class="cash-user-shift-header">
@@ -371,8 +368,8 @@ const cashModule = {
             </div>
         ` : '';
 
-        // Warning data tidak konsisten - hanya untuk Owner/Admin
-        const repairHtml = (needsRepair && !isKasir) ? `
+        // Warning data tidak konsisten - hanya untuk Owner
+        const repairHtml = (needsRepair && isOwner) ? `
             <div class="cash-info-card" style="border-left: 4px solid var(--cash-warning);">
                 <div class="cash-info-card-icon orange">⚠️</div>
                 <div class="cash-info-card-content">
@@ -392,7 +389,7 @@ const cashModule = {
                 <div class="cash-hero">
                     <div class="cash-hero-header">
                         <div>
-                            <div class="cash-hero-title">💰 Kas di Tangan ${isOwner || isAdmin ? '(Global)' : '(Shift Anda)'}</div>
+                            <div class="cash-hero-title">💰 Kas di Tangan ${isOwner ? '(Global - Semua Shift)' : isAdmin ? '(Global View)' : '(Shift Anda)'}</div>
                             <div class="cash-hero-amount">Rp ${utils.formatNumber(currentCash)}</div>
                             <div style="margin-top: 12px; opacity: 0.9; font-size: 14px;">
                                 📦 Modal: Rp ${utils.formatNumber(modalAwal)} | 
@@ -536,7 +533,7 @@ const cashModule = {
                             <span style="font-size: 18px; font-weight: 700; color: var(--cash-text);">Riwayat Transaksi Kas</span>
                             <span id="historyToggleIcon" class="cash-history-toggle ${this.filterState.showHistory ? 'open' : ''}">🔽</span>
                         </div>
-                        ${!isKasir ? `
+                        ${isOwner ? `
                         <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); cashModule.recalculateCash()" 
                                 style="padding: 8px 16px; background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--cash-text);">
                             🔄 Recalculate
@@ -576,6 +573,7 @@ const cashModule = {
             return;
         }
 
+        // ✅ Hanya ambil user kasir (bukan admin)
         const users = dataManager.getUsers().filter(u => u.role === 'kasir');
         const activeShifts = dataManager.getActiveShifts();
 
