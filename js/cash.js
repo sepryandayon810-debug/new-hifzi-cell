@@ -1385,6 +1385,7 @@ const cashModule = {
         app.showToast(`✅ Kas ${type === 'in' ? 'masuk' : 'keluar'} tersimpan!`);
     },
 
+    // ✅ PERUBAHAN: Hapus field Nomor HP dari Top Up
     openTopUp() {
         const currentUser = dataManager.getCurrentUser();
         const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
@@ -1421,12 +1422,6 @@ const cashModule = {
                                 ✏️ Kelola Provider
                             </button>
                             ` : ''}
-                        </div>
-
-                        <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Nomor HP / ID Pelanggan *</label>
-                            <input type="text" id="topUpPhone" placeholder="08xxxxxxxxx" 
-                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none;">
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
@@ -1525,9 +1520,9 @@ const cashModule = {
         document.getElementById('topUpLaba').textContent = 'Rp ' + utils.formatNumber(laba);
     },
 
+    // ✅ PERUBAHAN: Hapus validasi untuk field Nomor HP yang sudah dihapus
     saveTopUp() {
         const provider = document.getElementById('topUpProvider')?.value;
-        const phone = document.getElementById('topUpPhone')?.value?.trim();
         const nominalSelect = document.getElementById('topUpNominal').value;
         const customNominal = parseInt(document.getElementById('topUpCustomNominal')?.value) || 0;
         const adminFee = parseInt(document.getElementById('topUpAdminFee')?.value) || 0;
@@ -1539,10 +1534,6 @@ const cashModule = {
             app.showToast('❌ Pilih provider!');
             return;
         }
-        if (!phone) {
-            app.showToast('❌ Masukkan nomor HP!');
-            return;
-        }
         if (nominal <= 0) {
             app.showToast('❌ Nominal tidak valid!');
             return;
@@ -1550,9 +1541,8 @@ const cashModule = {
 
         const providerLabel = this.getProviderLabel(provider);
 
-        this.saveTransaction('topup', total, 'topup_' + provider, `Top Up ${providerLabel} - ${phone}`, {
+        this.saveTransaction('topup', total, 'topup_' + provider, `Top Up ${providerLabel}`, {
             provider: provider,
-            phone: phone,
             nominal: nominal,
             adminFee: adminFee,
             total: total
