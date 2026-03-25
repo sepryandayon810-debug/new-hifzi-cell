@@ -644,7 +644,8 @@ const dataManager = {
                 const shift = this.data.kasir.activeShifts[existingShiftIndex];
                 
                 // ✅ Hitung ulang currentCash dari modal + transaksi hari ini
-                const recalculatedCash = this.calculateShiftCash(userId, shift.modalAwal);
+                const totalModal = (shift.modalAwal || 0) + (shift.extraModal || 0);
+                const recalculatedCash = this.calculateShiftCash(userId, totalModal);
                 
                 // Update currentCash jika berbeda (untuk sinkronisasi)
                 if (recalculatedCash !== shift.currentCash) {
@@ -656,7 +657,7 @@ const dataManager = {
                     success: true, 
                     reset: false, 
                     isContinue: true,
-                    message: `Shift dilanjutkan. Modal: Rp ${(shift.modalAwal || 0).toLocaleString('id-ID')}` 
+                    message: `Shift dilanjutkan. Modal: Rp ${(totalModal).toLocaleString('id-ID')}` 
                 };
             }
         }
@@ -673,7 +674,8 @@ const dataManager = {
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 
                 // ✅ Hitung ulang currentCash dari transaksi
-                const recalculatedCash = this.calculateShiftCash(userId, existingShift.modalAwal);
+                const totalModal = (existingShift.modalAwal || 0) + (existingShift.extraModal || 0);
+                const recalculatedCash = this.calculateShiftCash(userId, totalModal);
                 this.data.kasir.activeShifts[existingShiftIndex].currentCash = recalculatedCash;
                 
                 this.save();
@@ -681,7 +683,7 @@ const dataManager = {
                     success: true, 
                     reset: false, 
                     isContinue: true,
-                    message: `Shift dilanjutkan. Modal: Rp ${(existingShift.modalAwal || 0).toLocaleString('id-ID')}` 
+                    message: `Shift dilanjutkan. Modal: Rp ${(totalModal).toLocaleString('id-ID')}` 
                 };
             }
             
@@ -693,30 +695,43 @@ const dataManager = {
             this.data.kasir.activeShifts.splice(existingShiftIndex, 1);
         }
         
-        // ✅ PERBAIKAN: Cek pending modal dari Owner untuk user ini
+        // ✅ PERBAIKAN UTAMA: Cek pending modal dari Owner untuk user ini
+        // Inisialisasi default modal
         let modalAwal = 0;
         let extraModal = 0;
         
-        // Cek pending modal utama dari Owner
+        // ✅ CEK PENDING MODAL UTAMA DARI OWNER - PERBAIKAN UTAMA
+        console.log(`[openKasir] Checking pendingModals for user ${userId}:`, this.data.pendingModals);
+        
         if (this.data.pendingModals && this.data.pendingModals[userId]) {
-            modalAwal = this.data.pendingModals[userId];
-            delete this.data.pendingModals[userId]; // Hapus setelah diterapkan
-            console.log(`[DataManager] Applied pending modal for ${user.name}: Rp ${modalAwal}`);
+            modalAwal = parseInt(this.data.pendingModals[userId]) || 0;
+            console.log(`[openKasir] ✅ Found pending modal for ${user.name}: Rp ${modalAwal}`);
+            
+            // ✅ HAPUS dari pending setelah diambil - PENTING!
+            delete this.data.pendingModals[userId];
+            console.log(`[openKasir] ✅ Deleted pending modal for ${userId}`);
+        } else {
+            console.log(`[openKasir] No pending modal found for ${userId}`);
         }
         
-        // Cek pending extra modal dari Admin
+        // ✅ CEK PENDING EXTRA MODAL DARI ADMIN
         if (this.data.pendingExtraModals && this.data.pendingExtraModals[userId]) {
-            extraModal = this.data.pendingExtraModals[userId];
-            delete this.data.pendingExtraModals[userId]; // Hapus setelah diterapkan
-            console.log(`[DataManager] Applied pending extra modal for ${user.name}: Rp ${extraModal}`);
+            extraModal = parseInt(this.data.pendingExtraModals[userId]) || 0;
+            console.log(`[openKasir] ✅ Found pending extra modal for ${user.name}: Rp ${extraModal}`);
+            
+            // Hapus dari pending setelah diambil
+            delete this.data.pendingExtraModals[userId];
         }
         
-        // Jika tidak ada pending modal, gunakan default berdasarkan role
-        if (modalAwal === 0) {
-            if (user.role === 'owner' || user.role === 'admin') {
-                // Owner/Admin: gunakan modal dari settings (jika ada)
+        // ✅ JIKA TIDAK ADA PENDING MODAL, gunakan default berdasarkan role
+        // Tapi untuk admin dan kasir, defaultnya 0 (harus diatur Owner dulu)
+        if (modalAwal === 0 && extraModal === 0) {
+            if (user.role === 'owner') {
+                // Owner bisa gunakan modal dari settings sebagai default
                 modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
+                console.log(`[openKasir] Owner using default modal: Rp ${modalAwal}`);
             }
+            // Admin dan Kasir: tetap 0, harus diatur Owner dulu
         }
         
         const totalModal = modalAwal + extraModal;
@@ -747,7 +762,10 @@ const dataManager = {
             this.data.settings.currentCash = initialCash;
         }
         
+        // ✅ SAVE PERUBAHAN (termasuk penghapusan pendingModals)
         this.save();
+        
+        console.log(`[openKasir] ✅ Shift created for ${user.name} with modal: Rp ${totalModal}, cash: Rp ${initialCash}`);
         
         return { 
             success: true, 
@@ -755,7 +773,7 @@ const dataManager = {
             isContinue: false,
             message: totalModal > 0 
                 ? `Kasir dibuka! Modal: Rp ${totalModal.toLocaleString('id-ID')}` 
-                : 'Kasir dibuka! Modal belum diatur.' 
+                : 'Kasir dibuka! Modal belum diatur (hubungi Owner).' 
         };
     },
 
@@ -917,9 +935,9 @@ const dataManager = {
         }
         
         // Jika belum punya shift, simpan ke pending
-        this.data.pendingModals[userId] = modalAmount;
+        this.data.pendingModals[userId] = parseInt(modalAmount) || 0;
         this.save();
-        console.log(`[DataManager] Saved pending modal for ${userId}: Rp ${modalAmount}`);
+        console.log(`[DataManager] Saved pending modal for ${userId}: Rp ${this.data.pendingModals[userId]}`);
         return true;
     },
 
@@ -933,12 +951,12 @@ const dataManager = {
         const existingShift = this.getUserShift(userId);
         if (existingShift) {
             console.log(`[DataManager] User ${userId} has active shift, adding extra modal directly`);
-            const newExtraModal = (existingShift.extraModal || 0) + extraModalAmount;
+            const newExtraModal = (existingShift.extraModal || 0) + parseInt(extraModalAmount);
             return this.updateUserShift(userId, { extraModal: newExtraModal });
         }
         
         // Jika belum punya shift, tambahkan ke pending
-        this.data.pendingExtraModals[userId] = (this.data.pendingExtraModals[userId] || 0) + extraModalAmount;
+        this.data.pendingExtraModals[userId] = (this.data.pendingExtraModals[userId] || 0) + parseInt(extraModalAmount);
         this.save();
         console.log(`[DataManager] Saved pending extra modal for ${userId}: Rp ${this.data.pendingExtraModals[userId]}`);
         return true;
