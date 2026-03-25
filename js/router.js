@@ -1,7 +1,6 @@
 /**
  * Router System - Hifzi Cell POS
- * Menangani navigasi dan kontrol akses antar modul - Multi-User Edition
- * FIXED: Cloud menu rendering, Module initialization timing
+ * FIXED: Cloud menu rendering, Container detection, Module initialization
  */
 
 const router = {
@@ -9,7 +8,6 @@ const router = {
 
     requiresKasirOpen: [],
 
-    // ✅ PERUBAHAN: Tambahkan 'cash' untuk kasir
     menuAccess: {
         'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
         'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
@@ -49,6 +47,38 @@ const router = {
         return modules[moduleName] || false;
     },
 
+    getContainer() {
+        // Cari container dengan berbagai kemungkinan ID
+        const container = document.getElementById('mainContent') || 
+                         document.getElementById('module-container') || 
+                         document.getElementById('content-container') ||
+                         document.querySelector('.module-container') ||
+                         document.querySelector('.content-area') ||
+                         document.querySelector('main');
+        
+        if (!container) {
+            console.error('[Router] No container found!');
+            // Buat container baru sebagai fallback
+            const newContainer = document.createElement('div');
+            newContainer.id = 'mainContent';
+            document.body.appendChild(newContainer);
+            return newContainer;
+        }
+        
+        return container;
+    },
+
+    clearContainer() {
+        const container = this.getContainer();
+        if (container) {
+            container.innerHTML = '';
+            // Reset style untuk memastikan tampil
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
+        }
+    },
+
     navigate(page, element) {
         console.log(`[Router] Navigating to: ${page}`);
 
@@ -67,12 +97,11 @@ const router = {
             return;
         }
 
-        // ✅ PERBAIKAN: Check shift dengan logika hari baru
+        // Check shift dengan logika hari baru
         const operationalMenus = ['pos', 'cash', 'debt'];
         const userShift = dataManager.getUserShift(currentUser.userId);
         const status = dataManager.checkKasirStatusForUser(currentUser.userId);
         
-        // Hanya tanya buka kasir jika: menu operasional DAN (tidak punya shift ATAU hari baru)
         if (operationalMenus.includes(page) && status.canOpen && !status.isContinue) {
             this.showOpenKasirFirstModal(page, element);
             return;
@@ -85,6 +114,9 @@ const router = {
         if (cartBar) cartBar.style.display = 'none';
 
         this.currentPage = page;
+
+        // Clear container sebelum render module baru
+        this.clearContainer();
 
         if (!this.isModuleAvailable(page)) {
             console.warn(`[Router] Module ${page} not available`);
@@ -132,41 +164,33 @@ const router = {
                     }
                     break;
                 // ============================================
-                // ✅ PERBAIKAN UTAMA: Cloud/Backup Module
+                // PERBAIKAN UTAMA: Cloud/Backup Module
                 // ============================================
                 case 'cloud':
                 case 'backup':
                     if (typeof backupModule !== 'undefined') {
                         console.log('[Router] Initializing cloud/backup module...');
                         
-                        // 1. Init module terlebih dahulu
-                        backupModule.init();
-                        
-                        // 2. Clear container sebelum render (hindari duplikat)
-                        const container = document.getElementById('module-container') || 
-                                        document.getElementById('content-container') || 
-                                        document.getElementById('main-content');
-                        
-                        if (container) {
-                            container.innerHTML = '';
+                        // 1. Pastikan backupModule initialized
+                        if (!backupModule.isInitialized) {
+                            backupModule.init();
                         }
                         
-                        // 3. Render dengan delay untuk memastikan DOM siap
+                        // 2. Render langsung ke container
                         setTimeout(() => {
-                            console.log('[Router] Rendering backup module...');
+                            console.log('[Router] Rendering backup module to container...');
                             backupModule.render();
                             
-                            // 4. Re-init setelah render untuk setup listeners
+                            // 3. Setup listeners setelah render
                             setTimeout(() => {
                                 if (typeof backupModule.setupMenuListeners === 'function') {
                                     backupModule.setupMenuListeners();
                                 }
                             }, 100);
-                            
                         }, 50);
                     } else {
                         console.error('[Router] backupModule not found!');
-                        throw new Error('Backup module not found');
+                        this.showModuleErrorModal(page);
                     }
                     break;
                 default:
@@ -289,9 +313,9 @@ const router = {
         const menuName = this.menuLabels[page] || page;
         const suggestions = {
             'telegram': 'Pastikan file telegram.js ada di folder js/',
-            'cloud': 'Pastikan file backup.js sudah di-load di index.html SEBELUM router.js',
-            'backup': 'Pastikan file backup.js sudah di-load di index.html SEBELUM router.js',
-            'pencarian': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html'
+            'cloud': 'Pastikan file backup.js sudah di-load di index.html',
+            'backup': 'Pastikan file backup.js sudah di-load di index.html',
+            'pencarian': 'Pastikan file n8n.js ada di folder js/'
         };
 
         const modalHTML = `
@@ -393,4 +417,4 @@ const router = {
 
 window.router = router;
 
-console.log('[Router] Router system loaded v2.2 - Cloud Fix Edition');
+console.log('[Router] Router system loaded v2.3 - Cloud Fix Edition');
