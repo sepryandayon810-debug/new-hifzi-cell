@@ -930,7 +930,7 @@ const cashModule = {
         }
     },
 
-    // ✅ PERBAIKAN: Save semua modal sekaligus (untuk Owner)
+    // ✅ PERBAIKAN UTAMA: Save semua modal sekaligus (untuk Owner)
     saveAllModalKasir() {
         const users = dataManager.getUsers().filter(u => u.role !== 'owner');
         const activeShifts = dataManager.getActiveShifts();
@@ -964,7 +964,8 @@ const cashModule = {
                 dataManager.updateUserShift(user.id, shift);
                 updatedCount++;
             } else {
-                // User offline - simpan ke pending
+                // ✅ PERBAIKAN: User offline - simpan ke pendingModals menggunakan dataManager.setPendingModal
+                // atau langsung ke dataManager.data.pendingModals
                 dataManager.data.pendingModals[user.id] = newModal;
                 savedCount++;
             }
