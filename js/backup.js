@@ -1,6 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.1.1)
-// FIXED: Module container not found error
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.2.0)
+// FIXED: Menu muncul di semua halaman, Halaman backup tidak render,
+//        Provider Local & Sheets hilang
 // ============================================
 
 const backupModule = {
@@ -52,7 +53,6 @@ const backupModule = {
         enabled: false
     },
     
-    // Konfigurasi n8n/pencarian
     n8nConfig: {
         botToken: '',
         chatId: '',
@@ -95,19 +95,40 @@ const backupModule = {
         N8N_CONFIG: 'hifzi_n8n_config'
     },
 
+    // ✅ FUNGSI UTAMA: Cek apakah sedang di halaman backup
+    isBackupPage() {
+        // Cek dari URL hash
+        const hash = window.location.hash;
+        if (hash && hash.includes('backup')) return true;
+        
+        // Cek dari URL path
+        const path = window.location.pathname;
+        if (path && path.includes('backup')) return true;
+        
+        // Cek dari query parameter
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('page') === 'backup') return true;
+        
+        // Cek apakah ada container backup yang spesifik
+        const backupContainer = document.getElementById('backup-page-container');
+        if (backupContainer) return true;
+        
+        // Cek dari active menu
+        const activeMenu = document.querySelector('.menu-item.active, .nav-item.active, [data-page="backup"].active');
+        if (activeMenu) return true;
+        
+        return false;
+    },
+
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
             this.reloadAllConfig();
-            // Tetap render jika belum rendered
-            if (!this.isRendered) {
-                this.render();
-            }
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.1.1 - Fixed Edition...');
+        console.log('[Backup] Initializing v4.2.0 - Multi-Page Fix...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -171,10 +192,65 @@ const backupModule = {
 
         this.isInitialized = true;
         
-        // Render setelah init
-        this.render();
+        // ✅ Hanya render jika di halaman backup
+        if (this.isBackupPage()) {
+            console.log('[Backup] Di halaman backup, rendering...');
+            this.render();
+        } else {
+            console.log('[Backup] Bukan halaman backup, skip render UI');
+        }
         
         return this;
+    },
+
+    // ✅ FUNGSI BARU: Render hanya menu icon/indicator (untuk halaman non-backup)
+    renderMiniIndicator() {
+        // Hanya render mini indicator jika TIDAK di halaman backup
+        if (this.isBackupPage()) return;
+        
+        // Cek apakah sudah ada indicator
+        if (document.getElementById('backup-mini-indicator')) return;
+        
+        const indicator = document.createElement('div');
+        indicator.id = 'backup-mini-indicator';
+        indicator.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 9999;
+            font-size: 24px;
+            transition: transform 0.2s;
+        `;
+        indicator.innerHTML = '☁️';
+        indicator.title = 'Backup & Sync';
+        
+        indicator.addEventListener('click', () => {
+            // Navigasi ke halaman backup
+            window.location.hash = 'backup';
+            // atau panggil fungsi navigasi aplikasi Anda
+            if (typeof navigateTo === 'function') {
+                navigateTo('backup');
+            }
+        });
+        
+        indicator.addEventListener('mouseenter', () => {
+            indicator.style.transform = 'scale(1.1)';
+        });
+        
+        indicator.addEventListener('mouseleave', () => {
+            indicator.style.transform = 'scale(1)';
+        });
+        
+        document.body.appendChild(indicator);
     },
 
     cleanUndefined(obj) {
@@ -206,7 +282,7 @@ const backupModule = {
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
             n8n: this.n8nConfig,
-            version: '4.1.1',
+            version: '4.2.0',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -1216,11 +1292,17 @@ const backupModule = {
         }
     },
 
+    // ✅ RENDER UTAMA - Hanya dipanggil di halaman backup
     render() {
+        // ✅ Double check: hanya render jika di halaman backup
+        if (!this.isBackupPage()) {
+            console.log('[Backup] Bukan halaman backup, render dibatalkan');
+            return;
+        }
+
         // Cari container dengan berbagai kemungkinan ID
         let container = document.getElementById('module-container');
         
-        // Jika tidak ditemukan, coba cari container lain yang umum digunakan
         if (!container) {
             container = document.getElementById('content-container');
         }
@@ -1236,6 +1318,9 @@ const backupModule = {
         if (!container) {
             container = document.querySelector('.content-area');
         }
+        if (!container) {
+            container = document.getElementById('backup-page-container');
+        }
         
         // Jika masih tidak ditemukan, buat container baru
         if (!container) {
@@ -1244,12 +1329,11 @@ const backupModule = {
             container.id = 'module-container';
             container.style.cssText = 'padding: 20px; max-width: 1200px; margin: 0 auto;';
             
-            // Cari tempat untuk menambahkan container
             const mainContent = document.querySelector('main') || document.querySelector('.main') || document.body;
             mainContent.appendChild(container);
         }
 
-        // Render konten
+        // ✅ PASTIKAN SEMUA PROVIDER ADA (Local, Google Sheets, Firebase)
         container.innerHTML = `
             <div id="backup-module" style="
                 max-width: 900px;
@@ -1268,7 +1352,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.1.1 - Fixed Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.2.0 - Multi Provider Edition</div>
                         </div>
                     </div>
                 </div>
@@ -1370,54 +1454,117 @@ const backupModule = {
                         </select>
                     </div>
 
-                    <div id="gas-config-section" style="display: ${this.currentProvider === 'googlesheet' ? 'block' : 'none'};">
-                        <div style="margin-bottom: 12px;">
-                            <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                Google Apps Script URL
-                            </label>
-                            <input type="text" id="gas-url-input" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/..." style="
-                                width: 100%;
-                                padding: 12px;
-                                border: 2px solid #e2e8f0;
-                                border-radius: 8px;
-                                font-size: 14px;
-                            ">
-                        </div>
-                        <div style="margin-bottom: 12px;">
-                            <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                Google Sheet ID
-                            </label>
-                            <input type="text" id="sheet-id-input" value="${this.sheetId}" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" style="
-                                width: 100%;
-                                padding: 12px;
-                                border: 2px solid #e2e8f0;
-                                border-radius: 8px;
-                                font-size: 14px;
-                            ">
-                            <div style="font-size: 11px; color: #718096; margin-top: 4px;">
-                                * Sheet ID adalah bagian dari URL spreadsheet (44 karakter)
+                    <!-- ✅ LOCAL STORAGE SECTION -->
+                    <div id="local-config-section" style="display: ${this.currentProvider === 'local' ? 'block' : 'none'};">
+                        <div style="
+                            background: #f0fff4;
+                            border: 2px solid #9ae6b4;
+                            border-radius: 10px;
+                            padding: 16px;
+                            margin-bottom: 12px;
+                        ">
+                            <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">💾 Mode Local Storage</div>
+                            <div style="font-size: 13px; color: #2d3748; line-height: 1.6;">
+                                <p>Data disimpan hanya di browser ini. Tidak ada sinkronisasi cloud.</p>
+                                <ul style="margin-top: 8px; padding-left: 20px;">
+                                    <li>✅ Cepat & offline</li>
+                                    <li>✅ Tidak perlu internet</li>
+                                    <li>⚠️ Data tidak terbackup ke cloud</li>
+                                    <li>⚠️ Hanya tersedia di device ini</li>
+                                </ul>
                             </div>
                         </div>
-                        <button onclick="backupModule.saveGASConfig()" style="
-                            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-                            color: white;
-                            border: none;
-                            padding: 12px 24px;
-                            border-radius: 8px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            width: 100%;
-                        ">
-                            💾 Simpan Konfigurasi GAS
-                        </button>
                     </div>
 
+                    <!-- ✅ GOOGLE SHEETS SECTION -->
+                    <div id="gas-config-section" style="display: ${this.currentProvider === 'googlesheet' ? 'block' : 'none'};">
+                        <div style="
+                            background: #fffaf0;
+                            border: 2px solid #fbd38d;
+                            border-radius: 10px;
+                            padding: 16px;
+                            margin-bottom: 12px;
+                        ">
+                            <div style="font-weight: 600; color: #744210; margin-bottom: 8px;">📊 Google Sheets Configuration</div>
+                            
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                    Google Apps Script URL <span style="color: #e53e3e;">*</span>
+                                </label>
+                                <input type="text" id="gas-url-input" value="${this.gasUrl}" placeholder="https://script.google.com/macros/s/..." style="
+                                    width: 100%;
+                                    padding: 12px;
+                                    border: 2px solid #e2e8f0;
+                                    border-radius: 8px;
+                                    font-size: 14px;
+                                ">
+                                <div style="font-size: 11px; color: #718096; margin-top: 4px;">
+                                    URL dari deployment Google Apps Script
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                    Google Sheet ID <span style="color: #e53e3e;">*</span>
+                                </label>
+                                <input type="text" id="sheet-id-input" value="${this.sheetId}" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" style="
+                                    width: 100%;
+                                    padding: 12px;
+                                    border: 2px solid #e2e8f0;
+                                    border-radius: 8px;
+                                    font-size: 14px;
+                                ">
+                                <div style="font-size: 11px; color: #718096; margin-top: 4px;">
+                                    * Sheet ID adalah bagian dari URL spreadsheet (44 karakter)
+                                </div>
+                            </div>
+                            
+                            <div style="
+                                background: ${this._gasConfigValid ? '#c6f6d5' : '#fed7d7'};
+                                border-radius: 8px;
+                                padding: 12px;
+                                margin-bottom: 12px;
+                                font-size: 13px;
+                            ">
+                                <div style="font-weight: 600; color: ${this._gasConfigValid ? '#22543d' : '#742a2a'};">
+                                    ${this._gasConfigValid ? '✅ Konfigurasi Valid' : '⚠️ Konfigurasi Belum Lengkap'}
+                                </div>
+                                <div style="color: #4a5568; margin-top: 4px; font-size: 12px;">
+                                    ${this._gasConfigValid ? 'GAS URL dan Sheet ID sudah benar' : 'Pastikan GAS URL dan Sheet ID (44 karakter) sudah diisi'}
+                                </div>
+                            </div>
+                            
+                            <button onclick="backupModule.saveGASConfig()" style="
+                                background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+                                color: white;
+                                border: none;
+                                padding: 12px 24px;
+                                border-radius: 8px;
+                                font-weight: 600;
+                                cursor: pointer;
+                                width: 100%;
+                            ">
+                                💾 Simpan Konfigurasi Google Sheets
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ✅ FIREBASE SECTION -->
                     <div id="firebase-config-section" style="display: ${this.currentProvider === 'firebase' ? 'block' : 'none'};">
-                        <div style="margin-bottom: 12px;">
-                            <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                Firebase Config (JSON)
-                            </label>
-                            <textarea id="firebase-config-input" rows="6" placeholder='{
+                        <div style="
+                            background: #fff5f5;
+                            border: 2px solid #fc8181;
+                            border-radius: 10px;
+                            padding: 16px;
+                            margin-bottom: 12px;
+                        ">
+                            <div style="font-weight: 600; color: #742a2a; margin-bottom: 8px;">🔥 Firebase Configuration</div>
+                            
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                    Firebase Config (JSON) <span style="color: #e53e3e;">*</span>
+                                </label>
+                                <textarea id="firebase-config-input" rows="6" placeholder='{
   "apiKey": "your-api-key",
   "authDomain": "your-project.firebaseapp.com",
   "databaseURL": "https://your-project-default-rtdb.firebaseio.com",
@@ -1426,53 +1573,60 @@ const backupModule = {
   "messagingSenderId": "123456789",
   "appId": "1:123456789:web:abcdef"
 }' style="
-                                width: 100%;
-                                padding: 12px;
-                                border: 2px solid #e2e8f0;
+                                    width: 100%;
+                                    padding: 12px;
+                                    border: 2px solid #e2e8f0;
+                                    border-radius: 8px;
+                                    font-size: 13px;
+                                    font-family: monospace;
+                                ">${this.firebaseConfig.apiKey ? JSON.stringify(this.firebaseConfig, null, 2) : ''}</textarea>
+                                <div style="font-size: 11px; color: #718096; margin-top: 4px;">
+                                    Copy dari Firebase Console > Project Settings > SDK Config
+                                </div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                <div>
+                                    <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                        Email
+                                    </label>
+                                    <input type="email" id="firebase-email" placeholder="admin@example.com" style="
+                                        width: 100%;
+                                        padding: 12px;
+                                        border: 2px solid #e2e8f0;
+                                        border-radius: 8px;
+                                        font-size: 14px;
+                                    ">
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                        Password
+                                    </label>
+                                    <input type="password" id="firebase-password" placeholder="••••••••" style="
+                                        width: 100%;
+                                        padding: 12px;
+                                        border: 2px solid #e2e8f0;
+                                        border-radius: 8px;
+                                        font-size: 14px;
+                                    ">
+                                </div>
+                            </div>
+                            
+                            <button onclick="backupModule.saveFirebaseConfig()" style="
+                                background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+                                color: white;
+                                border: none;
+                                padding: 12px 24px;
                                 border-radius: 8px;
-                                font-size: 13px;
-                                font-family: monospace;
-                            ">${this.firebaseConfig.apiKey ? JSON.stringify(this.firebaseConfig, null, 2) : ''}</textarea>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                            <div>
-                                <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                    Email
-                                </label>
-                                <input type="email" id="firebase-email" placeholder="admin@example.com" style="
-                                    width: 100%;
-                                    padding: 12px;
-                                    border: 2px solid #e2e8f0;
-                                    border-radius: 8px;
-                                    font-size: 14px;
-                                ">
+                                font-weight: 600;
+                                cursor: pointer;
+                                width: 100%;
+                            ">
+                                🔥 Simpan & Connect Firebase
+                            </button>
+                            
+                            <div id="firebase-auth-status" style="margin-top: 12px; padding: 12px; background: #fffaf0; border-radius: 8px; font-size: 13px; display: none;">
                             </div>
-                            <div>
-                                <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                    Password
-                                </label>
-                                <input type="password" id="firebase-password" placeholder="••••••••" style="
-                                    width: 100%;
-                                    padding: 12px;
-                                    border: 2px solid #e2e8f0;
-                                    border-radius: 8px;
-                                    font-size: 14px;
-                                ">
-                            </div>
-                        </div>
-                        <button onclick="backupModule.saveFirebaseConfig()" style="
-                            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-                            color: white;
-                            border: none;
-                            padding: 12px 24px;
-                            border-radius: 8px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            width: 100%;
-                        ">
-                            🔥 Simpan & Connect Firebase
-                        </button>
-                        <div id="firebase-auth-status" style="margin-top: 12px; padding: 12px; background: #fffaf0; border-radius: 8px; font-size: 13px; display: none;">
                         </div>
                     </div>
                 </div>
@@ -1624,14 +1778,14 @@ const backupModule = {
                             <input type="checkbox" id="auto-sync-checkbox" ${this.isAutoSyncEnabled ? 'checked' : ''} onchange="backupModule.toggleAutoSync(this.checked)" style="width: 20px; height: 20px;">
                             <div>
                                 <div style="font-weight: 600; color: #2d3748;">Auto Sync ke Cloud</div>
-                                <div style="font-size: 12px; color: #718096;">Otomatis sinkronisasi saat data berubah</div>
+                                <div style="font-size: 12px; color: #718096;">Otomatis sinkronisasi saat data berubah (hanya untuk Google Sheets/Firebase)</div>
                             </div>
                         </label>
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 12px; background: #f7fafc; border-radius: 8px;">
                             <input type="checkbox" id="auto-save-local-checkbox" ${this.isAutoSaveLocalEnabled ? 'checked' : ''} onchange="backupModule.toggleAutoSaveLocal(this.checked)" style="width: 20px; height: 20px;">
                             <div>
                                 <div style="font-weight: 600; color: #2d3748;">Auto Save Local</div>
-                                <div style="font-size: 12px; color: #718096;">Simpan otomatis ke local storage</div>
+                                <div style="font-size: 12px; color: #718096;">Simpan otomatis ke local storage setiap perubahan</div>
                             </div>
                         </label>
                     </div>
@@ -1648,66 +1802,70 @@ const backupModule = {
                         🔄 Aksi Sinkronisasi
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                        <button onclick="backupModule.syncToCloud()" style="
-                            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-                            color: white;
+                        <button onclick="backupModule.syncToCloud()" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #4299e1 0%, #3182ce 100%)'};
+                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: pointer;
+                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
+                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">⬆️</span>
                             <span>Upload ke Cloud</span>
                         </button>
-                        <button onclick="backupModule.syncFromCloud()" style="
-                            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-                            color: white;
+                        <button onclick="backupModule.syncFromCloud()" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)'};
+                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: pointer;
+                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
+                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">⬇️</span>
                             <span>Download dari Cloud</span>
                         </button>
-                        <button onclick="backupModule.previewCloudData()" style="
-                            background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%);
-                            color: white;
+                        <button onclick="backupModule.previewCloudData()" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #9f7aea 0%, #805ad5 100%)'};
+                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: pointer;
+                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
+                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">👁️</span>
                             <span>Preview Cloud Data</span>
                         </button>
-                        <button onclick="backupModule.checkCloudDataOnLoad(true)" style="
-                            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-                            color: white;
+                        <button onclick="backupModule.checkCloudDataOnLoad(true)" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)'};
+                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: pointer;
+                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
+                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">🔄</span>
                             <span>Check Update</span>
@@ -1800,9 +1958,12 @@ const backupModule = {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
         
+        // ✅ Update semua section visibility
+        const localSection = document.getElementById('local-config-section');
         const gasSection = document.getElementById('gas-config-section');
         const firebaseSection = document.getElementById('firebase-config-section');
         
+        if (localSection) localSection.style.display = provider === 'local' ? 'block' : 'none';
         if (gasSection) gasSection.style.display = provider === 'googlesheet' ? 'block' : 'none';
         if (firebaseSection) firebaseSection.style.display = provider === 'firebase' ? 'block' : 'none';
         
@@ -1817,6 +1978,9 @@ const backupModule = {
         
         this.saveBackupSettings();
         this.showToast('Provider diubah ke: ' + provider);
+        
+        // Refresh UI untuk update button states
+        this.refreshUI();
     },
 
     saveGASConfig() {
@@ -1851,6 +2015,9 @@ const backupModule = {
             this.checkNewDeviceGAS();
             setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
         }
+        
+        // Refresh UI untuk update status valid
+        this.refreshUI();
     },
 
     saveFirebaseConfig() {
@@ -2163,7 +2330,6 @@ const backupModule = {
             categories: this.cleanUndefined(rawData.categories) || [],
             users: this.cleanUndefined(rawData.users) || [],
             searchHistory: this.cleanUndefined(rawData.searchHistory) || [],
-            // ✅ Include pending modals and modal history
             pendingModals: this.cleanUndefined(rawData.pendingModals) || {},
             pendingExtraModals: this.cleanUndefined(rawData.pendingExtraModals) || {},
             modalHistory: this.cleanUndefined(rawData.modalHistory) || [],
@@ -2171,7 +2337,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.1.1',
+                version: '4.2.0',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -2182,7 +2348,6 @@ const backupModule = {
                     modalHistory: (rawData.modalHistory || []).length
                 }
             },
-            // ✅ Include config with telegram and n8n
             _configMeta: this.getConfigForBackup()
         };
         
@@ -2203,7 +2368,6 @@ const backupModule = {
         if (cloudData.categories) data.categories = cloudData.categories;
         if (cloudData.users) data.users = cloudData.users;
         if (cloudData.searchHistory) data.searchHistory = cloudData.searchHistory;
-        // ✅ Restore pending modals and modal history
         if (cloudData.pendingModals) data.pendingModals = cloudData.pendingModals;
         if (cloudData.pendingExtraModals) data.pendingExtraModals = cloudData.pendingExtraModals;
         if (cloudData.modalHistory) data.modalHistory = cloudData.modalHistory;
@@ -2431,9 +2595,7 @@ const backupModule = {
                 }
             }).showToast();
         } else {
-            // Fallback jika Toastify tidak tersedia
             console.log('[Toast]', message);
-            // Buat toast sederhana
             const toast = document.createElement('div');
             toast.style.cssText = `
                 position: fixed;
@@ -2464,12 +2626,11 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = backupModule;
 }
 
-// Auto-initialize jika DOM sudah ready
+// ✅ Auto-initialize dengan pengecekan halaman
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         backupModule.init();
     });
 } else {
-    // DOM sudah ready
     backupModule.init();
 }
