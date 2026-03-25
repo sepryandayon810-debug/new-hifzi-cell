@@ -924,7 +924,7 @@ const cashModule = {
         const newModal = parseInt(input?.value) || 0;
         
         // Update tampilan saja, belum save ke database
-        const displayEl = document.getElementById(`displayMainModal_${userId}`);
+        const displayEl = document.getElementById(`displayMainModal_${user.id}`);
         if (displayEl) {
             displayEl.textContent = `Rp ${utils.formatNumber(newModal)}`;
         }
@@ -963,14 +963,16 @@ const cashModule = {
                 
                 dataManager.updateUserShift(user.id, shift);
                 updatedCount++;
+                console.log(`[saveAllModalKasir] ✅ Updated active shift for ${user.name}: modal=${newModal}`);
             } else {
-                // ✅ PERBAIKAN: User offline - simpan ke pendingModals menggunakan dataManager.setPendingModal
-                // atau langsung ke dataManager.data.pendingModals
+                // ✅ PERBAIKAN: User offline - simpan ke pendingModals
                 dataManager.data.pendingModals[user.id] = newModal;
                 savedCount++;
+                console.log(`[saveAllModalKasir] ✅ Saved pending modal for ${user.name}: Rp ${newModal}`);
             }
         });
 
+        // ✅ SAVE KE DATABASE
         dataManager.save();
 
         if (savedCount > 0 || updatedCount > 0) {
@@ -1841,7 +1843,7 @@ const cashModule = {
 
                     <div style="padding: 24px;">
                         <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Provider *</label>
+                            label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Provider *</label>
                             <select id="tarikProvider" style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; background: white;">
                                 ${providerOptions}
                             </select>
