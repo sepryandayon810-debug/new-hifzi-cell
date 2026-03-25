@@ -1,6 +1,7 @@
 /**
  * Router System - Hifzi Cell POS
  * Menangani navigasi dan kontrol akses antar modul - Multi-User Edition
+ * FIXED: Cloud menu rendering, Module initialization timing
  */
 
 const router = {
@@ -130,14 +131,41 @@ const router = {
                         n8nModule.renderPage();
                     }
                     break;
+                // ============================================
+                // ✅ PERBAIKAN UTAMA: Cloud/Backup Module
+                // ============================================
                 case 'cloud':
                 case 'backup':
                     if (typeof backupModule !== 'undefined') {
+                        console.log('[Router] Initializing cloud/backup module...');
+                        
+                        // 1. Init module terlebih dahulu
                         backupModule.init();
+                        
+                        // 2. Clear container sebelum render (hindari duplikat)
+                        const container = document.getElementById('module-container') || 
+                                        document.getElementById('content-container') || 
+                                        document.getElementById('main-content');
+                        
+                        if (container) {
+                            container.innerHTML = '';
+                        }
+                        
+                        // 3. Render dengan delay untuk memastikan DOM siap
                         setTimeout(() => {
+                            console.log('[Router] Rendering backup module...');
                             backupModule.render();
+                            
+                            // 4. Re-init setelah render untuk setup listeners
+                            setTimeout(() => {
+                                if (typeof backupModule.setupMenuListeners === 'function') {
+                                    backupModule.setupMenuListeners();
+                                }
+                            }, 100);
+                            
                         }, 50);
                     } else {
+                        console.error('[Router] backupModule not found!');
                         throw new Error('Backup module not found');
                     }
                     break;
@@ -261,8 +289,8 @@ const router = {
         const menuName = this.menuLabels[page] || page;
         const suggestions = {
             'telegram': 'Pastikan file telegram.js ada di folder js/',
-            'cloud': 'Pastikan file backup.js ada di folder js/',
-            'backup': 'Pastikan file backup.js ada di folder js/',
+            'cloud': 'Pastikan file backup.js sudah di-load di index.html SEBELUM router.js',
+            'backup': 'Pastikan file backup.js sudah di-load di index.html SEBELUM router.js',
             'pencarian': 'Pastikan file n8n.js ada di folder js/ dan sudah di-load di index.html'
         };
 
@@ -365,4 +393,4 @@ const router = {
 
 window.router = router;
 
-console.log('[Router] Router system loaded v2.1 - Multi-User Edition');
+console.log('[Router] Router system loaded v2.2 - Cloud Fix Edition');
