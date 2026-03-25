@@ -7,6 +7,7 @@ const dataManager = {
     USERS_KEY: 'hifzi_users',
     CURRENT_USER_KEY: 'hifzi_current_user',
     
+    // Default data structure
     data: {
         categories: [
             { id: 'all', name: 'Semua', icon: '📦' },
@@ -21,10 +22,7 @@ const dataManager = {
         debts: [],
         shiftHistory: [],
         loginHistory: [],
-        
-        // ✅ PENDING MODALS - Modal yang diatur Owner untuk user yang belum buka shift
         pendingModals: {},
-        // ✅ PENDING EXTRA MODALS - Modal tambahan dari Admin untuk kasir
         pendingExtraModals: {},
         
         settings: {
@@ -82,63 +80,89 @@ const dataManager = {
     ],
 
     init() {
+        console.log('[DataManager] Initializing...');
+        
+        // Load from localStorage
         const saved = localStorage.getItem(this.STORAGE_KEY);
+        
         if (saved) {
-            const parsed = JSON.parse(saved);
-            this.data = this.deepMerge(this.data, parsed);
+            try {
+                const parsed = JSON.parse(saved);
+                // Deep merge dengan default structure
+                this.data = this.deepMerge(this.data, parsed);
+                console.log('[DataManager] Data loaded from localStorage');
+            } catch (e) {
+                console.error('[DataManager] Error parsing saved data:', e);
+                this.createDefaultData();
+            }
+        } else {
+            console.log('[DataManager] No saved data, using defaults');
         }
         
+        // Ensure all required fields exist
+        this.ensureDataStructure();
+        
+        // Check auto close midnight
+        this.checkAutoCloseMidnight();
+        
+        // Initialize users
+        this.initUsers();
+        
+        // Save to ensure consistency
+        this.save();
+        
+        console.log('[DataManager] Initialized successfully');
+        return this.data;
+    },
+
+    ensureDataStructure() {
+        // Ensure kasir structure
         if (!this.data.kasir) {
-            this.data.kasir = { 
-                isOpen: false, 
+            this.data.kasir = {
+                isOpen: false,
                 activeShifts: [],
                 date: null,
                 lastCheckDate: null
             };
         }
         
-        // Pastikan struktur activeShifts benar
+        // Ensure activeShifts is array
         if (!Array.isArray(this.data.kasir.activeShifts)) {
             this.data.kasir.activeShifts = [];
         }
         
-        // Konversi format lama ke format baru jika perlu
-        if (this.data.kasir.currentUser !== undefined && !this.data.kasir.activeShifts) {
-            const oldKasir = { ...this.data.kasir };
-            this.data.kasir = {
-                isOpen: oldKasir.isOpen,
-                activeShifts: oldKasir.isOpen && oldKasir.currentUser ? [{
-                    userId: oldKasir.currentUser,
-                    userName: oldKasir.userName || 'Unknown',
-                    userRole: oldKasir.userRole || 'kasir',
-                    openTime: oldKasir.openTime,
-                    modalAwal: this.data.settings?.modalAwal || 0,
-                    currentCash: this.data.settings?.modalAwal || 0
-                }] : [],
-                date: oldKasir.date,
-                lastCheckDate: oldKasir.lastCheckDate
-            };
-        }
-
+        // Ensure pending modals exist
         if (!this.data.pendingModals) {
             this.data.pendingModals = {};
         }
-        
         if (!this.data.pendingExtraModals) {
             this.data.pendingExtraModals = {};
         }
-
+        
+        // Ensure settings exist
+        if (!this.data.settings) {
+            this.data.settings = {
+                storeName: 'Hifzi Cell',
+                address: '',
+                phone: '',
+                tax: 0,
+                taxRate: 0,
+                modalAwal: 0,
+                currentCash: 0,
+                receiptHeader: {
+                    storeName: 'HIFZI CELL',
+                    address: 'Alamat Belum Diatur',
+                    phone: '',
+                    note: 'Terima kasih atas kunjungan Anda'
+                }
+            };
+        }
+        
+        // Ensure arrays exist
+        if (!this.data.cashTransactions) this.data.cashTransactions = [];
+        if (!this.data.debts) this.data.debts = [];
+        if (!this.data.shiftHistory) this.data.shiftHistory = [];
         if (!this.data.loginHistory) this.data.loginHistory = [];
-        if (!this.data.settings.phone) this.data.settings.phone = '';
-        if (this.data.settings.tax === undefined) this.data.settings.tax = 0;
-
-        // Cek auto close hanya jika hari berbeda
-        this.checkAutoCloseMidnight();
-        
-        this.initUsers();
-        
-        this.save();
-        return this.data;
     },
 
     initUsers() {
@@ -149,29 +173,21 @@ const dataManager = {
             localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
             console.log('[DataManager] Default users created');
         } else {
+            // Ensure owner exists
             const ownerExists = users.some(u => u.role === 'owner');
             if (!ownerExists) {
                 console.log('[DataManager] Owner not found, creating default owner');
-                users.unshift({
-                    id: 'owner_default',
-                    username: 'owner',
-                    password: 'owner123',
-                    name: 'Pemilik Usaha',
-                    role: 'owner',
-                    createdAt: new Date().toISOString(),
-                    lastLogin: null
-                });
+                users.unshift(this.defaultUsers[0]);
                 localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
             }
             
+            // Remove duplicates
             const uniqueUsers = [];
             const seenUsernames = new Set();
             for (const user of users) {
                 if (!seenUsernames.has(user.username)) {
                     seenUsernames.add(user.username);
                     uniqueUsers.push(user);
-                } else {
-                    console.log('[DataManager] Duplicate username found:', user.username);
                 }
             }
             if (uniqueUsers.length !== users.length) {
@@ -181,7 +197,7 @@ const dataManager = {
     },
 
     createDefaultData() {
-        const defaultData = {
+        this.data = {
             users: this.defaultUsers,
             loginHistory: [],
             categories: this.data.categories,
@@ -200,23 +216,22 @@ const dataManager = {
                 lastCheckDate: null
             }
         };
-        this.saveData(defaultData);
-        return defaultData;
+        this.save();
+        return this.data;
     },
 
     checkAutoCloseMidnight() {
         const now = new Date();
         const today = now.toDateString();
         
-        // Hanya tutup shift jika hari benar-benar berbeda
         if (this.data.kasir.activeShifts && this.data.kasir.activeShifts.length > 0) {
             const shiftsToClose = this.data.kasir.activeShifts.filter(shift => {
                 const shiftDate = new Date(shift.openTime).toDateString();
-                return shiftDate !== today; // Hanya tutup jika hari berbeda
+                return shiftDate !== today;
             });
             
             if (shiftsToClose.length > 0) {
-                console.log('[AutoClose] Menutup', shiftsToClose.length, 'shift karena sudah lewat jam 12 malam');
+                console.log('[AutoClose] Closing', shiftsToClose.length, 'shifts from previous days');
                 shiftsToClose.forEach(shift => {
                     this.saveShiftHistory(shift);
                 });
@@ -230,25 +245,31 @@ const dataManager = {
                     this.data.kasir.isOpen = false;
                 }
                 this.data.kasir.date = today;
-                this.save();
-                return true;
             }
         }
         this.data.kasir.lastCheckDate = today;
-        return false;
     },
 
     save() {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
-        if (typeof backupModule !== 'undefined' && backupModule.shouldSync && backupModule.shouldSync()) {
-            console.log('[DataManager] Triggering cloud sync...');
-            backupModule.syncToCloud(this.getAllData());
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
+            console.log('[DataManager] Data saved to localStorage');
+            
+            // Trigger cloud sync if available
+            if (typeof backupModule !== 'undefined' && backupModule.shouldSync && backupModule.shouldSync()) {
+                console.log('[DataManager] Triggering cloud sync...');
+                backupModule.syncToCloud(this.getAllData());
+            }
+        } catch (e) {
+            console.error('[DataManager] Error saving data:', e);
         }
     },
 
     saveData(data) {
-        if (data) this.data = this.deepMerge(this.data, data);
-        this.save();
+        if (data) {
+            this.data = this.deepMerge(this.data, data);
+            this.save();
+        }
     },
 
     getData() { return this.data; },
@@ -269,13 +290,15 @@ const dataManager = {
             _meta: { 
                 lastModified: new Date().toISOString(), 
                 deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', 
-                version: '2.2'
+                version: '2.3'
             }
         };
     },
 
     saveAllData(cloudData) {
         const { _meta, ...cleanData } = cloudData;
+        
+        // Merge cloud data dengan existing
         if (cleanData.categories) this.data.categories = cleanData.categories;
         if (cleanData.products) this.data.products = cleanData.products;
         if (cleanData.transactions) this.data.transactions = cleanData.transactions;
@@ -288,29 +311,10 @@ const dataManager = {
         if (cleanData.settings) this.data.settings = { ...this.data.settings, ...cleanData.settings };
         
         if (cleanData.kasir) {
-            if (cleanData.kasir.activeShifts) {
-                this.data.kasir = cleanData.kasir;
-            } else {
-                this.data.kasir = {
-                    isOpen: cleanData.kasir.isOpen || false,
-                    activeShifts: cleanData.kasir.isOpen && cleanData.kasir.currentUser ? [{
-                        userId: cleanData.kasir.currentUser,
-                        userName: cleanData.kasir.userName || 'Unknown',
-                        userRole: cleanData.kasir.userRole || 'kasir',
-                        openTime: cleanData.kasir.openTime,
-                        modalAwal: cleanData.settings?.modalAwal || 0,
-                        currentCash: cleanData.settings?.modalAwal || 0
-                    }] : [],
-                    date: cleanData.kasir.date,
-                    lastCheckDate: cleanData.kasir.lastCheckDate
-                };
-            }
+            this.data.kasir = cleanData.kasir;
         }
+        
         this.save();
-        if (typeof app !== 'undefined' && app.data) {
-            app.data = this.data;
-            if (app.updateHeader) app.updateHeader();
-        }
         console.log('[DataManager] Data restored from cloud');
     },
 
@@ -333,11 +337,9 @@ const dataManager = {
         return (item && typeof item === 'object' && !Array.isArray(item)); 
     },
 
-    load() { return this.init(); },
+    // ==================== PRODUCTS ====================
     getProducts() { return this.data.products; },
-    getTransactions() { return this.data.transactions; },
     getCategories() { return this.data.categories; },
-    getSettings() { return this.data.settings; },
     
     addProduct(product) {
         product.id = product.id || 'prod_' + Date.now();
@@ -361,6 +363,9 @@ const dataManager = {
         this.data.products = this.data.products.filter(p => p.id !== id);
         this.save();
     },
+
+    // ==================== TRANSACTIONS ====================
+    getTransactions() { return this.data.transactions; },
     
     addTransaction(transaction) {
         transaction.id = transaction.id || 'trans_' + Date.now();
@@ -380,6 +385,7 @@ const dataManager = {
         return null;
     },
 
+    // ==================== USERS ====================
     getUsers() { 
         const users = JSON.parse(localStorage.getItem(this.USERS_KEY));
         if (!users || !Array.isArray(users)) {
@@ -446,6 +452,7 @@ const dataManager = {
         return true;
     },
 
+    // ==================== AUTH ====================
     login(username, password) {
         console.log('[DataManager] Login attempt:', username);
         
@@ -481,12 +488,6 @@ const dataManager = {
     },
 
     logout() {
-        const currentUser = this.getCurrentUser();
-        if (currentUser) {
-            // ✅ JANGAN tutup kasir saat logout, biarkan shift tetap aktif
-            // this.closeKasir(currentUser.userId);
-        }
-        this.save();
         localStorage.removeItem(this.CURRENT_USER_KEY);
     },
 
@@ -508,8 +509,7 @@ const dataManager = {
     },
 
     recordLogin(userId) {
-        const data = this.getData();
-        if (!data.loginHistory) data.loginHistory = [];
+        if (!this.data.loginHistory) this.data.loginHistory = [];
         
         const deviceInfo = navigator.userAgent.substring(0, 100);
         
@@ -522,7 +522,7 @@ const dataManager = {
             status: 'success'
         };
         
-        data.loginHistory.push(loginRecord);
+        this.data.loginHistory.push(loginRecord);
         
         const users = this.getUsers();
         const userIndex = users.findIndex(u => u.id === userId);
@@ -531,20 +531,19 @@ const dataManager = {
             this.saveUsers(users);
         }
         
+        // Keep only last 6 months
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
-        data.loginHistory = data.loginHistory.filter(log => 
+        this.data.loginHistory = this.data.loginHistory.filter(log => 
             new Date(log.timestamp) >= sixMonthsAgo
         );
         
-        this.saveData(data);
+        this.save();
         return loginRecord;
     },
 
     getLoginHistory(filters = {}) {
-        const data = this.getData();
-        let history = data.loginHistory || [];
-        
+        let history = this.data.loginHistory || [];
         history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
         if (filters.startDate) {
@@ -560,31 +559,7 @@ const dataManager = {
         return history;
     },
 
-    getUserLastLogin(userId) {
-        const users = this.getUsers();
-        const user = users.find(u => u.id === userId);
-        return user ? user.lastLogin : null;
-    },
-
-    deleteUserLoginHistory(userId) {
-        const data = this.getData();
-        if (data.loginHistory) {
-            data.loginHistory = data.loginHistory.filter(log => log.userId !== userId);
-            this.saveData(data);
-        }
-    },
-
-    getAllLoginHistoryForBackup() {
-        const data = this.getData();
-        return data.loginHistory || [];
-    },
-
-    restoreLoginHistory(loginHistory) {
-        const data = this.getData();
-        data.loginHistory = loginHistory || [];
-        this.saveData(data);
-    },
-
+    // ==================== KASIR / SHIFT ====================
     checkKasirStatusForUser(userId) {
         const today = new Date().toDateString();
         this.checkAutoCloseMidnight();
@@ -622,7 +597,6 @@ const dataManager = {
         };
     },
 
-    // ✅ PERBAIKAN UTAMA: openKasir - Terapkan pending modal saat buka shift
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
@@ -633,25 +607,22 @@ const dataManager = {
             return { success: false, message: 'User tidak ditemukan!' };
         }
         
-        // ✅ PERBAIKAN: Jika shift hari ini masih aktif, lanjutkan dengan data yang ada
+        // Jika shift hari ini masih aktif, lanjutkan saja
         if (status.isContinue && !forceReset) {
             const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
             if (existingShiftIndex !== -1) {
-                // Update lastActive saja, jangan ubah modal atau currentCash
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
-                this.save();
                 
+                // Hitung ulang cash
                 const shift = this.data.kasir.activeShifts[existingShiftIndex];
-                
-                // ✅ Hitung ulang currentCash dari modal + transaksi hari ini
                 const totalModal = (shift.modalAwal || 0) + (shift.extraModal || 0);
                 const recalculatedCash = this.calculateShiftCash(userId, totalModal);
                 
-                // Update currentCash jika berbeda (untuk sinkronisasi)
                 if (recalculatedCash !== shift.currentCash) {
                     this.data.kasir.activeShifts[existingShiftIndex].currentCash = recalculatedCash;
-                    this.save();
                 }
+                
+                this.save();
                 
                 return { 
                     success: true, 
@@ -669,11 +640,10 @@ const dataManager = {
             const existingShift = this.data.kasir.activeShifts[existingShiftIndex];
             const shiftDate = new Date(existingShift.openTime).toDateString();
             
-            // ✅ Jika hari sama dan tidak force reset, lanjutkan shift
+            // Jika hari sama dan tidak force reset, lanjutkan shift
             if (shiftDate === today && !forceReset) {
                 this.data.kasir.activeShifts[existingShiftIndex].lastActive = new Date().toISOString();
                 
-                // ✅ Hitung ulang currentCash dari transaksi
                 const totalModal = (existingShift.modalAwal || 0) + (existingShift.extraModal || 0);
                 const recalculatedCash = this.calculateShiftCash(userId, totalModal);
                 this.data.kasir.activeShifts[existingShiftIndex].currentCash = recalculatedCash;
@@ -695,48 +665,41 @@ const dataManager = {
             this.data.kasir.activeShifts.splice(existingShiftIndex, 1);
         }
         
-        // ✅ PERBAIKAN UTAMA: Cek pending modal dari Owner untuk user ini
-        // Inisialisasi default modal
+        // Inisialisasi modal
         let modalAwal = 0;
         let extraModal = 0;
         
-        // ✅ CEK PENDING MODAL UTAMA DARI OWNER - PERBAIKAN UTAMA
+        // Cek pending modal dari Owner
         console.log(`[openKasir] Checking pendingModals for user ${userId}:`, this.data.pendingModals);
         
         if (this.data.pendingModals && this.data.pendingModals[userId]) {
             modalAwal = parseInt(this.data.pendingModals[userId]) || 0;
-            console.log(`[openKasir] ✅ Found pending modal for ${user.name}: Rp ${modalAwal}`);
-            
-            // ✅ HAPUS dari pending setelah diambil - PENTING!
-            delete this.data.pendingModals[userId];
-            console.log(`[openKasir] ✅ Deleted pending modal for ${userId}`);
-        } else {
-            console.log(`[openKasir] No pending modal found for ${userId}`);
-        }
-        
-        // ✅ CEK PENDING EXTRA MODAL DARI ADMIN
-        if (this.data.pendingExtraModals && this.data.pendingExtraModals[userId]) {
-            extraModal = parseInt(this.data.pendingExtraModals[userId]) || 0;
-            console.log(`[openKasir] ✅ Found pending extra modal for ${user.name}: Rp ${extraModal}`);
+            console.log(`[openKasir] Found pending modal for ${user.name}: Rp ${modalAwal}`);
             
             // Hapus dari pending setelah diambil
+            delete this.data.pendingModals[userId];
+            console.log(`[openKasir] Deleted pending modal for ${userId}`);
+        }
+        
+        // Cek pending extra modal dari Admin
+        if (this.data.pendingExtraModals && this.data.pendingExtraModals[userId]) {
+            extraModal = parseInt(this.data.pendingExtraModals[userId]) || 0;
+            console.log(`[openKasir] Found pending extra modal for ${user.name}: Rp ${extraModal}`);
+            
             delete this.data.pendingExtraModals[userId];
         }
         
-        // ✅ JIKA TIDAK ADA PENDING MODAL, gunakan default berdasarkan role
-        // Tapi untuk admin dan kasir, defaultnya 0 (harus diatur Owner dulu)
+        // Jika tidak ada pending modal, gunakan default berdasarkan role
         if (modalAwal === 0 && extraModal === 0) {
             if (user.role === 'owner') {
-                // Owner bisa gunakan modal dari settings sebagai default
                 modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
                 console.log(`[openKasir] Owner using default modal: Rp ${modalAwal}`);
             }
-            // Admin dan Kasir: tetap 0, harus diatur Owner dulu
         }
         
         const totalModal = modalAwal + extraModal;
         
-        // ✅ Hitung currentCash awal = total modal + transaksi hari ini (jika ada)
+        // Hitung currentCash awal
         const initialCash = this.calculateShiftCash(userId, totalModal);
         
         // Buat shift baru
@@ -748,7 +711,7 @@ const dataManager = {
             lastActive: new Date().toISOString(),
             modalAwal: modalAwal,
             extraModal: extraModal,
-            currentCash: initialCash, // ✅ Gunakan hasil perhitungan
+            currentCash: initialCash,
             transactionCount: 0,
             totalSales: 0
         };
@@ -762,10 +725,10 @@ const dataManager = {
             this.data.settings.currentCash = initialCash;
         }
         
-        // ✅ SAVE PERUBAHAN (termasuk penghapusan pendingModals)
+        // SAVE PERUBAHAN
         this.save();
         
-        console.log(`[openKasir] ✅ Shift created for ${user.name} with modal: Rp ${totalModal}, cash: Rp ${initialCash}`);
+        console.log(`[openKasir] Shift created for ${user.name} with modal: Rp ${totalModal}, cash: Rp ${initialCash}`);
         
         return { 
             success: true, 
@@ -777,7 +740,6 @@ const dataManager = {
         };
     },
 
-    // ✅ FUNGSI BARU: Hitung cash shift dari modal + transaksi hari ini
     calculateShiftCash(userId, modalAwal) {
         const today = new Date().toDateString();
         let cash = parseInt(modalAwal) || 0;
@@ -874,12 +836,10 @@ const dataManager = {
         this.save();
     },
 
-    // ✅ PERBAIKAN UTAMA: getUserShift - Pastikan return data lengkap
     getUserShift(userId) {
         const shift = this.data.kasir.activeShifts.find(s => s.userId === userId);
         if (!shift) return null;
         
-        // Pastikan semua field ada
         return {
             userId: shift.userId,
             userName: shift.userName,
@@ -894,25 +854,21 @@ const dataManager = {
         };
     },
 
-    // ✅ PERBAIKAN UTAMA: updateUserShift - Update modal dan hitung ulang kas
     updateUserShift(userId, updates) {
         const shiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
         if (shiftIndex !== -1) {
-            // Merge updates
             this.data.kasir.activeShifts[shiftIndex] = {
                 ...this.data.kasir.activeShifts[shiftIndex],
                 ...updates,
                 lastActive: new Date().toISOString()
             };
             
-            // ✅ Jika modal berubah, hitung ulang currentCash
+            // Jika modal berubah, hitung ulang currentCash
             if (updates.modalAwal !== undefined || updates.extraModal !== undefined) {
                 const shift = this.data.kasir.activeShifts[shiftIndex];
                 const totalModal = (shift.modalAwal || 0) + (shift.extraModal || 0);
                 const newCash = this.calculateShiftCash(userId, totalModal);
                 this.data.kasir.activeShifts[shiftIndex].currentCash = newCash;
-                
-                console.log(`[DataManager] Updated shift for ${shift.userName}: Modal=${totalModal}, Cash=${newCash}`);
             }
             
             this.save();
@@ -921,33 +877,27 @@ const dataManager = {
         return false;
     },
 
-    // ✅ FUNGSI BARU: Set pending modal untuk user (dipanggil saat Owner mengatur modal)
+    // ==================== PENDING MODALS ====================
     setPendingModal(userId, modalAmount) {
-        if (!this.data.pendingModals) {
-            this.data.pendingModals = {};
-        }
-        
-        // ✅ Jika user sudah punya shift aktif, update langsung
+        // Jika user sudah punya shift aktif, update langsung
         const existingShift = this.getUserShift(userId);
         if (existingShift) {
             console.log(`[DataManager] User ${userId} has active shift, updating directly`);
             return this.updateUserShift(userId, { modalAwal: modalAmount });
         }
         
-        // Jika belum punya shift, simpan ke pending
+        // Jika belum punya shift, simpan ke pendingModals
+        if (!this.data.pendingModals) {
+            this.data.pendingModals = {};
+        }
         this.data.pendingModals[userId] = parseInt(modalAmount) || 0;
         this.save();
         console.log(`[DataManager] Saved pending modal for ${userId}: Rp ${this.data.pendingModals[userId]}`);
         return true;
     },
 
-    // ✅ FUNGSI BARU: Set pending extra modal (dipanggil saat Admin bagi modal)
     setPendingExtraModal(userId, extraModalAmount) {
-        if (!this.data.pendingExtraModals) {
-            this.data.pendingExtraModals = {};
-        }
-        
-        // ✅ Jika user sudah punya shift aktif, update langsung
+        // Jika user sudah punya shift aktif, update langsung
         const existingShift = this.getUserShift(userId);
         if (existingShift) {
             console.log(`[DataManager] User ${userId} has active shift, adding extra modal directly`);
@@ -956,13 +906,15 @@ const dataManager = {
         }
         
         // Jika belum punya shift, tambahkan ke pending
+        if (!this.data.pendingExtraModals) {
+            this.data.pendingExtraModals = {};
+        }
         this.data.pendingExtraModals[userId] = (this.data.pendingExtraModals[userId] || 0) + parseInt(extraModalAmount);
         this.save();
         console.log(`[DataManager] Saved pending extra modal for ${userId}: Rp ${this.data.pendingExtraModals[userId]}`);
         return true;
     },
 
-    // ✅ FUNGSI BARU: Hapus pending modal (jika diperlukan)
     clearPendingModal(userId) {
         if (this.data.pendingModals && this.data.pendingModals[userId]) {
             delete this.data.pendingModals[userId];
@@ -970,7 +922,6 @@ const dataManager = {
         }
     },
 
-    // ✅ FUNGSI BARU: Hapus pending extra modal
     clearPendingExtraModal(userId) {
         if (this.data.pendingExtraModals && this.data.pendingExtraModals[userId]) {
             delete this.data.pendingExtraModals[userId];
@@ -978,7 +929,6 @@ const dataManager = {
         }
     },
 
-    // ✅ FUNGSI DEBUG: Cek pending modals
     debugPendingModals() {
         console.log('=== DEBUG PENDING MODALS ===');
         console.log('pendingModals:', this.data.pendingModals);
@@ -996,6 +946,7 @@ const dataManager = {
         return this.data.kasir.activeShifts || [];
     },
 
+    // ==================== STATS ====================
     getUserTransactions(userId, date = new Date()) {
         const targetDate = new Date(date).toDateString();
         return this.data.transactions.filter(t => {
@@ -1054,7 +1005,6 @@ const dataManager = {
         return stats;
     },
 
-    // ✅ FUNGSI BARU: Recalculate semua shift aktif (untuk sinkronisasi)
     recalculateAllShifts() {
         if (!this.data.kasir.activeShifts) return;
         
@@ -1072,7 +1022,7 @@ const dataManager = {
     }
 };
 
-// Initialize
+// Initialize immediately
 if (typeof dataManager !== 'undefined') {
     try {
         dataManager.init();
