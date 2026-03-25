@@ -1,7 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.5)
-// FIXED: Telegram & N8N config backup to dataManager
-// FIXED: Preview Cloud Data now working
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.6)
+// FIXED: Config not available to search module after cloud sync
+// FIXED: N8N config broadcast to other modules
 // ============================================
 
 const backupModule = {
@@ -175,6 +175,10 @@ const backupModule = {
         }
     },
 
+    // ==========================================
+    // PERBAIKAN BARU: BROADCAST CONFIG KE MODUL LAIN
+    // ==========================================
+    
     syncConfigToDataManager() {
         if (typeof dataManager === 'undefined' || !dataManager.data) {
             console.warn('[Backup] dataManager not available');
@@ -190,6 +194,50 @@ const backupModule = {
         console.log('[Backup] Config synced to dataManager');
     },
 
+    // PERBAIKAN BARU: Broadcast config ke window/global agar modul lain bisa akses
+    broadcastConfigToModules() {
+        // Simpan ke localStorage (untuk modul yang baca dari localStorage)
+        localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.config.telegram));
+        localStorage.setItem(this.KEYS.N8N_CONFIG, JSON.stringify(this.config.n8n));
+        
+        // Broadcast event agar modul lain tahu config telah update
+        window.dispatchEvent(new CustomEvent('hifzi-config-updated', {
+            detail: {
+                telegram: this.config.telegram,
+                n8n: this.config.n8n,
+                source: 'backupModule',
+                timestamp: Date.now()
+            }
+        }));
+        
+        // Juga simpan ke window.globalConfig untuk akses langsung
+        window.hifziConfig = {
+            telegram: this.config.telegram,
+            n8n: this.config.n8n,
+            lastUpdated: new Date().toISOString()
+        };
+        
+        console.log('[Backup] Config broadcasted to all modules');
+    },
+
+    // PERBAIKAN BARU: Method untuk modul lain mendapatkan config N8N
+    getN8nConfig() {
+        return {
+            ...this.config.n8n,
+            // Fallback ke dataManager jika config kosong
+            ...(typeof dataManager !== 'undefined' && dataManager.data?.n8nConfig) || {}
+        };
+    },
+
+    // PERBAIKAN BARU: Method untuk modul lain mendapatkan config Telegram
+    getTelegramConfig() {
+        return {
+            ...this.config.telegram,
+            // Fallback ke dataManager jika config kosong
+            ...(typeof dataManager !== 'undefined' && dataManager.data?.telegram) || {}
+        };
+    },
+
     saveTelegramConfig(botToken, chatId, enabled, gasUrl = '', sheetId = '') {
         this.config.telegram = {
             botToken: botToken || '',
@@ -200,10 +248,10 @@ const backupModule = {
             updatedAt: new Date().toISOString()
         };
         
-        // Simpan ke localStorage
-        localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.config.telegram));
+        // PERBAIKAN: Broadcast ke semua modul
+        this.broadcastConfigToModules();
         
-        // PERBAIKAN: Simpan ke dataManager agar ikut terbackup
+        // Simpan ke dataManager
         this.syncConfigToDataManager();
         
         // Trigger save
@@ -232,10 +280,10 @@ const backupModule = {
             updatedAt: new Date().toISOString()
         };
         
-        // Simpan ke localStorage
-        localStorage.setItem(this.KEYS.N8N_CONFIG, JSON.stringify(this.config.n8n));
+        // PERBAIKAN: Broadcast ke semua modul
+        this.broadcastConfigToModules();
         
-        // PERBAIKAN: Simpan ke dataManager agar ikut terbackup
+        // Simpan ke dataManager
         this.syncConfigToDataManager();
         
         // Trigger save
@@ -259,15 +307,20 @@ const backupModule = {
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             this.loadConfigFromDataManager();
+            // PERBAIKAN: Broadcast config saat init
+            this.broadcastConfigToModules();
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.3.5 - Config Backup Fix');
+        console.log('[Backup] Initializing v4.3.6 - Config Broadcast Fix');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
         this.loadConfigFromDataManager();
+        
+        // PERBAIKAN: Broadcast config setelah load
+        this.broadcastConfigToModules();
         
         this.lastLocalDataHash = localStorage.getItem(this.KEYS.LAST_DATA_HASH) || null;
         this.cloudDataHash = localStorage.getItem(this.KEYS.CLOUD_DATA_HASH) || null;
@@ -306,6 +359,9 @@ const backupModule = {
         this.setupNetworkListeners();
         this.setupDataChangeObserver();
         this.setupMenuListeners();
+        
+        // PERBAIKAN: Setup listener untuk config update dari modul lain
+        this.setupConfigBroadcastListener();
 
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
@@ -338,6 +394,28 @@ const backupModule = {
         window.addEventListener('storage', (e) => {
             if (e.key === 'hifzi_data' || e.key === 'hifzi_transactions') {
                 this.handleDataChange();
+            }
+            // PERBAIKAN: Listen perubahan config dari tab/browser lain
+            if (e.key === this.KEYS.N8N_CONFIG || e.key === this.KEYS.TELEGRAM_CONFIG) {
+                console.log('[Backup] Config updated from another tab');
+                this.loadConfigFromDataManager();
+                this.broadcastConfigToModules();
+            }
+        });
+    },
+
+    // PERBAIKAN BARU: Setup listener untuk broadcast config
+    setupConfigBroadcastListener() {
+        window.addEventListener('hifzi-config-updated', (e) => {
+            if (e.detail.source !== 'backupModule') {
+                console.log('[Backup] Received config update from:', e.detail.source);
+                // Update config jika lebih baru
+                if (e.detail.timestamp > (this.config.n8n.updatedAt || 0)) {
+                    this.config.n8n = e.detail.n8n;
+                }
+                if (e.detail.timestamp > (this.config.telegram.updatedAt || 0)) {
+                    this.config.telegram = e.detail.telegram;
+                }
             }
         });
     },
@@ -432,7 +510,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.5 - Config Backup Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.6 - Config Broadcast Edition</div>
                         </div>
                     </div>
                 </div>
@@ -478,6 +556,13 @@ const backupModule = {
                                 ${this.config.n8n.botToken ? '✅' : '❌'} N8N/Pencarian
                             </span>
                         </div>
+                        ${this.config.n8n.botToken ? `
+                            <div style="margin-top: 8px; font-size: 11px; color: #718096;">
+                                N8N Config tersedia di: 
+                                <code style="background: #edf2f7; padding: 2px 6px; border-radius: 4px;">window.hifziConfig.n8n</code> atau 
+                                <code style="background: #edf2f7; padding: 2px 6px; border-radius: 4px;">backupModule.getN8nConfig()</code>
+                            </div>
+                        ` : ''}
                     </div>
                 </div>
 
@@ -900,7 +985,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.3.5',
+                version: '4.3.6',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -918,7 +1003,7 @@ const backupModule = {
                 autoSync: this.isAutoSyncEnabled,
                 telegram: { ...this.config.telegram },
                 n8n: { ...this.config.n8n },
-                version: '4.3.5',
+                version: '4.3.6',
                 savedAt: new Date().toISOString(),
                 savedBy: this.deviceId
             }
@@ -948,14 +1033,12 @@ const backupModule = {
         if (cloudData.telegram) {
             data.telegram = { ...cloudData.telegram };
             this.config.telegram = { ...cloudData.telegram };
-            localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(cloudData.telegram));
             console.log('[Backup] Telegram config restored from cloud');
         }
         
         if (cloudData.n8nConfig) {
             data.n8nConfig = { ...cloudData.n8nConfig };
             this.config.n8n = { ...cloudData.n8nConfig };
-            localStorage.setItem(this.KEYS.N8N_CONFIG, JSON.stringify(cloudData.n8nConfig));
             console.log('[Backup] N8N config restored from cloud');
         }
         
@@ -964,14 +1047,15 @@ const backupModule = {
             if (cloudData._configMeta.telegram) {
                 data.telegram = { ...cloudData._configMeta.telegram };
                 this.config.telegram = { ...cloudData._configMeta.telegram };
-                localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(cloudData._configMeta.telegram));
             }
             if (cloudData._configMeta.n8n) {
                 data.n8nConfig = { ...cloudData._configMeta.n8n };
                 this.config.n8n = { ...cloudData._configMeta.n8n };
-                localStorage.setItem(this.KEYS.N8N_CONFIG, JSON.stringify(cloudData._configMeta.n8n));
             }
         }
+        
+        // PERBAIKAN BARU: Broadcast config ke semua modul setelah restore
+        this.broadcastConfigToModules();
         
         // Save
         if (typeof dataManager.save === 'function') {
