@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.1)
-// FIXED: Firebase init error, Auto-login issue, Auto-backup, Logout all providers, Render detection
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.2)
+// FIXED: Menu Cloud tidak terbuka, Render detection, Auto-login issue, Auto-backup
 // ============================================
 
 const backupModule = {
@@ -99,38 +99,145 @@ const backupModule = {
         LOCAL_SYNC_ENABLED: 'hifzi_local_sync_enabled'
     },
 
+    // ==========================================
+    // EVENT LISTENERS - TAMBAHAN UNTUK MENU CLOUD
+    // ==========================================
+    
+    setupMenuListeners() {
+        console.log('[Backup] Setup menu listeners...');
+        
+        // Listener untuk semua kemungkinan selector menu
+        const selectors = [
+            '[data-page="cloud"]',
+            '[data-page="backup"]',
+            '[data-menu="cloud"]',
+            '[data-menu="backup"]',
+            '#menu-cloud',
+            '#menu-backup',
+            '.menu-item[data-page="cloud"]',
+            '.menu-item[data-page="backup"]',
+            '.nav-item[data-page="cloud"]',
+            '.nav-item[data-page="backup"]',
+            'a[href="#cloud"]',
+            'a[href="#backup"]',
+            'a[href*="cloud"]',
+            'a[href*="backup"]'
+        ];
+        
+        // Event delegation untuk menangkap klik menu
+        document.addEventListener('click', (e) => {
+            const target = e.target;
+            
+            // Cek apakah element atau parent-nya adalah menu cloud/backup
+            const menuItem = target.closest(selectors.join(', '));
+            
+            if (menuItem) {
+                console.log('[Backup] Menu cloud/backup clicked:', menuItem);
+                
+                // Delay sedikit untuk tunggu router selesai
+                setTimeout(() => {
+                    this.forceRender();
+                }, 50);
+            }
+        });
+        
+        // Listener untuk hash change (URL #cloud)
+        window.addEventListener('hashchange', () => {
+            if (this.isBackupPage()) {
+                console.log('[Backup] Hash changed to cloud/backup');
+                setTimeout(() => this.forceRender(), 50);
+            }
+        });
+        
+        // Listener untuk popstate (browser back/forward)
+        window.addEventListener('popstate', () => {
+            if (this.isBackupPage()) {
+                console.log('[Backup] Popstate to cloud/backup');
+                setTimeout(() => this.forceRender(), 50);
+            }
+        });
+        
+        // Observer untuk perubahan DOM (untuk SPA router)
+        this.observePageChanges();
+        
+        console.log('[Backup] Menu listeners setup complete');
+    },
+    
+    observePageChanges() {
+        // Observer untuk mendeteksi perubahan konten halaman
+        const observer = new MutationObserver((mutations) => {
+            // Cek apakah container backup sudah ada atau perlu dirender
+            const backupContainer = document.getElementById('backup-module');
+            const isCloudPage = this.isBackupPage();
+            
+            if (isCloudPage && !backupContainer) {
+                console.log('[Backup] Cloud page detected but no backup-module, rendering...');
+                this.forceRender();
+            }
+        });
+        
+        // Observe body untuk perubahan besar
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Simpan referensi untuk cleanup
+        this._pageObserver = observer;
+    },
+    
+    forceRender() {
+        console.log('[Backup] Force rendering...');
+        this.isRendered = false; // Reset flag
+        this.render();
+    },
+
     isBackupPage() {
         // Cek URL hash
-        const hash = window.location.hash;
+        const hash = window.location.hash.toLowerCase();
         if (hash && (hash.includes('backup') || hash.includes('cloud'))) return true;
         
         // Cek URL path
-        const path = window.location.pathname;
+        const path = window.location.pathname.toLowerCase();
         if (path && (path.includes('backup') || path.includes('cloud'))) return true;
         
         // Cek query params
         const params = new URLSearchParams(window.location.search);
         const page = params.get('page');
-        if (page === 'backup' || page === 'cloud') return true;
+        if (page && (page === 'backup' || page === 'cloud')) return true;
         
         // Cek container spesifik
         const backupContainer = document.getElementById('backup-page-container');
         if (backupContainer) return true;
         
         // Cek active menu - lebih spesifik
-        const activeMenu = document.querySelector('.menu-item.active, .nav-item.active, [data-page="backup"].active, [data-page="cloud"].active');
-        if (activeMenu) {
-            const pageAttr = activeMenu.getAttribute('data-page');
-            if (pageAttr === 'backup' || pageAttr === 'cloud') return true;
+        const activeSelectors = [
+            '.menu-item.active[data-page="cloud"]',
+            '.menu-item.active[data-page="backup"]',
+            '.nav-item.active[data-page="cloud"]',
+            '.nav-item.active[data-page="backup"]',
+            '[data-page="cloud"].active',
+            '[data-page="backup"].active'
+        ];
+        
+        for (const selector of activeSelectors) {
+            const activeMenu = document.querySelector(selector);
+            if (activeMenu) {
+                const pageAttr = activeMenu.getAttribute('data-page');
+                if (pageAttr === 'backup' || pageAttr === 'cloud') return true;
+            }
         }
         
         // Cek dari router/navigation state jika ada
         if (window.currentPage === 'backup' || window.currentPage === 'cloud') return true;
         if (window.appState?.currentPage === 'backup' || window.appState?.currentPage === 'cloud') return true;
         
-        // Cek URL contains cloud/backup
+        // Cek URL lengkap
         const fullUrl = window.location.href.toLowerCase();
         if (fullUrl.includes('cloud') || fullUrl.includes('backup')) return true;
+        
+        // Cek apakah ada element dengan id backup-module (sudah dirender)
+        if (document.getElementById('backup-module')) return true;
         
         return false;
     },
@@ -140,16 +247,19 @@ const backupModule = {
             console.log('[Backup] Already initialized, reloading config...');
             this.reloadAllConfig();
             
+            // SELALU setup listeners meskipun sudah initialized
+            this.setupMenuListeners();
+            
             // Render jika di halaman backup/cloud
             if (this.isBackupPage()) {
                 console.log('[Backup] Already initialized, re-rendering...');
-                this.render();
+                this.forceRender();
             }
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.3.1 - All Fixes Applied...');
+        console.log('[Backup] Initializing v4.3.2 - Menu Cloud Fix...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -213,6 +323,9 @@ const backupModule = {
         // Setup data change observer untuk auto-backup
         this.setupDataChangeObserver();
 
+        // Setup menu listeners - PENTING!
+        this.setupMenuListeners();
+
         // Init provider dengan pengecekan error
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
@@ -231,7 +344,7 @@ const backupModule = {
         // SELALU cek dan render jika di halaman backup/cloud
         if (this.isBackupPage()) {
             console.log('[Backup] Di halaman backup/cloud, rendering...');
-            this.render();
+            this.forceRender();
         } else {
             console.log('[Backup] Bukan halaman backup/cloud, skip render UI');
         }
@@ -318,7 +431,7 @@ const backupModule = {
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
             n8n: this.n8nConfig,
-            version: '4.3.1',
+            version: '4.3.2',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -1562,7 +1675,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.1 - Auto-Backup Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.2 - Auto-Backup Edition</div>
                         </div>
                     </div>
                 </div>
@@ -2591,7 +2704,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.3.1',
+                version: '4.3.2',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
