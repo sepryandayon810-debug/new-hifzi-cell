@@ -1,5 +1,5 @@
 // ============================================
-// CASH MODULE - Hifzi Cell POS - Multi-User Edition
+// CASH MODULE - Hifzi Cell POS (FIXED VERSION)
 // ============================================
 
 const cashModule = {
@@ -600,11 +600,19 @@ const cashModule = {
             return;
         }
 
+        // Debug: Cek pendingModals saat ini
+        console.log('[showAturModalKasir] Current pendingModals:', JSON.parse(JSON.stringify(dataManager.data.pendingModals || {})));
+
         let userListHtml = users.map(user => {
             const shift = activeShifts.find(s => s.userId === user.id);
-            const mainModal = shift ? (shift.modalAwal || 0) : (dataManager.data.pendingModals?.[user.id] || 0);
-            const extraModal = shift ? (shift.extraModal || 0) : (dataManager.data.pendingExtraModals?.[user.id] || 0);
+            // PERBAIKAN: Gunakan getPendingModal untuk konsistensi
+            const pendingMain = dataManager.getPendingModal(user.id);
+            const pendingExtra = dataManager.getPendingExtraModal(user.id);
+            
+            const mainModal = shift ? (shift.modalAwal || 0) : pendingMain;
+            const extraModal = shift ? (shift.extraModal || 0) : pendingExtra;
             const totalModal = mainModal + extraModal;
+            
             const currentCash = shift ? dataManager.calculateShiftCash(user.id, totalModal) : 0;
             const isActive = !!shift;
             
@@ -702,8 +710,8 @@ const cashModule = {
 
         let kasirListHtml = users.map(user => {
             const shift = activeShifts.find(s => s.userId === user.id);
-            const mainModal = shift ? (shift.modalAwal || 0) : (dataManager.data.pendingModals?.[user.id] || 0);
-            const currentExtraModal = shift ? (shift.extraModal || 0) : (dataManager.data.pendingExtraModals?.[user.id] || 0);
+            const mainModal = shift ? (shift.modalAwal || 0) : dataManager.getPendingModal(user.id);
+            const currentExtraModal = shift ? (shift.extraModal || 0) : dataManager.getPendingExtraModal(user.id);
             const totalModal = mainModal + currentExtraModal;
             const isActive = !!shift;
             
@@ -867,6 +875,7 @@ const cashModule = {
             const shift = activeShifts.find(s => s.userId === userId);
             
             if (shift) {
+                // Update langsung ke shift aktif
                 shift.extraModal = (shift.extraModal || 0) + extraModal;
                 
                 const totalModal = (shift.modalAwal || 0) + shift.extraModal;
@@ -876,11 +885,12 @@ const cashModule = {
                 dataManager.updateUserShift(userId, shift);
                 updatedCount++;
             } else {
-                if (!dataManager.data.pendingExtraModals) dataManager.data.pendingExtraModals = {};
-                dataManager.data.pendingExtraModals[userId] = (dataManager.data.pendingExtraModals[userId] || 0) + extraModal;
+                // Simpan ke pending
+                dataManager.setPendingExtraModal(userId, extraModal);
             }
         });
 
+        // Kurangi modal admin
         const adminShift = dataManager.getUserShift(currentUser.userId);
         if (adminShift) {
             adminShift.modalAwal = Math.max(0, (adminShift.modalAwal || 0) - totalBagi);
@@ -910,6 +920,12 @@ const cashModule = {
     },
 
     saveAllModalKasir() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser || currentUser.role !== 'owner') {
+            app.showToast('❌ Hanya Owner yang dapat menyimpan modal!');
+            return;
+        }
+
         const users = dataManager.getUsers().filter(u => u.role !== 'owner');
         const activeShifts = dataManager.getActiveShifts();
         let savedCount = 0;
@@ -924,6 +940,7 @@ const cashModule = {
             const shift = activeShifts.find(s => s.userId === user.id);
             
             if (shift) {
+                // Update langsung ke shift aktif
                 shift.modalAwal = newModal;
                 
                 const totalModal = newModal + (shift.extraModal || 0);
@@ -933,13 +950,16 @@ const cashModule = {
                 dataManager.updateUserShift(user.id, shift);
                 updatedCount++;
             } else {
-                if (!dataManager.data.pendingModals) dataManager.data.pendingModals = {};
-                dataManager.data.pendingModals[user.id] = newModal;
+                // Simpan ke pending menggunakan method dataManager
+                dataManager.setPendingModal(user.id, newModal);
                 savedCount++;
             }
         });
 
-        dataManager.save();
+        // Debug: Cek hasil
+        console.log('[saveAllModalKasir] Saved to pending:', savedCount);
+        console.log('[saveAllModalKasir] Updated active shifts:', updatedCount);
+        console.log('[saveAllModalKasir] Current pendingModals:', JSON.parse(JSON.stringify(dataManager.data.pendingModals || {})));
 
         if (savedCount > 0 || updatedCount > 0) {
             app.showToast(`✅ Berhasil! ${updatedCount} user aktif diupdate, ${savedCount} disimpan untuk shift berikutnya.`);
@@ -1981,6 +2001,7 @@ const cashModule = {
             userShift.currentCash = newCash;
             dataManager.updateUserShift(currentUser.userId, userShift);
         } else {
+            // Jika belum ada shift, buka dengan modal baru
             dataManager.openKasir(currentUser.userId, newModal);
         }
 
