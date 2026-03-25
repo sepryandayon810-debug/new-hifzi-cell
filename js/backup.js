@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.1.0)
-// FULL VERSION - ALL FIXES INCLUDED
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.1.1)
+// FIXED: Module container not found error
 // ============================================
 
 const backupModule = {
@@ -99,11 +99,15 @@ const backupModule = {
         if (this.isInitialized && !forceReinit) {
             console.log('[Backup] Already initialized, skipping...');
             this.reloadAllConfig();
+            // Tetap render jika belum rendered
+            if (!this.isRendered) {
+                this.render();
+            }
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.1.0 - Full Version...');
+        console.log('[Backup] Initializing v4.1.1 - Fixed Edition...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -114,12 +118,20 @@ const backupModule = {
         
         const savedTelegram = localStorage.getItem(this.KEYS.TELEGRAM_CONFIG);
         if (savedTelegram) {
-            this.telegramConfig = JSON.parse(savedTelegram);
+            try {
+                this.telegramConfig = JSON.parse(savedTelegram);
+            } catch (e) {
+                console.error('[Backup] Error parsing Telegram config:', e);
+            }
         }
         
         const savedN8n = localStorage.getItem(this.KEYS.N8N_CONFIG);
         if (savedN8n) {
-            this.n8nConfig = JSON.parse(savedN8n);
+            try {
+                this.n8nConfig = JSON.parse(savedN8n);
+            } catch (e) {
+                console.error('[Backup] Error parsing N8N config:', e);
+            }
         }
         
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
@@ -158,6 +170,10 @@ const backupModule = {
         }
 
         this.isInitialized = true;
+        
+        // Render setelah init
+        this.render();
+        
         return this;
     },
 
@@ -190,7 +206,7 @@ const backupModule = {
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
             n8n: this.n8nConfig,
-            version: '4.1.0',
+            version: '4.1.1',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -1201,17 +1217,39 @@ const backupModule = {
     },
 
     render() {
-        if (this.isRendered) {
-            this.refreshUI();
-            return;
-        }
-
-        const container = document.getElementById('module-container');
+        // Cari container dengan berbagai kemungkinan ID
+        let container = document.getElementById('module-container');
+        
+        // Jika tidak ditemukan, coba cari container lain yang umum digunakan
         if (!container) {
-            console.error('[Backup] Module container not found');
-            return;
+            container = document.getElementById('content-container');
+        }
+        if (!container) {
+            container = document.getElementById('main-content');
+        }
+        if (!container) {
+            container = document.getElementById('app-content');
+        }
+        if (!container) {
+            container = document.querySelector('.module-container');
+        }
+        if (!container) {
+            container = document.querySelector('.content-area');
+        }
+        
+        // Jika masih tidak ditemukan, buat container baru
+        if (!container) {
+            console.warn('[Backup] Container tidak ditemukan, membuat container baru...');
+            container = document.createElement('div');
+            container.id = 'module-container';
+            container.style.cssText = 'padding: 20px; max-width: 1200px; margin: 0 auto;';
+            
+            // Cari tempat untuk menambahkan container
+            const mainContent = document.querySelector('main') || document.querySelector('.main') || document.body;
+            mainContent.appendChild(container);
         }
 
+        // Render konten
         container.innerHTML = `
             <div id="backup-module" style="
                 max-width: 900px;
@@ -1230,7 +1268,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.1.0 - Modal History Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.1.1 - Fixed Edition</div>
                         </div>
                     </div>
                 </div>
@@ -1762,10 +1800,14 @@ const backupModule = {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
         
-        document.getElementById('gas-config-section').style.display = provider === 'googlesheet' ? 'block' : 'none';
-        document.getElementById('firebase-config-section').style.display = provider === 'firebase' ? 'block' : 'none';
+        const gasSection = document.getElementById('gas-config-section');
+        const firebaseSection = document.getElementById('firebase-config-section');
         
-        document.getElementById('current-provider').textContent = provider;
+        if (gasSection) gasSection.style.display = provider === 'googlesheet' ? 'block' : 'none';
+        if (firebaseSection) firebaseSection.style.display = provider === 'firebase' ? 'block' : 'none';
+        
+        const currentProviderEl = document.getElementById('current-provider');
+        if (currentProviderEl) currentProviderEl.textContent = provider;
         
         if (provider === 'firebase') {
             this.initFirebase();
@@ -1778,8 +1820,16 @@ const backupModule = {
     },
 
     saveGASConfig() {
-        const url = document.getElementById('gas-url-input').value.trim();
-        const sheetId = document.getElementById('sheet-id-input').value.trim();
+        const urlInput = document.getElementById('gas-url-input');
+        const sheetInput = document.getElementById('sheet-id-input');
+        
+        if (!urlInput || !sheetInput) {
+            this.showToast('❌ Elemen input tidak ditemukan');
+            return;
+        }
+        
+        const url = urlInput.value.trim();
+        const sheetId = sheetInput.value.trim();
         
         if (!url || !sheetId) {
             this.showToast('❌ URL dan Sheet ID wajib diisi');
@@ -1804,9 +1854,18 @@ const backupModule = {
     },
 
     saveFirebaseConfig() {
-        const configText = document.getElementById('firebase-config-input').value.trim();
-        const email = document.getElementById('firebase-email').value.trim();
-        const password = document.getElementById('firebase-password').value;
+        const configInput = document.getElementById('firebase-config-input');
+        const emailInput = document.getElementById('firebase-email');
+        const passwordInput = document.getElementById('firebase-password');
+        
+        if (!configInput) {
+            this.showToast('❌ Elemen config tidak ditemukan');
+            return;
+        }
+        
+        const configText = configInput.value.trim();
+        const email = emailInput ? emailInput.value.trim() : '';
+        const password = passwordInput ? passwordInput.value : '';
         
         if (!configText) {
             this.showToast('❌ Config Firebase wajib diisi');
@@ -1833,9 +1892,18 @@ const backupModule = {
     },
 
     saveTelegramConfig() {
-        const botToken = document.getElementById('telegram-bot-token').value.trim();
-        const chatId = document.getElementById('telegram-chat-id').value.trim();
-        const enabled = document.getElementById('telegram-enabled').checked;
+        const botTokenInput = document.getElementById('telegram-bot-token');
+        const chatIdInput = document.getElementById('telegram-chat-id');
+        const enabledInput = document.getElementById('telegram-enabled');
+        
+        if (!botTokenInput || !chatIdInput) {
+            this.showToast('❌ Elemen input tidak ditemukan');
+            return;
+        }
+        
+        const botToken = botTokenInput.value.trim();
+        const chatId = chatIdInput.value.trim();
+        const enabled = enabledInput ? enabledInput.checked : false;
         
         this.telegramConfig = {
             botToken,
@@ -1856,10 +1924,20 @@ const backupModule = {
     },
 
     saveN8nConfig() {
-        const botToken = document.getElementById('n8n-bot-token').value.trim();
-        const chatId = document.getElementById('n8n-chat-id').value.trim();
-        const sheetId = document.getElementById('n8n-sheet-id').value.trim();
-        const gasUrl = document.getElementById('n8n-gas-url').value.trim();
+        const botTokenInput = document.getElementById('n8n-bot-token');
+        const chatIdInput = document.getElementById('n8n-chat-id');
+        const sheetIdInput = document.getElementById('n8n-sheet-id');
+        const gasUrlInput = document.getElementById('n8n-gas-url');
+        
+        if (!botTokenInput || !chatIdInput) {
+            this.showToast('❌ Elemen input tidak ditemukan');
+            return;
+        }
+        
+        const botToken = botTokenInput.value.trim();
+        const chatId = chatIdInput.value.trim();
+        const sheetId = sheetIdInput ? sheetIdInput.value.trim() : '';
+        const gasUrl = gasUrlInput ? gasUrlInput.value.trim() : '';
         
         this.n8nConfig = {
             botToken,
@@ -2085,7 +2163,7 @@ const backupModule = {
             categories: this.cleanUndefined(rawData.categories) || [],
             users: this.cleanUndefined(rawData.users) || [],
             searchHistory: this.cleanUndefined(rawData.searchHistory) || [],
-            // ✅ FIX 1 & 2: Include pending modals and modal history
+            // ✅ Include pending modals and modal history
             pendingModals: this.cleanUndefined(rawData.pendingModals) || {},
             pendingExtraModals: this.cleanUndefined(rawData.pendingExtraModals) || {},
             modalHistory: this.cleanUndefined(rawData.modalHistory) || [],
@@ -2093,7 +2171,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.1.0',
+                version: '4.1.1',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -2104,7 +2182,7 @@ const backupModule = {
                     modalHistory: (rawData.modalHistory || []).length
                 }
             },
-            // ✅ FIX 3 & 4: Include config with telegram and n8n
+            // ✅ Include config with telegram and n8n
             _configMeta: this.getConfigForBackup()
         };
         
@@ -2125,7 +2203,7 @@ const backupModule = {
         if (cloudData.categories) data.categories = cloudData.categories;
         if (cloudData.users) data.users = cloudData.users;
         if (cloudData.searchHistory) data.searchHistory = cloudData.searchHistory;
-        // ✅ FIX 1 & 2: Restore pending modals and modal history
+        // ✅ Restore pending modals and modal history
         if (cloudData.pendingModals) data.pendingModals = cloudData.pendingModals;
         if (cloudData.pendingExtraModals) data.pendingExtraModals = cloudData.pendingExtraModals;
         if (cloudData.modalHistory) data.modalHistory = cloudData.modalHistory;
@@ -2353,7 +2431,30 @@ const backupModule = {
                 }
             }).showToast();
         } else {
+            // Fallback jika Toastify tidak tersedia
             console.log('[Toast]', message);
+            // Buat toast sederhana
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                z-index: 99999;
+                font-family: system-ui, sans-serif;
+                font-weight: 600;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
     }
 };
@@ -2361,4 +2462,14 @@ const backupModule = {
 // Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = backupModule;
+}
+
+// Auto-initialize jika DOM sudah ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        backupModule.init();
+    });
+} else {
+    // DOM sudah ready
+    backupModule.init();
 }
