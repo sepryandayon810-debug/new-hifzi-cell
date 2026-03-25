@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.0)
-// FIXED: Firebase init error, Auto-login issue, Auto-backup, Logout all providers
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.1)
+// FIXED: Firebase init error, Auto-login issue, Auto-backup, Logout all providers, Render detection
 // ============================================
 
 const backupModule = {
@@ -100,33 +100,56 @@ const backupModule = {
     },
 
     isBackupPage() {
+        // Cek URL hash
         const hash = window.location.hash;
-        if (hash && hash.includes('backup')) return true;
+        if (hash && (hash.includes('backup') || hash.includes('cloud'))) return true;
         
+        // Cek URL path
         const path = window.location.pathname;
-        if (path && path.includes('backup')) return true;
+        if (path && (path.includes('backup') || path.includes('cloud'))) return true;
         
+        // Cek query params
         const params = new URLSearchParams(window.location.search);
-        if (params.get('page') === 'backup') return true;
+        const page = params.get('page');
+        if (page === 'backup' || page === 'cloud') return true;
         
+        // Cek container spesifik
         const backupContainer = document.getElementById('backup-page-container');
         if (backupContainer) return true;
         
-        const activeMenu = document.querySelector('.menu-item.active, .nav-item.active, [data-page="backup"].active');
-        if (activeMenu) return true;
+        // Cek active menu - lebih spesifik
+        const activeMenu = document.querySelector('.menu-item.active, .nav-item.active, [data-page="backup"].active, [data-page="cloud"].active');
+        if (activeMenu) {
+            const pageAttr = activeMenu.getAttribute('data-page');
+            if (pageAttr === 'backup' || pageAttr === 'cloud') return true;
+        }
+        
+        // Cek dari router/navigation state jika ada
+        if (window.currentPage === 'backup' || window.currentPage === 'cloud') return true;
+        if (window.appState?.currentPage === 'backup' || window.appState?.currentPage === 'cloud') return true;
+        
+        // Cek URL contains cloud/backup
+        const fullUrl = window.location.href.toLowerCase();
+        if (fullUrl.includes('cloud') || fullUrl.includes('backup')) return true;
         
         return false;
     },
 
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
-            console.log('[Backup] Already initialized, skipping...');
+            console.log('[Backup] Already initialized, reloading config...');
             this.reloadAllConfig();
+            
+            // Render jika di halaman backup/cloud
+            if (this.isBackupPage()) {
+                console.log('[Backup] Already initialized, re-rendering...');
+                this.render();
+            }
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.3.0 - All Fixes Applied...');
+        console.log('[Backup] Initializing v4.3.1 - All Fixes Applied...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -153,6 +176,9 @@ const backupModule = {
             }
         }
         
+        // Reset flag manual logout saat init
+        this._isManualLogout = false;
+        
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
             localStorage.setItem(this.KEYS.DEVICE_ID, this.deviceId);
         } else {
@@ -171,6 +197,7 @@ const backupModule = {
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         
+        // Cek status logout untuk Sheets
         const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
         if (sheetsLoggedOut) {
             this._gasConfigValid = false;
@@ -182,8 +209,11 @@ const backupModule = {
         console.log('[Backup] Sheets Logged Out:', sheetsLoggedOut);
 
         this.setupNetworkListeners();
+        
+        // Setup data change observer untuk auto-backup
         this.setupDataChangeObserver();
 
+        // Init provider dengan pengecekan error
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
         } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid && !sheetsLoggedOut) {
@@ -191,28 +221,33 @@ const backupModule = {
             setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
         }
 
+        // Start auto sync hanya jika tidak logout
         if (this.isAutoSyncEnabled && this._gasConfigValid && !sheetsLoggedOut) {
             this.startAutoSync();
         }
 
         this.isInitialized = true;
         
+        // SELALU cek dan render jika di halaman backup/cloud
         if (this.isBackupPage()) {
-            console.log('[Backup] Di halaman backup, rendering...');
+            console.log('[Backup] Di halaman backup/cloud, rendering...');
             this.render();
         } else {
-            console.log('[Backup] Bukan halaman backup, skip render UI');
+            console.log('[Backup] Bukan halaman backup/cloud, skip render UI');
         }
         
         return this;
     },
 
     setupDataChangeObserver() {
+        // Observer untuk dataManager
         if (typeof dataManager !== 'undefined') {
+            // Override save method untuk trigger backup
             const originalSave = dataManager.save;
             dataManager.save = (...args) => {
                 const result = originalSave.apply(dataManager, args);
                 
+                // Trigger auto-backup setelah save
                 setTimeout(() => {
                     this.handleDataChange();
                 }, 500);
@@ -223,6 +258,7 @@ const backupModule = {
             console.log('[Backup] Data change observer installed');
         }
         
+        // Observer untuk perubahan localStorage
         window.addEventListener('storage', (e) => {
             if (e.key === 'hifzi_data' || e.key === 'hifzi_transactions') {
                 this.handleDataChange();
@@ -236,6 +272,7 @@ const backupModule = {
             return;
         }
         
+        // Cek status logout
         if (this.currentProvider === 'googlesheet' && localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
             return;
         }
@@ -244,10 +281,11 @@ const backupModule = {
             return;
         }
         
+        // Debounce backup
         clearTimeout(this._backupDebounceTimer);
         this._backupDebounceTimer = setTimeout(() => {
             console.log('[Backup] Data changed, triggering auto-backup...');
-            this.syncToCloud(true);
+            this.syncToCloud(true); // true = silent mode
         }, 2000);
     },
 
@@ -280,7 +318,7 @@ const backupModule = {
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
             n8n: this.n8nConfig,
-            version: '4.3.0',
+            version: '4.3.1',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -1281,6 +1319,7 @@ const backupModule = {
             return;
         }
         
+        // Cek apakah sudah ada app dengan nama 'hifzi_backup'
         try {
             const existingApp = firebase.app('hifzi_backup');
             if (existingApp && !forceReinit) {
@@ -1300,6 +1339,7 @@ const backupModule = {
         }
         
         try {
+            // Delete existing app jika force reinit
             if (forceReinit) {
                 try {
                     const existingApp = firebase.app('hifzi_backup');
@@ -1312,6 +1352,7 @@ const backupModule = {
                 }
             }
             
+            // Inisialisasi dengan nama spesifik
             this.firebaseApp = firebase.initializeApp(this.firebaseConfig, 'hifzi_backup');
             this.database = firebase.database(this.firebaseApp);
             this.auth = firebase.auth(this.firebaseApp);
@@ -1319,6 +1360,7 @@ const backupModule = {
             const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
             const savedPassword = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
             
+            // Cek flag manual logout
             if (this._isManualLogout) {
                 console.log('[Backup] Manual logout detected, skip auto-login');
                 this.updateFirebaseAuthStatus('⚠️ Silakan login manual');
@@ -1336,11 +1378,13 @@ const backupModule = {
                     .catch(err => {
                         console.error('[Backup] Firebase auth error:', err);
                         this.updateFirebaseAuthStatus('❌ Gagal login: ' + err.message);
+                        // Clear saved credentials jika gagal
                         localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
                         localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
                     });
             } else {
                 this.auth.onAuthStateChanged(user => {
+                    // Cek flag manual logout
                     if (this._isManualLogout) {
                         console.log('[Backup] Manual logout detected in auth state change');
                         return;
@@ -1368,6 +1412,7 @@ const backupModule = {
             return;
         }
         
+        // Set flag manual logout
         this._isManualLogout = true;
         
         this.auth.signOut()
@@ -1376,6 +1421,7 @@ const backupModule = {
                 this.currentUser = null;
                 this._firebaseAuthStateReady = false;
                 
+                // Clear saved credentials
                 localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
                 localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
                 localStorage.removeItem(this.KEYS.FB_USER);
@@ -1384,6 +1430,7 @@ const backupModule = {
                 this.showToast('✅ Logout Firebase berhasil');
                 this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
                 
+                // Refresh UI
                 this.refreshUI();
             })
             .catch(err => {
@@ -1393,14 +1440,17 @@ const backupModule = {
     },
 
     logoutSheets() {
+        // Set flag logout
         localStorage.setItem(this.KEYS.SHEETS_LOGGED_OUT, 'true');
         this._gasConfigValid = false;
         
+        // Stop auto sync
         this.stopAutoSync();
         
         this.showToast('✅ Logout Google Sheets berhasil. Sync dinonaktifkan.');
         this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
         
+        // Refresh UI
         this.refreshUI();
     },
 
@@ -1421,7 +1471,7 @@ const backupModule = {
         
         localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
         localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
-        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT);
+        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT); // Hapus flag logout
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         this.saveBackupSettings();
@@ -1465,11 +1515,8 @@ const backupModule = {
     },
 
     render() {
-        if (!this.isBackupPage()) {
-            console.log('[Backup] Bukan halaman backup, render dibatalkan');
-            return;
-        }
-
+        console.log('[Backup] Rendering backup module...');
+        
         let container = document.getElementById('module-container');
         if (!container) container = document.getElementById('content-container');
         if (!container) container = document.getElementById('main-content');
@@ -1477,6 +1524,8 @@ const backupModule = {
         if (!container) container = document.querySelector('.module-container');
         if (!container) container = document.querySelector('.content-area');
         if (!container) container = document.getElementById('backup-page-container');
+        if (!container) container = document.querySelector('.container');
+        if (!container) container = document.querySelector('main');
         
         if (!container) {
             console.warn('[Backup] Container tidak ditemukan, membuat container baru...');
@@ -1487,6 +1536,9 @@ const backupModule = {
             const mainContent = document.querySelector('main') || document.querySelector('.main') || document.body;
             mainContent.appendChild(container);
         }
+
+        // Clear container sebelum render
+        container.innerHTML = '';
 
         const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
         const localSyncEnabled = localStorage.getItem(this.KEYS.LOCAL_SYNC_ENABLED) !== 'false';
@@ -1510,7 +1562,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.0 - Auto-Backup Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.1 - Auto-Backup Edition</div>
                         </div>
                     </div>
                 </div>
@@ -2225,6 +2277,7 @@ const backupModule = {
             this.initFirebase();
         } else if (provider === 'googlesheet') {
             this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+            // Cek status logout
             if (localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
                 this._gasConfigValid = false;
             }
@@ -2257,7 +2310,7 @@ const backupModule = {
         
         localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
         localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
-        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT);
+        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT); // Hapus flag logout saat save
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         this.saveBackupSettings();
@@ -2301,6 +2354,7 @@ const backupModule = {
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
             }
             
+            // Reset flag logout
             this._isManualLogout = false;
             
             this.saveBackupSettings();
@@ -2426,6 +2480,7 @@ const backupModule = {
             return;
         }
         
+        // Cek status logout
         if (this.currentProvider === 'googlesheet' && localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
             if (!silent) this.showToast('🚫 Google Sheets logged out');
             return;
@@ -2536,7 +2591,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.3.0',
+                version: '4.3.1',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -2820,10 +2875,12 @@ const backupModule = {
     }
 };
 
+// Export
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = backupModule;
 }
 
+// Auto-initialize
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         backupModule.init();
