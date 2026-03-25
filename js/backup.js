@@ -1,7 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.2.0)
-// FIXED: Menu muncul di semua halaman, Halaman backup tidak render,
-//        Provider Local & Sheets hilang
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.0)
+// FIXED: Firebase init error, Auto-login issue, Auto-backup, Logout all providers
 // ============================================
 
 const backupModule = {
@@ -27,6 +26,7 @@ const backupModule = {
     syncDebounceTimer: null,
     lastLocalDataHash: null,
     lastCloudDataHash: null,
+    _backupDebounceTimer: null,
     
     previewData: null,
     
@@ -46,6 +46,7 @@ const backupModule = {
     
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
+    _isManualLogout: false,
     
     telegramConfig: {
         botToken: '',
@@ -71,7 +72,8 @@ const backupModule = {
         CONFLICT: 'conflict',
         OFFLINE: 'offline',
         CHECKING: 'checking',
-        CLOUD_NEWER: 'cloud_newer'
+        CLOUD_NEWER: 'cloud_newer',
+        LOGGED_OUT: 'logged_out'
     },
     
     KEYS: {
@@ -92,28 +94,24 @@ const backupModule = {
         LAST_CLOUD_CHECK: 'hifzi_last_cloud_check',
         CLOUD_CHECK_COUNT: 'hifzi_cloud_check_count',
         TELEGRAM_CONFIG: 'hifzi_telegram_config',
-        N8N_CONFIG: 'hifzi_n8n_config'
+        N8N_CONFIG: 'hifzi_n8n_config',
+        SHEETS_LOGGED_OUT: 'hifzi_sheets_logged_out',
+        LOCAL_SYNC_ENABLED: 'hifzi_local_sync_enabled'
     },
 
-    // ✅ FUNGSI UTAMA: Cek apakah sedang di halaman backup
     isBackupPage() {
-        // Cek dari URL hash
         const hash = window.location.hash;
         if (hash && hash.includes('backup')) return true;
         
-        // Cek dari URL path
         const path = window.location.pathname;
         if (path && path.includes('backup')) return true;
         
-        // Cek dari query parameter
         const params = new URLSearchParams(window.location.search);
         if (params.get('page') === 'backup') return true;
         
-        // Cek apakah ada container backup yang spesifik
         const backupContainer = document.getElementById('backup-page-container');
         if (backupContainer) return true;
         
-        // Cek dari active menu
         const activeMenu = document.querySelector('.menu-item.active, .nav-item.active, [data-page="backup"].active');
         if (activeMenu) return true;
         
@@ -128,7 +126,7 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.2.0 - Multi-Page Fix...');
+        console.log('[Backup] Initializing v4.3.0 - All Fixes Applied...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -173,26 +171,32 @@ const backupModule = {
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         
+        const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
+        if (sheetsLoggedOut) {
+            this._gasConfigValid = false;
+            console.log('[Backup] Sheets is logged out, sync disabled');
+        }
+        
         console.log('[Backup] Provider:', this.currentProvider);
         console.log('[Backup] GAS Valid:', this._gasConfigValid);
-        
+        console.log('[Backup] Sheets Logged Out:', sheetsLoggedOut);
+
         this.setupNetworkListeners();
         this.setupDataChangeObserver();
 
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
-        } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid) {
+        } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid && !sheetsLoggedOut) {
             this.checkNewDeviceGAS();
             setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
         }
 
-        if (this.isAutoSyncEnabled && this._gasConfigValid) {
+        if (this.isAutoSyncEnabled && this._gasConfigValid && !sheetsLoggedOut) {
             this.startAutoSync();
         }
 
         this.isInitialized = true;
         
-        // ✅ Hanya render jika di halaman backup
         if (this.isBackupPage()) {
             console.log('[Backup] Di halaman backup, rendering...');
             this.render();
@@ -203,54 +207,48 @@ const backupModule = {
         return this;
     },
 
-    // ✅ FUNGSI BARU: Render hanya menu icon/indicator (untuk halaman non-backup)
-    renderMiniIndicator() {
-        // Hanya render mini indicator jika TIDAK di halaman backup
-        if (this.isBackupPage()) return;
+    setupDataChangeObserver() {
+        if (typeof dataManager !== 'undefined') {
+            const originalSave = dataManager.save;
+            dataManager.save = (...args) => {
+                const result = originalSave.apply(dataManager, args);
+                
+                setTimeout(() => {
+                    this.handleDataChange();
+                }, 500);
+                
+                return result;
+            };
+            
+            console.log('[Backup] Data change observer installed');
+        }
         
-        // Cek apakah sudah ada indicator
-        if (document.getElementById('backup-mini-indicator')) return;
-        
-        const indicator = document.createElement('div');
-        indicator.id = 'backup-mini-indicator';
-        indicator.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 9999;
-            font-size: 24px;
-            transition: transform 0.2s;
-        `;
-        indicator.innerHTML = '☁️';
-        indicator.title = 'Backup & Sync';
-        
-        indicator.addEventListener('click', () => {
-            // Navigasi ke halaman backup
-            window.location.hash = 'backup';
-            // atau panggil fungsi navigasi aplikasi Anda
-            if (typeof navigateTo === 'function') {
-                navigateTo('backup');
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'hifzi_data' || e.key === 'hifzi_transactions') {
+                this.handleDataChange();
             }
         });
+    },
+
+    handleDataChange() {
+        if (!this.isOnline) {
+            console.log('[Backup] Offline, skipping auto-backup');
+            return;
+        }
         
-        indicator.addEventListener('mouseenter', () => {
-            indicator.style.transform = 'scale(1.1)';
-        });
+        if (this.currentProvider === 'googlesheet' && localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
+            return;
+        }
         
-        indicator.addEventListener('mouseleave', () => {
-            indicator.style.transform = 'scale(1)';
-        });
+        if (this.currentProvider === 'local' && localStorage.getItem(this.KEYS.LOCAL_SYNC_ENABLED) === 'false') {
+            return;
+        }
         
-        document.body.appendChild(indicator);
+        clearTimeout(this._backupDebounceTimer);
+        this._backupDebounceTimer = setTimeout(() => {
+            console.log('[Backup] Data changed, triggering auto-backup...');
+            this.syncToCloud(true);
+        }, 2000);
     },
 
     cleanUndefined(obj) {
@@ -282,7 +280,7 @@ const backupModule = {
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
             n8n: this.n8nConfig,
-            version: '4.2.0',
+            version: '4.3.0',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -1206,23 +1204,6 @@ const backupModule = {
         });
     },
 
-    setupDataChangeObserver() {
-        this.dataChangeObserver = setInterval(() => {
-            if (!this.isOnline || this.currentProvider === 'local') return;
-            
-            const currentHash = this.calculateDataHash();
-            if (currentHash !== this.lastLocalDataHash) {
-                console.log('[Backup] Data change detected');
-                this.lastLocalDataHash = currentHash;
-                localStorage.setItem(this.KEYS.LAST_DATA_HASH, currentHash);
-                
-                if (this.isAutoSyncEnabled) {
-                    this.debouncedSync();
-                }
-            }
-        }, 30000);
-    },
-
     debouncedSync() {
         clearTimeout(this.syncDebounceTimer);
         this.syncDebounceTimer = setTimeout(() => {
@@ -1265,7 +1246,8 @@ const backupModule = {
                 [this.SYNC_STATUS.ERROR]: { text: '✗ Error', color: '#f56565', bg: '#fed7d7' },
                 [this.SYNC_STATUS.OFFLINE]: { text: '● Offline', color: '#a0aec0', bg: '#e2e8f0' },
                 [this.SYNC_STATUS.CHECKING]: { text: '? Mengecek...', color: '#ed8936', bg: '#feebc8' },
-                [this.SYNC_STATUS.CLOUD_NEWER]: { text: '☁️ Cloud Baru', color: '#9f7aea', bg: '#e9d8fd' }
+                [this.SYNC_STATUS.CLOUD_NEWER]: { text: '☁️ Cloud Baru', color: '#9f7aea', bg: '#e9d8fd' },
+                [this.SYNC_STATUS.LOGGED_OUT]: { text: '🚫 Logged Out', color: '#c53030', bg: '#fed7d7' }
             };
             
             const s = statusMap[status] || statusMap[this.SYNC_STATUS.IDLE];
@@ -1292,37 +1274,210 @@ const backupModule = {
         }
     },
 
-    // ✅ RENDER UTAMA - Hanya dipanggil di halaman backup
+    initFirebase(forceReinit = false) {
+        if (typeof firebase === 'undefined') {
+            console.error('[Backup] Firebase SDK not loaded');
+            this.showToast('❌ Firebase SDK tidak tersedia');
+            return;
+        }
+        
+        try {
+            const existingApp = firebase.app('hifzi_backup');
+            if (existingApp && !forceReinit) {
+                console.log('[Backup] Firebase already initialized');
+                this.firebaseApp = existingApp;
+                this.database = firebase.database(this.firebaseApp);
+                this.auth = firebase.auth(this.firebaseApp);
+                return;
+            }
+        } catch (e) {
+            // App belum ada, lanjutkan inisialisasi
+        }
+        
+        if (!this.firebaseConfig.apiKey) {
+            console.log('[Backup] No Firebase config');
+            return;
+        }
+        
+        try {
+            if (forceReinit) {
+                try {
+                    const existingApp = firebase.app('hifzi_backup');
+                    if (existingApp) {
+                        existingApp.delete();
+                        console.log('[Backup] Deleted existing Firebase app');
+                    }
+                } catch (e) {
+                    // App tidak ada, abaikan error
+                }
+            }
+            
+            this.firebaseApp = firebase.initializeApp(this.firebaseConfig, 'hifzi_backup');
+            this.database = firebase.database(this.firebaseApp);
+            this.auth = firebase.auth(this.firebaseApp);
+            
+            const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
+            const savedPassword = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
+            
+            if (this._isManualLogout) {
+                console.log('[Backup] Manual logout detected, skip auto-login');
+                this.updateFirebaseAuthStatus('⚠️ Silakan login manual');
+                return;
+            }
+            
+            if (savedEmail && savedPassword) {
+                this.auth.signInWithEmailAndPassword(savedEmail, savedPassword)
+                    .then(userCredential => {
+                        this.currentUser = userCredential.user;
+                        this._firebaseAuthStateReady = true;
+                        this.updateFirebaseAuthStatus('✅ Terhubung: ' + this.currentUser.email);
+                        setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
+                    })
+                    .catch(err => {
+                        console.error('[Backup] Firebase auth error:', err);
+                        this.updateFirebaseAuthStatus('❌ Gagal login: ' + err.message);
+                        localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+                        localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
+                    });
+            } else {
+                this.auth.onAuthStateChanged(user => {
+                    if (this._isManualLogout) {
+                        console.log('[Backup] Manual logout detected in auth state change');
+                        return;
+                    }
+                    
+                    if (user) {
+                        this.currentUser = user;
+                        this._firebaseAuthStateReady = true;
+                        this.updateFirebaseAuthStatus('✅ Terhubung: ' + user.email);
+                    } else {
+                        this.updateFirebaseAuthStatus('⚠️ Belum login');
+                    }
+                });
+            }
+            
+        } catch (err) {
+            console.error('[Backup] Firebase init error:', err);
+            this.showToast('❌ Gagal init Firebase: ' + err.message);
+        }
+    },
+
+    logoutFirebase() {
+        if (!this.auth) {
+            this.showToast('❌ Firebase belum terinisialisasi');
+            return;
+        }
+        
+        this._isManualLogout = true;
+        
+        this.auth.signOut()
+            .then(() => {
+                console.log('[Backup] Firebase logged out');
+                this.currentUser = null;
+                this._firebaseAuthStateReady = false;
+                
+                localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
+                localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
+                localStorage.removeItem(this.KEYS.FB_USER);
+                
+                this.updateFirebaseAuthStatus('✅ Berhasil logout');
+                this.showToast('✅ Logout Firebase berhasil');
+                this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
+                
+                this.refreshUI();
+            })
+            .catch(err => {
+                console.error('[Backup] Logout error:', err);
+                this.showToast('❌ Gagal logout: ' + err.message);
+            });
+    },
+
+    logoutSheets() {
+        localStorage.setItem(this.KEYS.SHEETS_LOGGED_OUT, 'true');
+        this._gasConfigValid = false;
+        
+        this.stopAutoSync();
+        
+        this.showToast('✅ Logout Google Sheets berhasil. Sync dinonaktifkan.');
+        this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
+        
+        this.refreshUI();
+    },
+
+    loginSheets() {
+        const urlInput = document.getElementById('gas-url-input');
+        const sheetInput = document.getElementById('sheet-id-input');
+        
+        const url = urlInput ? urlInput.value.trim() : this.gasUrl;
+        const sheetId = sheetInput ? sheetInput.value.trim() : this.sheetId;
+        
+        if (!url || !sheetId) {
+            this.showToast('❌ URL dan Sheet ID wajib diisi');
+            return;
+        }
+        
+        this.gasUrl = url;
+        this.sheetId = this.cleanSheetId(sheetId);
+        
+        localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
+        localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
+        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT);
+        
+        this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+        this.saveBackupSettings();
+        
+        if (this._gasConfigValid) {
+            this.showToast('✅ Login Google Sheets berhasil');
+            this.updateSyncStatus(this.SYNC_STATUS.IDLE);
+            this.checkNewDeviceGAS();
+            setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
+            
+            if (this.isAutoSyncEnabled) {
+                this.startAutoSync();
+            }
+        } else {
+            this.showToast('❌ Konfigurasi tidak valid');
+        }
+        
+        this.refreshUI();
+    },
+
+    disableLocalSync() {
+        localStorage.setItem(this.KEYS.LOCAL_SYNC_ENABLED, 'false');
+        this.showToast('✅ Sync Local dinonaktifkan');
+        this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
+        this.refreshUI();
+    },
+
+    enableLocalSync() {
+        localStorage.setItem(this.KEYS.LOCAL_SYNC_ENABLED, 'true');
+        this.showToast('✅ Sync Local diaktifkan');
+        this.updateSyncStatus(this.SYNC_STATUS.IDLE);
+        this.refreshUI();
+    },
+
+    updateFirebaseAuthStatus(message) {
+        const statusEl = document.getElementById('firebase-auth-status');
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = message;
+        }
+    },
+
     render() {
-        // ✅ Double check: hanya render jika di halaman backup
         if (!this.isBackupPage()) {
             console.log('[Backup] Bukan halaman backup, render dibatalkan');
             return;
         }
 
-        // Cari container dengan berbagai kemungkinan ID
         let container = document.getElementById('module-container');
+        if (!container) container = document.getElementById('content-container');
+        if (!container) container = document.getElementById('main-content');
+        if (!container) container = document.getElementById('app-content');
+        if (!container) container = document.querySelector('.module-container');
+        if (!container) container = document.querySelector('.content-area');
+        if (!container) container = document.getElementById('backup-page-container');
         
-        if (!container) {
-            container = document.getElementById('content-container');
-        }
-        if (!container) {
-            container = document.getElementById('main-content');
-        }
-        if (!container) {
-            container = document.getElementById('app-content');
-        }
-        if (!container) {
-            container = document.querySelector('.module-container');
-        }
-        if (!container) {
-            container = document.querySelector('.content-area');
-        }
-        if (!container) {
-            container = document.getElementById('backup-page-container');
-        }
-        
-        // Jika masih tidak ditemukan, buat container baru
         if (!container) {
             console.warn('[Backup] Container tidak ditemukan, membuat container baru...');
             container = document.createElement('div');
@@ -1333,7 +1488,10 @@ const backupModule = {
             mainContent.appendChild(container);
         }
 
-        // ✅ PASTIKAN SEMUA PROVIDER ADA (Local, Google Sheets, Firebase)
+        const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
+        const localSyncEnabled = localStorage.getItem(this.KEYS.LOCAL_SYNC_ENABLED) !== 'false';
+        const isFirebaseLoggedOut = !this.currentUser && this.currentProvider === 'firebase';
+
         container.innerHTML = `
             <div id="backup-module" style="
                 max-width: 900px;
@@ -1352,7 +1510,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.2.0 - Multi Provider Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.0 - Auto-Backup Edition</div>
                         </div>
                     </div>
                 </div>
@@ -1381,12 +1539,12 @@ const backupModule = {
                                     align-items: center;
                                     gap: 6px;
                                     padding: 6px 12px;
-                                    background: #c6f6d5;
-                                    color: #22543d;
+                                    background: ${this.getStatusColor().bg};
+                                    color: ${this.getStatusColor().text};
                                     border-radius: 20px;
                                     font-size: 12px;
                                     font-weight: 600;
-                                ">✓ Siap</span>
+                                ">${this.getStatusText()}</span>
                             </div>
                         </div>
                         <div style="
@@ -1454,7 +1612,6 @@ const backupModule = {
                         </select>
                     </div>
 
-                    <!-- ✅ LOCAL STORAGE SECTION -->
                     <div id="local-config-section" style="display: ${this.currentProvider === 'local' ? 'block' : 'none'};">
                         <div style="
                             background: #f0fff4;
@@ -1465,27 +1622,64 @@ const backupModule = {
                         ">
                             <div style="font-weight: 600; color: #22543d; margin-bottom: 8px;">💾 Mode Local Storage</div>
                             <div style="font-size: 13px; color: #2d3748; line-height: 1.6;">
-                                <p>Data disimpan hanya di browser ini. Tidak ada sinkronisasi cloud.</p>
+                                <p>Data disimpan hanya di browser ini.</p>
                                 <ul style="margin-top: 8px; padding-left: 20px;">
                                     <li>✅ Cepat & offline</li>
                                     <li>✅ Tidak perlu internet</li>
                                     <li>⚠️ Data tidak terbackup ke cloud</li>
-                                    <li>⚠️ Hanya tersedia di device ini</li>
                                 </ul>
+                            </div>
+                            
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #9ae6b4;">
+                                ${!localSyncEnabled ? `
+                                    <div style="background: #fed7d7; color: #742a2a; padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 13px;">
+                                        ⚠️ Sync Local sedang dinonaktifkan
+                                    </div>
+                                    <button onclick="backupModule.enableLocalSync()" style="
+                                        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+                                        color: white;
+                                        border: none;
+                                        padding: 10px 20px;
+                                        border-radius: 6px;
+                                        font-weight: 600;
+                                        cursor: pointer;
+                                        width: 100%;
+                                    ">✅ Aktifkan Sync Local</button>
+                                ` : `
+                                    <button onclick="backupModule.disableLocalSync()" style="
+                                        background: #fed7d7;
+                                        color: #c53030;
+                                        border: 2px solid #fc8181;
+                                        padding: 10px 20px;
+                                        border-radius: 6px;
+                                        font-weight: 600;
+                                        cursor: pointer;
+                                        width: 100%;
+                                    ">🚫 Nonaktifkan Sync Local</button>
+                                `}
                             </div>
                         </div>
                     </div>
 
-                    <!-- ✅ GOOGLE SHEETS SECTION -->
                     <div id="gas-config-section" style="display: ${this.currentProvider === 'googlesheet' ? 'block' : 'none'};">
                         <div style="
-                            background: #fffaf0;
-                            border: 2px solid #fbd38d;
+                            background: ${sheetsLoggedOut ? '#fed7d7' : '#fffaf0'};
+                            border: 2px solid ${sheetsLoggedOut ? '#fc8181' : '#fbd38d'};
                             border-radius: 10px;
                             padding: 16px;
                             margin-bottom: 12px;
                         ">
-                            <div style="font-weight: 600; color: #744210; margin-bottom: 8px;">📊 Google Sheets Configuration</div>
+                            <div style="font-weight: 600; color: ${sheetsLoggedOut ? '#742a2a' : '#744210'}; margin-bottom: 8px;">
+                                📊 Google Sheets Configuration
+                                ${sheetsLoggedOut ? '<span style="color: #e53e3e; margin-left: 8px;">(LOGGED OUT)</span>' : ''}
+                            </div>
+                            
+                            ${sheetsLoggedOut ? `
+                                <div style="background: #fff5f5; border: 1px solid #fc8181; border-radius: 6px; padding: 10px; margin-bottom: 12px; font-size: 13px; color: #742a2a;">
+                                    ⚠️ Anda telah logout dari Google Sheets. Sync dinonaktifkan.<br>
+                                    Masukkan kredensial untuk login kembali.
+                                </div>
+                            ` : ''}
                             
                             <div style="margin-bottom: 12px;">
                                 <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
@@ -1498,9 +1692,6 @@ const backupModule = {
                                     border-radius: 8px;
                                     font-size: 14px;
                                 ">
-                                <div style="font-size: 11px; color: #718096; margin-top: 4px;">
-                                    URL dari deployment Google Apps Script
-                                </div>
                             </div>
                             
                             <div style="margin-bottom: 12px;">
@@ -1514,57 +1705,76 @@ const backupModule = {
                                     border-radius: 8px;
                                     font-size: 14px;
                                 ">
-                                <div style="font-size: 11px; color: #718096; margin-top: 4px;">
-                                    * Sheet ID adalah bagian dari URL spreadsheet (44 karakter)
-                                </div>
                             </div>
                             
-                            <div style="
-                                background: ${this._gasConfigValid ? '#c6f6d5' : '#fed7d7'};
-                                border-radius: 8px;
-                                padding: 12px;
-                                margin-bottom: 12px;
-                                font-size: 13px;
-                            ">
-                                <div style="font-weight: 600; color: ${this._gasConfigValid ? '#22543d' : '#742a2a'};">
-                                    ${this._gasConfigValid ? '✅ Konfigurasi Valid' : '⚠️ Konfigurasi Belum Lengkap'}
+                            ${!sheetsLoggedOut ? `
+                                <div style="
+                                    background: ${this._gasConfigValid ? '#c6f6d5' : '#fed7d7'};
+                                    border-radius: 8px;
+                                    padding: 12px;
+                                    margin-bottom: 12px;
+                                    font-size: 13px;
+                                ">
+                                    <div style="font-weight: 600; color: ${this._gasConfigValid ? '#22543d' : '#742a2a'};">
+                                        ${this._gasConfigValid ? '✅ Konfigurasi Valid' : '⚠️ Konfigurasi Belum Lengkap'}
+                                    </div>
                                 </div>
-                                <div style="color: #4a5568; margin-top: 4px; font-size: 12px;">
-                                    ${this._gasConfigValid ? 'GAS URL dan Sheet ID sudah benar' : 'Pastikan GAS URL dan Sheet ID (44 karakter) sudah diisi'}
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <button onclick="backupModule.saveGASConfig()" style="
+                                        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+                                        color: white;
+                                        border: none;
+                                        padding: 12px;
+                                        border-radius: 8px;
+                                        font-weight: 600;
+                                        cursor: pointer;
+                                    ">💾 Simpan</button>
+                                    
+                                    <button onclick="backupModule.logoutSheets()" style="
+                                        background: #fed7d7;
+                                        color: #c53030;
+                                        border: 2px solid #fc8181;
+                                        padding: 12px;
+                                        border-radius: 8px;
+                                        font-weight: 600;
+                                        cursor: pointer;
+                                    ">🚫 Logout</button>
                                 </div>
-                            </div>
-                            
-                            <button onclick="backupModule.saveGASConfig()" style="
-                                background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-                                color: white;
-                                border: none;
-                                padding: 12px 24px;
-                                border-radius: 8px;
-                                font-weight: 600;
-                                cursor: pointer;
-                                width: 100%;
-                            ">
-                                💾 Simpan Konfigurasi Google Sheets
-                            </button>
+                            ` : `
+                                <button onclick="backupModule.loginSheets()" style="
+                                    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+                                    color: white;
+                                    border: none;
+                                    padding: 12px;
+                                    border-radius: 8px;
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    width: 100%;
+                                ">🔑 Login Google Sheets</button>
+                            `}
                         </div>
                     </div>
 
-                    <!-- ✅ FIREBASE SECTION -->
                     <div id="firebase-config-section" style="display: ${this.currentProvider === 'firebase' ? 'block' : 'none'};">
                         <div style="
-                            background: #fff5f5;
-                            border: 2px solid #fc8181;
+                            background: ${isFirebaseLoggedOut ? '#fed7d7' : '#fff5f5'};
+                            border: 2px solid ${isFirebaseLoggedOut ? '#fc8181' : '#fc8181'};
                             border-radius: 10px;
                             padding: 16px;
                             margin-bottom: 12px;
                         ">
-                            <div style="font-weight: 600; color: #742a2a; margin-bottom: 8px;">🔥 Firebase Configuration</div>
+                            <div style="font-weight: 600; color: #742a2a; margin-bottom: 8px;">
+                                🔥 Firebase Configuration
+                                ${isFirebaseLoggedOut ? '<span style="color: #e53e3e; margin-left: 8px;">(LOGGED OUT)</span>' : ''}
+                            </div>
                             
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                    Firebase Config (JSON) <span style="color: #e53e3e;">*</span>
-                                </label>
-                                <textarea id="firebase-config-input" rows="6" placeholder='{
+                            ${!this.currentUser ? `
+                                <div style="margin-bottom: 12px;">
+                                    <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                        Firebase Config (JSON) <span style="color: #e53e3e;">*</span>
+                                    </label>
+                                    <textarea id="firebase-config-input" rows="4" placeholder='{
   "apiKey": "your-api-key",
   "authDomain": "your-project.firebaseapp.com",
   "databaseURL": "https://your-project-default-rtdb.firebaseio.com",
@@ -1573,57 +1783,73 @@ const backupModule = {
   "messagingSenderId": "123456789",
   "appId": "1:123456789:web:abcdef"
 }' style="
-                                    width: 100%;
-                                    padding: 12px;
-                                    border: 2px solid #e2e8f0;
+                                        width: 100%;
+                                        padding: 12px;
+                                        border: 2px solid #e2e8f0;
+                                        border-radius: 8px;
+                                        font-size: 13px;
+                                        font-family: monospace;
+                                    ">${this.firebaseConfig.apiKey ? JSON.stringify(this.firebaseConfig, null, 2) : ''}</textarea>
+                                </div>
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                    <div>
+                                        <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                            Email
+                                        </label>
+                                        <input type="email" id="firebase-email" placeholder="admin@example.com" style="
+                                            width: 100%;
+                                            padding: 12px;
+                                            border: 2px solid #e2e8f0;
+                                            border-radius: 8px;
+                                            font-size: 14px;
+                                        ">
+                                    </div>
+                                    <div>
+                                        <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
+                                            Password
+                                        </label>
+                                        <input type="password" id="firebase-password" placeholder="••••••••" style="
+                                            width: 100%;
+                                            padding: 12px;
+                                            border: 2px solid #e2e8f0;
+                                            border-radius: 8px;
+                                            font-size: 14px;
+                                        ">
+                                    </div>
+                                </div>
+                                
+                                <button onclick="backupModule.saveFirebaseConfig()" style="
+                                    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+                                    color: white;
+                                    border: none;
+                                    padding: 12px 24px;
                                     border-radius: 8px;
-                                    font-size: 13px;
-                                    font-family: monospace;
-                                ">${this.firebaseConfig.apiKey ? JSON.stringify(this.firebaseConfig, null, 2) : ''}</textarea>
-                                <div style="font-size: 11px; color: #718096; margin-top: 4px;">
-                                    Copy dari Firebase Console > Project Settings > SDK Config
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    width: 100%;
+                                ">🔥 Connect Firebase</button>
+                            ` : `
+                                <div style="background: #c6f6d5; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                                    <div style="font-weight: 600; color: #22543d;">
+                                        ✅ Terhubung: ${this.currentUser.email}
+                                    </div>
+                                    <div style="font-size: 12px; color: #2d3748; margin-top: 4px;">
+                                        User ID: ${this.currentUser.uid.substring(0, 20)}...
+                                    </div>
                                 </div>
-                            </div>
-                            
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                                <div>
-                                    <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                        Email
-                                    </label>
-                                    <input type="email" id="firebase-email" placeholder="admin@example.com" style="
-                                        width: 100%;
-                                        padding: 12px;
-                                        border: 2px solid #e2e8f0;
-                                        border-radius: 8px;
-                                        font-size: 14px;
-                                    ">
-                                </div>
-                                <div>
-                                    <label style="display: block; font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 6px;">
-                                        Password
-                                    </label>
-                                    <input type="password" id="firebase-password" placeholder="••••••••" style="
-                                        width: 100%;
-                                        padding: 12px;
-                                        border: 2px solid #e2e8f0;
-                                        border-radius: 8px;
-                                        font-size: 14px;
-                                    ">
-                                </div>
-                            </div>
-                            
-                            <button onclick="backupModule.saveFirebaseConfig()" style="
-                                background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-                                color: white;
-                                border: none;
-                                padding: 12px 24px;
-                                border-radius: 8px;
-                                font-weight: 600;
-                                cursor: pointer;
-                                width: 100%;
-                            ">
-                                🔥 Simpan & Connect Firebase
-                            </button>
+                                
+                                <button onclick="backupModule.logoutFirebase()" style="
+                                    background: #fed7d7;
+                                    color: #c53030;
+                                    border: 2px solid #fc8181;
+                                    padding: 12px 24px;
+                                    border-radius: 8px;
+                                    font-weight: 600;
+                                    cursor: pointer;
+                                    width: 100%;
+                                ">🚫 Logout Firebase</button>
+                            `}
                             
                             <div id="firebase-auth-status" style="margin-top: 12px; padding: 12px; background: #fffaf0; border-radius: 8px; font-size: 13px; display: none;">
                             </div>
@@ -1778,7 +2004,7 @@ const backupModule = {
                             <input type="checkbox" id="auto-sync-checkbox" ${this.isAutoSyncEnabled ? 'checked' : ''} onchange="backupModule.toggleAutoSync(this.checked)" style="width: 20px; height: 20px;">
                             <div>
                                 <div style="font-weight: 600; color: #2d3748;">Auto Sync ke Cloud</div>
-                                <div style="font-size: 12px; color: #718096;">Otomatis sinkronisasi saat data berubah (hanya untuk Google Sheets/Firebase)</div>
+                                <div style="font-size: 12px; color: #718096;">Otomatis backup saat data berubah (transaksi, produk, dll)</div>
                             </div>
                         </label>
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 12px; background: #f7fafc; border-radius: 8px;">
@@ -1802,70 +2028,70 @@ const backupModule = {
                         🔄 Aksi Sinkronisasi
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                        <button onclick="backupModule.syncToCloud()" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
-                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #4299e1 0%, #3182ce 100%)'};
-                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
+                        <button onclick="backupModule.syncToCloud()" ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#e2e8f0' : 'linear-gradient(135deg, #4299e1 0%, #3182ce 100%)'};
+                            color: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
+                            cursor: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
-                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
+                            opacity: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">⬆️</span>
                             <span>Upload ke Cloud</span>
                         </button>
-                        <button onclick="backupModule.syncFromCloud()" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
-                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)'};
-                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
+                        <button onclick="backupModule.syncFromCloud()" ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#e2e8f0' : 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)'};
+                            color: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
+                            cursor: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
-                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
+                            opacity: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">⬇️</span>
                             <span>Download dari Cloud</span>
                         </button>
-                        <button onclick="backupModule.previewCloudData()" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
-                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #9f7aea 0%, #805ad5 100%)'};
-                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
+                        <button onclick="backupModule.previewCloudData()" ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#e2e8f0' : 'linear-gradient(135deg, #9f7aea 0%, #805ad5 100%)'};
+                            color: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
+                            cursor: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
-                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
+                            opacity: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">👁️</span>
                             <span>Preview Cloud Data</span>
                         </button>
-                        <button onclick="backupModule.checkCloudDataOnLoad(true)" ${this.currentProvider === 'local' ? 'disabled' : ''} style="
-                            background: ${this.currentProvider === 'local' ? '#e2e8f0' : 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)'};
-                            color: ${this.currentProvider === 'local' ? '#a0aec0' : 'white'};
+                        <button onclick="backupModule.checkCloudDataOnLoad(true)" ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'disabled' : ''} style="
+                            background: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#e2e8f0' : 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)'};
+                            color: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '#a0aec0' : 'white'};
                             border: none;
                             padding: 14px;
                             border-radius: 10px;
                             font-weight: 600;
-                            cursor: ${this.currentProvider === 'local' ? 'not-allowed' : 'pointer'};
+                            cursor: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? 'not-allowed' : 'pointer'};
                             display: flex;
                             flex-direction: column;
                             align-items: center;
                             gap: 6px;
-                            opacity: ${this.currentProvider === 'local' ? '0.6' : '1'};
+                            opacity: ${this.currentProvider === 'local' || sheetsLoggedOut || isFirebaseLoggedOut ? '0.6' : '1'};
                         ">
                             <span style="font-size: 20px;">🔄</span>
                             <span>Check Update</span>
@@ -1949,6 +2175,32 @@ const backupModule = {
         this.updateSyncStatus(this.syncStatus);
     },
 
+    getStatusColor() {
+        const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
+        const isFirebaseLoggedOut = !this.currentUser && this.currentProvider === 'firebase';
+        
+        if (this.syncStatus === this.SYNC_STATUS.LOGGED_OUT || sheetsLoggedOut || isFirebaseLoggedOut) {
+            return { bg: '#fed7d7', text: '#c53030' };
+        }
+        if (this.syncStatus === this.SYNC_STATUS.SYNCED) return { bg: '#c6f6d5', text: '#22543d' };
+        if (this.syncStatus === this.SYNC_STATUS.SYNCING) return { bg: '#bee3f8', text: '#2a4365' };
+        if (this.syncStatus === this.SYNC_STATUS.ERROR) return { bg: '#fed7d7', text: '#742a2a' };
+        if (this.syncStatus === this.SYNC_STATUS.OFFLINE) return { bg: '#e2e8f0', text: '#4a5568' };
+        return { bg: '#c6f6d5', text: '#22543d' };
+    },
+
+    getStatusText() {
+        const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
+        const isFirebaseLoggedOut = !this.currentUser && this.currentProvider === 'firebase';
+        
+        if (sheetsLoggedOut || isFirebaseLoggedOut) return '🚫 Logged Out';
+        if (this.syncStatus === this.SYNC_STATUS.SYNCED) return '✓ Tersinkron';
+        if (this.syncStatus === this.SYNC_STATUS.SYNCING) return '⟳ Sinkron...';
+        if (this.syncStatus === this.SYNC_STATUS.ERROR) return '✗ Error';
+        if (this.syncStatus === this.SYNC_STATUS.OFFLINE) return '● Offline';
+        return '✓ Siap';
+    },
+
     refreshUI() {
         if (!this.isRendered) return;
         this.render();
@@ -1958,7 +2210,6 @@ const backupModule = {
         this.currentProvider = provider;
         localStorage.setItem(this.KEYS.PROVIDER, provider);
         
-        // ✅ Update semua section visibility
         const localSection = document.getElementById('local-config-section');
         const gasSection = document.getElementById('gas-config-section');
         const firebaseSection = document.getElementById('firebase-config-section');
@@ -1974,12 +2225,13 @@ const backupModule = {
             this.initFirebase();
         } else if (provider === 'googlesheet') {
             this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
+            if (localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
+                this._gasConfigValid = false;
+            }
         }
         
         this.saveBackupSettings();
         this.showToast('Provider diubah ke: ' + provider);
-        
-        // Refresh UI untuk update button states
         this.refreshUI();
     },
 
@@ -2005,6 +2257,7 @@ const backupModule = {
         
         localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
         localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
+        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT);
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         this.saveBackupSettings();
@@ -2016,7 +2269,6 @@ const backupModule = {
             setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
         }
         
-        // Refresh UI untuk update status valid
         this.refreshUI();
     },
 
@@ -2048,6 +2300,8 @@ const backupModule = {
                 localStorage.setItem(this.KEYS.FB_AUTH_EMAIL, email);
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
             }
+            
+            this._isManualLogout = false;
             
             this.saveBackupSettings();
             this.showToast('✅ Konfigurasi Firebase disimpan');
@@ -2161,81 +2415,24 @@ const backupModule = {
         console.log('[Backup] Auto sync stopped');
     },
 
-    initFirebase(forceReinit = false) {
-        if (typeof firebase === 'undefined') {
-            console.error('[Backup] Firebase SDK not loaded');
-            this.showToast('❌ Firebase SDK tidak tersedia');
-            return;
-        }
-        
-        if (this.firebaseApp && !forceReinit) {
-            console.log('[Backup] Firebase already initialized');
-            return;
-        }
-        
-        if (!this.firebaseConfig.apiKey) {
-            console.log('[Backup] No Firebase config');
-            return;
-        }
-        
-        try {
-            if (this.firebaseApp) {
-                firebase.app().delete();
-            }
-            
-            this.firebaseApp = firebase.initializeApp(this.firebaseConfig, 'hifzi_backup');
-            this.database = firebase.database();
-            this.auth = firebase.auth();
-            
-            const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
-            const savedPassword = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
-            
-            if (savedEmail && savedPassword) {
-                this.auth.signInWithEmailAndPassword(savedEmail, savedPassword)
-                    .then(userCredential => {
-                        this.currentUser = userCredential.user;
-                        this._firebaseAuthStateReady = true;
-                        this.updateFirebaseAuthStatus('✅ Terhubung: ' + this.currentUser.email);
-                        setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
-                    })
-                    .catch(err => {
-                        console.error('[Backup] Firebase auth error:', err);
-                        this.updateFirebaseAuthStatus('❌ Gagal login: ' + err.message);
-                    });
-            } else {
-                this.auth.onAuthStateChanged(user => {
-                    if (user) {
-                        this.currentUser = user;
-                        this._firebaseAuthStateReady = true;
-                        this.updateFirebaseAuthStatus('✅ Terhubung: ' + user.email);
-                    } else {
-                        this.updateFirebaseAuthStatus('⚠️ Belum login');
-                    }
-                });
-            }
-            
-        } catch (err) {
-            console.error('[Backup] Firebase init error:', err);
-            this.showToast('❌ Gagal init Firebase: ' + err.message);
-        }
-    },
-
-    updateFirebaseAuthStatus(message) {
-        const statusEl = document.getElementById('firebase-auth-status');
-        if (statusEl) {
-            statusEl.style.display = 'block';
-            statusEl.textContent = message;
-        }
-    },
-
-    async syncToCloud() {
+    async syncToCloud(silent = false) {
         if (!this.isOnline) {
-            this.showToast('📴 Offline - Tidak bisa sync');
+            if (!silent) this.showToast('📴 Offline - Tidak bisa sync');
             return;
         }
         
         if (this.isSyncing) {
             console.log('[Backup] Sync already in progress');
+            return;
+        }
+        
+        if (this.currentProvider === 'googlesheet' && localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
+            if (!silent) this.showToast('🚫 Google Sheets logged out');
+            return;
+        }
+        
+        if (this.currentProvider === 'firebase' && !this.currentUser) {
+            if (!silent) this.showToast('🚫 Firebase logged out');
             return;
         }
         
@@ -2256,12 +2453,14 @@ const backupModule = {
             this.lastSyncTime = new Date().toISOString();
             localStorage.setItem(this.KEYS.LAST_SYNC, this.lastSyncTime);
             this.updateSyncStatus(this.SYNC_STATUS.SYNCED);
-            this.showToast('✅ Sync berhasil');
+            
+            if (!silent) this.showToast('✅ Sync berhasil');
+            console.log('[Backup] Auto-sync completed successfully');
             
         } catch (err) {
             console.error('[Backup] Sync error:', err);
             this.updateSyncStatus(this.SYNC_STATUS.ERROR);
-            this.showToast('❌ Sync gagal: ' + err.message);
+            if (!silent) this.showToast('❌ Sync gagal: ' + err.message);
         } finally {
             this.isSyncing = false;
         }
@@ -2337,7 +2536,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.2.0',
+                version: '4.3.0',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -2621,12 +2820,10 @@ const backupModule = {
     }
 };
 
-// Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = backupModule;
 }
 
-// ✅ Auto-initialize dengan pengecekan halaman
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         backupModule.init();
