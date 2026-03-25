@@ -1,6 +1,6 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.2)
-// FIXED: Menu Cloud tidak terbuka, Render detection, Auto-login issue, Auto-backup
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.3)
+// FIXED: Container detection, Menu Cloud rendering
 // ============================================
 
 const backupModule = {
@@ -100,166 +100,91 @@ const backupModule = {
     },
 
     // ==========================================
-    // EVENT LISTENERS - TAMBAHAN UNTUK MENU CLOUD
+    // PERBAIKAN: Get Container yang benar
+    // ==========================================
+    
+    getContainer() {
+        // Prioritaskan mainContent (sesuai HTML Anda)
+        const container = document.getElementById('mainContent') || 
+                         document.getElementById('module-container') || 
+                         document.getElementById('content-container') ||
+                         document.querySelector('.module-container') ||
+                         document.querySelector('.content-area') ||
+                         document.querySelector('main') ||
+                         document.body;
+        
+        if (container) {
+            // Pastikan container visible
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
+        }
+        
+        return container;
+    },
+
+    clearContainer() {
+        const container = this.getContainer();
+        if (container) {
+            container.innerHTML = '';
+        }
+    },
+
+    // ==========================================
+    // EVENT LISTENERS
     // ==========================================
     
     setupMenuListeners() {
         console.log('[Backup] Setup menu listeners...');
         
-        // Listener untuk semua kemungkinan selector menu
-        const selectors = [
-            '[data-page="cloud"]',
-            '[data-page="backup"]',
-            '[data-menu="cloud"]',
-            '[data-menu="backup"]',
-            '#menu-cloud',
-            '#menu-backup',
-            '.menu-item[data-page="cloud"]',
-            '.menu-item[data-page="backup"]',
-            '.nav-item[data-page="cloud"]',
-            '.nav-item[data-page="backup"]',
-            'a[href="#cloud"]',
-            'a[href="#backup"]',
-            'a[href*="cloud"]',
-            'a[href*="backup"]'
-        ];
-        
         // Event delegation untuk menangkap klik menu
         document.addEventListener('click', (e) => {
             const target = e.target;
-            
-            // Cek apakah element atau parent-nya adalah menu cloud/backup
-            const menuItem = target.closest(selectors.join(', '));
+            const menuItem = target.closest('[data-page="cloud"], [data-page="backup"], #menu-cloud, #menu-backup, a[href="#cloud"], a[href="#backup"]');
             
             if (menuItem) {
-                console.log('[Backup] Menu cloud/backup clicked:', menuItem);
-                
-                // Delay sedikit untuk tunggu router selesai
+                console.log('[Backup] Menu cloud/backup clicked');
                 setTimeout(() => {
                     this.forceRender();
                 }, 50);
             }
         });
         
-        // Listener untuk hash change (URL #cloud)
-        window.addEventListener('hashchange', () => {
-            if (this.isBackupPage()) {
-                console.log('[Backup] Hash changed to cloud/backup');
-                setTimeout(() => this.forceRender(), 50);
-            }
-        });
-        
-        // Listener untuk popstate (browser back/forward)
-        window.addEventListener('popstate', () => {
-            if (this.isBackupPage()) {
-                console.log('[Backup] Popstate to cloud/backup');
-                setTimeout(() => this.forceRender(), 50);
-            }
-        });
-        
-        // Observer untuk perubahan DOM (untuk SPA router)
-        this.observePageChanges();
-        
         console.log('[Backup] Menu listeners setup complete');
     },
-    
-    observePageChanges() {
-        // Observer untuk mendeteksi perubahan konten halaman
-        const observer = new MutationObserver((mutations) => {
-            // Cek apakah container backup sudah ada atau perlu dirender
-            const backupContainer = document.getElementById('backup-module');
-            const isCloudPage = this.isBackupPage();
-            
-            if (isCloudPage && !backupContainer) {
-                console.log('[Backup] Cloud page detected but no backup-module, rendering...');
-                this.forceRender();
-            }
-        });
-        
-        // Observe body untuk perubahan besar
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-        
-        // Simpan referensi untuk cleanup
-        this._pageObserver = observer;
-    },
-    
+
     forceRender() {
         console.log('[Backup] Force rendering...');
-        this.isRendered = false; // Reset flag
+        this.isRendered = false;
+        this.clearContainer();
         this.render();
     },
 
     isBackupPage() {
-        // Cek URL hash
+        // Cek dari router
+        if (window.router && (router.currentPage === 'backup' || router.currentPage === 'cloud')) {
+            return true;
+        }
+        
+        // Cek URL
         const hash = window.location.hash.toLowerCase();
         if (hash && (hash.includes('backup') || hash.includes('cloud'))) return true;
         
-        // Cek URL path
-        const path = window.location.pathname.toLowerCase();
-        if (path && (path.includes('backup') || path.includes('cloud'))) return true;
-        
-        // Cek query params
-        const params = new URLSearchParams(window.location.search);
-        const page = params.get('page');
-        if (page && (page === 'backup' || page === 'cloud')) return true;
-        
-        // Cek container spesifik
-        const backupContainer = document.getElementById('backup-page-container');
-        if (backupContainer) return true;
-        
-        // Cek active menu - lebih spesifik
-        const activeSelectors = [
-            '.menu-item.active[data-page="cloud"]',
-            '.menu-item.active[data-page="backup"]',
-            '.nav-item.active[data-page="cloud"]',
-            '.nav-item.active[data-page="backup"]',
-            '[data-page="cloud"].active',
-            '[data-page="backup"].active'
-        ];
-        
-        for (const selector of activeSelectors) {
-            const activeMenu = document.querySelector(selector);
-            if (activeMenu) {
-                const pageAttr = activeMenu.getAttribute('data-page');
-                if (pageAttr === 'backup' || pageAttr === 'cloud') return true;
-            }
-        }
-        
-        // Cek dari router/navigation state jika ada
-        if (window.currentPage === 'backup' || window.currentPage === 'cloud') return true;
-        if (window.appState?.currentPage === 'backup' || window.appState?.currentPage === 'cloud') return true;
-        
-        // Cek URL lengkap
-        const fullUrl = window.location.href.toLowerCase();
-        if (fullUrl.includes('cloud') || fullUrl.includes('backup')) return true;
-        
-        // Cek apakah ada element dengan id backup-module (sudah dirender)
-        if (document.getElementById('backup-module')) return true;
+        // Cek active menu
+        const activeMenu = document.querySelector('.nav-tab.active[data-page="cloud"], .nav-tab.active[data-page="backup"]');
+        if (activeMenu) return true;
         
         return false;
     },
 
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
-            console.log('[Backup] Already initialized, reloading config...');
-            this.reloadAllConfig();
-            
-            // SELALU setup listeners meskipun sudah initialized
-            this.setupMenuListeners();
-            
-            // Render jika di halaman backup/cloud
-            if (this.isBackupPage()) {
-                console.log('[Backup] Already initialized, re-rendering...');
-                this.forceRender();
-            }
+            console.log('[Backup] Already initialized');
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.3.2 - Menu Cloud Fix...');
+        console.log('[Backup] Initializing v4.3.3 - Container Fix...');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
@@ -286,7 +211,6 @@ const backupModule = {
             }
         }
         
-        // Reset flag manual logout saat init
         this._isManualLogout = false;
         
         if (!localStorage.getItem(this.KEYS.DEVICE_ID)) {
@@ -307,26 +231,19 @@ const backupModule = {
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         
-        // Cek status logout untuk Sheets
         const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
         if (sheetsLoggedOut) {
             this._gasConfigValid = false;
-            console.log('[Backup] Sheets is logged out, sync disabled');
+            console.log('[Backup] Sheets is logged out');
         }
         
         console.log('[Backup] Provider:', this.currentProvider);
         console.log('[Backup] GAS Valid:', this._gasConfigValid);
-        console.log('[Backup] Sheets Logged Out:', sheetsLoggedOut);
 
         this.setupNetworkListeners();
-        
-        // Setup data change observer untuk auto-backup
         this.setupDataChangeObserver();
-
-        // Setup menu listeners - PENTING!
         this.setupMenuListeners();
 
-        // Init provider dengan pengecekan error
         if (this.currentProvider === 'firebase') {
             this.initFirebase(true);
         } else if (this.currentProvider === 'googlesheet' && this._gasConfigValid && !sheetsLoggedOut) {
@@ -334,44 +251,28 @@ const backupModule = {
             setTimeout(() => this.checkCloudDataOnLoad(true), 1000);
         }
 
-        // Start auto sync hanya jika tidak logout
         if (this.isAutoSyncEnabled && this._gasConfigValid && !sheetsLoggedOut) {
             this.startAutoSync();
         }
 
         this.isInitialized = true;
         
-        // SELALU cek dan render jika di halaman backup/cloud
-        if (this.isBackupPage()) {
-            console.log('[Backup] Di halaman backup/cloud, rendering...');
-            this.forceRender();
-        } else {
-            console.log('[Backup] Bukan halaman backup/cloud, skip render UI');
-        }
-        
         return this;
     },
 
     setupDataChangeObserver() {
-        // Observer untuk dataManager
         if (typeof dataManager !== 'undefined') {
-            // Override save method untuk trigger backup
             const originalSave = dataManager.save;
             dataManager.save = (...args) => {
                 const result = originalSave.apply(dataManager, args);
-                
-                // Trigger auto-backup setelah save
                 setTimeout(() => {
                     this.handleDataChange();
                 }, 500);
-                
                 return result;
             };
-            
             console.log('[Backup] Data change observer installed');
         }
         
-        // Observer untuk perubahan localStorage
         window.addEventListener('storage', (e) => {
             if (e.key === 'hifzi_data' || e.key === 'hifzi_transactions') {
                 this.handleDataChange();
@@ -385,7 +286,6 @@ const backupModule = {
             return;
         }
         
-        // Cek status logout
         if (this.currentProvider === 'googlesheet' && localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
             return;
         }
@@ -394,11 +294,10 @@ const backupModule = {
             return;
         }
         
-        // Debounce backup
         clearTimeout(this._backupDebounceTimer);
         this._backupDebounceTimer = setTimeout(() => {
             console.log('[Backup] Data changed, triggering auto-backup...');
-            this.syncToCloud(true); // true = silent mode
+            this.syncToCloud(true);
         }, 2000);
     },
 
@@ -431,7 +330,7 @@ const backupModule = {
             autoSync: this.isAutoSyncEnabled,
             telegram: this.telegramConfig,
             n8n: this.n8nConfig,
-            version: '4.3.2',
+            version: '4.3.3',
             savedAt: new Date().toISOString(),
             savedBy: this.deviceId
         };
@@ -572,52 +471,6 @@ const backupModule = {
         const transactionsTable = this.generateTransactionsTable(data.transactions || []);
         const cashFlowTable = this.generateCashFlowTable(data.cashTransactions || []);
         const debtsTable = this.generateDebtsTable(data.debts || []);
-        const categoriesTable = this.generateCategoriesTable(data.categories || []);
-        const usersTable = this.generateUsersTable(data.users || []);
-        const modalHistoryTable = this.generateModalHistoryTable(data.modalHistory || []);
-        const pendingModalsTable = this.generatePendingModalsTable(data.pendingModals || {}, data.pendingExtraModals || {});
-        
-        const configInfo = data._configMeta ? `
-        <div style="background: #e6fffa; border: 2px solid #81e6d9; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
-            <div style="font-weight: 600; color: #234e52; margin-bottom: 8px;">⚙️ Config Tersimpan di Cloud</div>
-            <div style="font-size: 12px; color: #2d3748; line-height: 1.6;">
-                <div>Provider: ${data._configMeta.provider || '-'}</div>
-                <div>GAS URL: ${data._configMeta.gasUrl ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>Firebase: ${data._configMeta.firebaseConfig?.apiKey ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>Telegram: ${data._configMeta.telegram?.botToken ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>N8N/Pencarian: ${data._configMeta.n8n?.botToken ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>Auto Sync: ${data._configMeta.autoSync ? '✅ Aktif' : '❌ Nonaktif'}</div>
-                <div style="margin-top: 8px; color: #718096; font-size: 11px;">
-                    Config disimpan: ${data._configMeta.savedAt ? new Date(data._configMeta.savedAt).toLocaleString('id-ID') : '-'}
-                </div>
-            </div>
-        </div>
-        ` : '';
-        
-        const telegramConfigInfo = data.telegram ? `
-        <div style="background: #e0f2fe; border: 2px solid #38bdf8; border-radius: 10px; padding: 16px; margin-top: 20px;">
-            <div style="font-weight: 600; color: #0369a1; margin-bottom: 8px;">📱 Telegram Config</div>
-            <div style="font-size: 13px; color: #0c4a6e; line-height: 1.8;">
-                <div>Bot Token: ${data.telegram.botToken ? '✅ ' + data.telegram.botToken.substring(0, 20) + '...' : '❌ Tidak ada'}</div>
-                <div>Chat ID: ${data.telegram.chatId || '-'}</div>
-                <div>Status: ${data.telegram.enabled ? '✅ Aktif' : '❌ Nonaktif'}</div>
-                <div>GAS URL: ${data.telegram.gasUrl ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>Sheet ID: ${data.telegram.sheetId ? '✅ Ada' : '❌ Tidak ada'}</div>
-            </div>
-        </div>
-        ` : '';
-        
-        const n8nConfigInfo = data.n8nConfig || data._configMeta?.n8n ? `
-        <div style="background: #f3e8ff; border: 2px solid #a855f7; border-radius: 10px; padding: 16px; margin-top: 12px;">
-            <div style="font-weight: 600; color: #6b21a8; margin-bottom: 8px;">🔍 N8N / Pencarian Config</div>
-            <div style="font-size: 13px; color: #581c87; line-height: 1.8;">
-                <div>Bot Token: ${(data.n8nConfig?.botToken || data._configMeta?.n8n?.botToken) ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>Chat ID: ${data.n8nConfig?.chatId || data._configMeta?.n8n?.chatId || '-'}</div>
-                <div>Sheet ID: ${data.n8nConfig?.sheetId || data._configMeta?.n8n?.sheetId ? '✅ Ada' : '❌ Tidak ada'}</div>
-                <div>GAS URL: ${data.n8nConfig?.gasUrl || data._configMeta?.n8n?.gasUrl ? '✅ Ada' : '❌ Tidak ada'}</div>
-            </div>
-        </div>
-        ` : '';
         
         modal.innerHTML = `
             <div style="
@@ -640,7 +493,7 @@ const backupModule = {
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <div style="font-size: 20px; font-weight: 700;">👁️ Preview Data Cloud</div>
-                            <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">Sumber: ${source} | Backup Date: ${data._backupMeta?.backupDate ? new Date(data._backupMeta.backupDate).toLocaleString('id-ID') : '-'}</div>
+                            <div style="font-size: 13px; opacity: 0.9; margin-top: 4px;">Sumber: ${source}</div>
                         </div>
                         <button onclick="backupModule.closePreviewModal()" style="
                             background: rgba(255,255,255,0.2);
@@ -704,51 +557,9 @@ const backupModule = {
                         background: #e2e8f0;
                         color: #4a5568;
                     ">💳 Hutang (${data.debts?.length || 0})</button>
-                    <button onclick="backupModule.switchPreviewTab('categories')" id="tab-categories" class="preview-tab" style="
-                        padding: 8px 16px;
-                        border: none;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-weight: 600;
-                        font-size: 13px;
-                        background: #e2e8f0;
-                        color: #4a5568;
-                    ">📁 Kategori (${data.categories?.length || 0})</button>
-                    <button onclick="backupModule.switchPreviewTab('users')" id="tab-users" class="preview-tab" style="
-                        padding: 8px 16px;
-                        border: none;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-weight: 600;
-                        font-size: 13px;
-                        background: #e2e8f0;
-                        color: #4a5568;
-                    ">👥 Users (${data.users?.length || 0})</button>
-                    <button onclick="backupModule.switchPreviewTab('modalhistory')" id="tab-modalhistory" class="preview-tab" style="
-                        padding: 8px 16px;
-                        border: none;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-weight: 600;
-                        font-size: 13px;
-                        background: #e2e8f0;
-                        color: #4a5568;
-                    ">💰 Riwayat Modal (${data.modalHistory?.length || 0})</button>
-                    <button onclick="backupModule.switchPreviewTab('pendingmodals')" id="tab-pendingmodals" class="preview-tab" style="
-                        padding: 8px 16px;
-                        border: none;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-weight: 600;
-                        font-size: 13px;
-                        background: #e2e8f0;
-                        color: #4a5568;
-                    ">⏳ Modal Pending (${Object.keys(data.pendingModals || {}).length + Object.keys(data.pendingExtraModals || {}).length})</button>
                 </div>
                 
                 <div style="padding: 20px; overflow-y: auto; flex: 1; background: #f7fafc;">
-                    ${configInfo}
-                    
                     <div id="content-products" class="preview-content" style="display: block;">
                         ${productsTable}
                     </div>
@@ -760,28 +571,6 @@ const backupModule = {
                     </div>
                     <div id="content-debts" class="preview-content" style="display: none;">
                         ${debtsTable}
-                    </div>
-                    <div id="content-categories" class="preview-content" style="display: none;">
-                        ${categoriesTable}
-                    </div>
-                    <div id="content-users" class="preview-content" style="display: none;">
-                        ${usersTable}
-                    </div>
-                    <div id="content-modalhistory" class="preview-content" style="display: none;">
-                        ${modalHistoryTable}
-                    </div>
-                    <div id="content-pendingmodals" class="preview-content" style="display: none;">
-                        ${pendingModalsTable}
-                    </div>
-                    
-                    ${telegramConfigInfo}
-                    ${n8nConfigInfo}
-                    
-                    <div style="background: #fffaf0; border: 2px solid #fbd38d; border-radius: 10px; padding: 16px; margin-top: 12px;">
-                        <div style="font-weight: 600; color: #744210; margin-bottom: 8px;">🔍 Search History</div>
-                        <div style="font-size: 13px; color: #744210;">
-                            Total Pencarian: ${data.searchHistory?.length || 0} item
-                        </div>
                     </div>
                 </div>
                 
@@ -871,7 +660,7 @@ const backupModule = {
             return '<div style="text-align: center; padding: 40px; color: #718096;">📦 Tidak ada data produk</div>';
         }
         
-        const rows = products.map((p, i) => `
+        const rows = products.slice(0, 50).map((p, i) => `
             <tr>
                 <td class="text-center">${i + 1}</td>
                 <td><strong>${p.name || '-'}</strong></td>
@@ -908,14 +697,10 @@ const backupModule = {
             return '<div style="text-align: center; padding: 40px; color: #718096;">📝 Tidak ada data transaksi</div>';
         }
         
-        const rows = transactions.slice(0, 100).map((t, i) => {
-            const idStr = t.id ? String(t.id) : '-';
-            const displayId = idStr.length > 8 ? idStr.substring(0, 8) : idStr;
-            
-            return `
+        const rows = transactions.slice(0, 50).map((t, i) => `
             <tr>
                 <td class="text-center">${i + 1}</td>
-                <td>${displayId}</td>
+                <td>${t.id ? String(t.id).substring(0, 8) : '-'}</td>
                 <td>${new Date(t.date).toLocaleDateString('id-ID')}</td>
                 <td>${t.customerName || 'Umum'}</td>
                 <td class="text-right">${(t.items || []).length} item</td>
@@ -926,17 +711,14 @@ const backupModule = {
                     </span>
                 </td>
             </tr>
-        `}).join('');
-        
-        const moreRow = transactions.length > 100 ? 
-            `<tr><td colspan="7" class="text-center" style="background: #edf2f7; font-style: italic;">... dan ${transactions.length - 100} transaksi lainnya</td></tr>` : '';
+        `).join('');
         
         return `
             <table class="preview-table">
                 <thead>
                     <tr>
                         <th class="text-center">No</th>
-                        <th>ID Transaksi</th>
+                        <th>ID</th>
                         <th>Tanggal</th>
                         <th>Pelanggan</th>
                         <th class="text-right">Items</th>
@@ -944,7 +726,7 @@ const backupModule = {
                         <th class="text-center">Pembayaran</th>
                     </tr>
                 </thead>
-                <tbody>${rows}${moreRow}</tbody>
+                <tbody>${rows}</tbody>
             </table>
         `;
     },
@@ -954,7 +736,7 @@ const backupModule = {
             return '<div style="text-align: center; padding: 40px; color: #718096;">💸 Tidak ada data cash flow</div>';
         }
         
-        const rows = transactions.slice(0, 100).map((t, i) => {
+        const rows = transactions.slice(0, 50).map((t, i) => {
             const isIncome = t.type === 'income' || t.type === 'penjualan';
             return `
                 <tr>
@@ -970,13 +752,9 @@ const backupModule = {
                     <td class="text-right" style="color: ${isIncome ? '#38a169' : '#e53e3e'}; font-weight: 600;">
                         ${isIncome ? '+' : '-'} Rp ${(t.amount || 0).toLocaleString('id-ID')}
                     </td>
-                    <td>${t.userName || '-'}</td>
                 </tr>
             `;
         }).join('');
-        
-        const moreRow = transactions.length > 100 ? 
-            `<tr><td colspan="7" class="text-center" style="background: #edf2f7; font-style: italic;">... dan ${transactions.length - 100} transaksi lainnya</td></tr>` : '';
         
         return `
             <table class="preview-table">
@@ -988,10 +766,9 @@ const backupModule = {
                         <th>Kategori</th>
                         <th>Deskripsi</th>
                         <th class="text-right">Jumlah</th>
-                        <th>User</th>
                     </tr>
                 </thead>
-                <tbody>${rows}${moreRow}</tbody>
+                <tbody>${rows}</tbody>
             </table>
         `;
     },
@@ -1001,7 +778,7 @@ const backupModule = {
             return '<div style="text-align: center; padding: 40px; color: #718096;">💳 Tidak ada data hutang</div>';
         }
         
-        const rows = debts.map((d, i) => {
+        const rows = debts.slice(0, 50).map((d, i) => {
             const remaining = (d.totalAmount || 0) - (d.paidAmount || 0);
             const isPaid = remaining <= 0;
             return `
@@ -1033,167 +810,6 @@ const backupModule = {
                         <th class="text-right">Total Hutang</th>
                         <th class="text-right">Sudah Bayar</th>
                         <th class="text-right">Sisa</th>
-                        <th class="text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        `;
-    },
-
-    generateCategoriesTable(categories) {
-        if (!categories || categories.length === 0) {
-            return '<div style="text-align: center; padding: 40px; color: #718096;">📁 Tidak ada data kategori</div>';
-        }
-        
-        const rows = categories.map((c, i) => {
-            const idStr = c.id ? String(c.id) : '-';
-            return `
-            <tr>
-                <td class="text-center">${i + 1}</td>
-                <td><strong>${c.name || '-'}</strong></td>
-                <td>${c.description || '-'}</td>
-                <td class="text-center">${c.productCount || 0}</td>
-                <td class="text-center">
-                    <span class="badge badge-info">${idStr.substring(0, 8)}</span>
-                </td>
-            </tr>
-        `}).join('');
-        
-        return `
-            <table class="preview-table">
-                <thead>
-                    <tr>
-                        <th class="text-center">No</th>
-                        <th>Nama Kategori</th>
-                        <th>Deskripsi</th>
-                        <th class="text-center">Jumlah Produk</th>
-                        <th class="text-center">ID</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        `;
-    },
-
-    generateUsersTable(users) {
-        if (!users || users.length === 0) {
-            return '<div style="text-align: center; padding: 40px; color: #718096;">👥 Tidak ada data user</div>';
-        }
-        
-        const rows = users.map((u, i) => `
-            <tr>
-                <td class="text-center">${i + 1}</td>
-                <td><strong>${u.name || u.username || '-'}</strong></td>
-                <td>${u.role || 'user'}</td>
-                <td>${u.email || '-'}</td>
-                <td class="text-center">
-                    <span class="badge ${u.isActive ? 'badge-success' : 'badge-danger'}">
-                        ${u.isActive ? 'Aktif' : 'Nonaktif'}
-                    </span>
-                </td>
-                <td>${u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('id-ID') : '-'}</td>
-            </tr>
-        `).join('');
-        
-        return `
-            <table class="preview-table">
-                <thead>
-                    <tr>
-                        <th class="text-center">No</th>
-                        <th>Nama</th>
-                        <th>Role</th>
-                        <th>Email</th>
-                        <th class="text-center">Status</th>
-                        <th>Last Login</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        `;
-    },
-
-    generateModalHistoryTable(modalHistory) {
-        if (!modalHistory || modalHistory.length === 0) {
-            return '<div style="text-align: center; padding: 40px; color: #718096;">💰 Tidak ada riwayat pembagian modal</div>';
-        }
-        
-        const rows = modalHistory.map((m, i) => `
-            <tr>
-                <td class="text-center">${i + 1}</td>
-                <td>${new Date(m.date).toLocaleDateString('id-ID')}</td>
-                <td><strong>${m.userName || m.userId || '-'}</strong></td>
-                <td>${m.role || '-'}</td>
-                <td class="text-right" style="font-weight: 600; color: #38a169;">
-                    Rp ${(m.amount || 0).toLocaleString('id-ID')}
-                </td>
-                <td>${m.type === 'extra' ? '💵 Extra' : '📦 Modal Awal'}</td>
-                <td>${m.notes || '-'}</td>
-                <td>${m.distributedBy || '-'}</td>
-            </tr>
-        `).join('');
-        
-        return `
-            <table class="preview-table">
-                <thead>
-                    <tr>
-                        <th class="text-center">No</th>
-                        <th>Tanggal</th>
-                        <th>Kasir/User</th>
-                        <th>Role</th>
-                        <th class="text-right">Jumlah Modal</th>
-                        <th>Tipe</th>
-                        <th>Catatan</th>
-                        <th>Dibagikan Oleh</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        `;
-    },
-
-    generatePendingModalsTable(pendingModals, pendingExtraModals) {
-        const pendingModalEntries = Object.entries(pendingModals || {});
-        const pendingExtraEntries = Object.entries(pendingExtraModals || {});
-        
-        if (pendingModalEntries.length === 0 && pendingExtraEntries.length === 0) {
-            return '<div style="text-align: center; padding: 40px; color: #718096;">⏳ Tidak ada modal pending</div>';
-        }
-        
-        let rows = '';
-        
-        pendingModalEntries.forEach(([userId, amount], i) => {
-            rows += `
-                <tr>
-                    <td class="text-center">${i + 1}</td>
-                    <td><strong>${userId}</strong></td>
-                    <td><span class="badge badge-warning">Modal Awal</span></td>
-                    <td class="text-right" style="font-weight: 600;">Rp ${(amount || 0).toLocaleString('id-ID')}</td>
-                    <td class="text-center"><span class="badge badge-warning">Pending</span></td>
-                </tr>
-            `;
-        });
-        
-        pendingExtraEntries.forEach(([userId, amount], i) => {
-            rows += `
-                <tr>
-                    <td class="text-center">${pendingModalEntries.length + i + 1}</td>
-                    <td><strong>${userId}</strong></td>
-                    <td><span class="badge badge-info">Extra Modal</span></td>
-                    <td class="text-right" style="font-weight: 600;">Rp ${(amount || 0).toLocaleString('id-ID')}</td>
-                    <td class="text-center"><span class="badge badge-warning">Pending</span></td>
-                </tr>
-            `;
-        });
-        
-        return `
-            <table class="preview-table">
-                <thead>
-                    <tr>
-                        <th class="text-center">No</th>
-                        <th>User ID</th>
-                        <th>Tipe</th>
-                        <th class="text-right">Jumlah</th>
                         <th class="text-center">Status</th>
                     </tr>
                 </thead>
@@ -1432,7 +1048,6 @@ const backupModule = {
             return;
         }
         
-        // Cek apakah sudah ada app dengan nama 'hifzi_backup'
         try {
             const existingApp = firebase.app('hifzi_backup');
             if (existingApp && !forceReinit) {
@@ -1452,7 +1067,6 @@ const backupModule = {
         }
         
         try {
-            // Delete existing app jika force reinit
             if (forceReinit) {
                 try {
                     const existingApp = firebase.app('hifzi_backup');
@@ -1465,7 +1079,6 @@ const backupModule = {
                 }
             }
             
-            // Inisialisasi dengan nama spesifik
             this.firebaseApp = firebase.initializeApp(this.firebaseConfig, 'hifzi_backup');
             this.database = firebase.database(this.firebaseApp);
             this.auth = firebase.auth(this.firebaseApp);
@@ -1473,7 +1086,6 @@ const backupModule = {
             const savedEmail = localStorage.getItem(this.KEYS.FB_AUTH_EMAIL);
             const savedPassword = localStorage.getItem(this.KEYS.FB_AUTH_PASSWORD);
             
-            // Cek flag manual logout
             if (this._isManualLogout) {
                 console.log('[Backup] Manual logout detected, skip auto-login');
                 this.updateFirebaseAuthStatus('⚠️ Silakan login manual');
@@ -1491,13 +1103,11 @@ const backupModule = {
                     .catch(err => {
                         console.error('[Backup] Firebase auth error:', err);
                         this.updateFirebaseAuthStatus('❌ Gagal login: ' + err.message);
-                        // Clear saved credentials jika gagal
                         localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
                         localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
                     });
             } else {
                 this.auth.onAuthStateChanged(user => {
-                    // Cek flag manual logout
                     if (this._isManualLogout) {
                         console.log('[Backup] Manual logout detected in auth state change');
                         return;
@@ -1525,7 +1135,6 @@ const backupModule = {
             return;
         }
         
-        // Set flag manual logout
         this._isManualLogout = true;
         
         this.auth.signOut()
@@ -1534,7 +1143,6 @@ const backupModule = {
                 this.currentUser = null;
                 this._firebaseAuthStateReady = false;
                 
-                // Clear saved credentials
                 localStorage.removeItem(this.KEYS.FB_AUTH_EMAIL);
                 localStorage.removeItem(this.KEYS.FB_AUTH_PASSWORD);
                 localStorage.removeItem(this.KEYS.FB_USER);
@@ -1543,7 +1151,6 @@ const backupModule = {
                 this.showToast('✅ Logout Firebase berhasil');
                 this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
                 
-                // Refresh UI
                 this.refreshUI();
             })
             .catch(err => {
@@ -1553,17 +1160,14 @@ const backupModule = {
     },
 
     logoutSheets() {
-        // Set flag logout
         localStorage.setItem(this.KEYS.SHEETS_LOGGED_OUT, 'true');
         this._gasConfigValid = false;
         
-        // Stop auto sync
         this.stopAutoSync();
         
         this.showToast('✅ Logout Google Sheets berhasil. Sync dinonaktifkan.');
         this.updateSyncStatus(this.SYNC_STATUS.LOGGED_OUT);
         
-        // Refresh UI
         this.refreshUI();
     },
 
@@ -1584,7 +1188,7 @@ const backupModule = {
         
         localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
         localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
-        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT); // Hapus flag logout
+        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT);
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         this.saveBackupSettings();
@@ -1627,30 +1231,20 @@ const backupModule = {
         }
     },
 
+    // ==========================================
+    // PERBAIKAN UTAMA: Render ke container yang benar
+    // ==========================================
+    
     render() {
         console.log('[Backup] Rendering backup module...');
         
-        let container = document.getElementById('module-container');
-        if (!container) container = document.getElementById('content-container');
-        if (!container) container = document.getElementById('main-content');
-        if (!container) container = document.getElementById('app-content');
-        if (!container) container = document.querySelector('.module-container');
-        if (!container) container = document.querySelector('.content-area');
-        if (!container) container = document.getElementById('backup-page-container');
-        if (!container) container = document.querySelector('.container');
-        if (!container) container = document.querySelector('main');
-        
+        const container = this.getContainer();
         if (!container) {
-            console.warn('[Backup] Container tidak ditemukan, membuat container baru...');
-            container = document.createElement('div');
-            container.id = 'module-container';
-            container.style.cssText = 'padding: 20px; max-width: 1200px; margin: 0 auto;';
-            
-            const mainContent = document.querySelector('main') || document.querySelector('.main') || document.body;
-            mainContent.appendChild(container);
+            console.error('[Backup] Container not found!');
+            return;
         }
 
-        // Clear container sebelum render
+        // Clear container
         container.innerHTML = '';
 
         const sheetsLoggedOut = localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true';
@@ -1675,7 +1269,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.2 - Auto-Backup Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.3 - Container Fix Edition</div>
                         </div>
                     </div>
                 </div>
@@ -2390,7 +1984,6 @@ const backupModule = {
             this.initFirebase();
         } else if (provider === 'googlesheet') {
             this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
-            // Cek status logout
             if (localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
                 this._gasConfigValid = false;
             }
@@ -2423,7 +2016,7 @@ const backupModule = {
         
         localStorage.setItem(this.KEYS.GAS_URL, this.gasUrl);
         localStorage.setItem(this.KEYS.SHEET_ID, this.sheetId);
-        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT); // Hapus flag logout saat save
+        localStorage.removeItem(this.KEYS.SHEETS_LOGGED_OUT);
         
         this._gasConfigValid = this.gasUrl && this.sheetId && this.sheetId.length === 44;
         this.saveBackupSettings();
@@ -2467,7 +2060,6 @@ const backupModule = {
                 localStorage.setItem(this.KEYS.FB_AUTH_PASSWORD, password);
             }
             
-            // Reset flag logout
             this._isManualLogout = false;
             
             this.saveBackupSettings();
@@ -2593,7 +2185,6 @@ const backupModule = {
             return;
         }
         
-        // Cek status logout
         if (this.currentProvider === 'googlesheet' && localStorage.getItem(this.KEYS.SHEETS_LOGGED_OUT) === 'true') {
             if (!silent) this.showToast('🚫 Google Sheets logged out');
             return;
@@ -2623,7 +2214,6 @@ const backupModule = {
             this.updateSyncStatus(this.SYNC_STATUS.SYNCED);
             
             if (!silent) this.showToast('✅ Sync berhasil');
-            console.log('[Backup] Auto-sync completed successfully');
             
         } catch (err) {
             console.error('[Backup] Sync error:', err);
@@ -2704,7 +2294,7 @@ const backupModule = {
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.3.2',
+                version: '4.3.3',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
