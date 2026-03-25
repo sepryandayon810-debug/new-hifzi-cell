@@ -978,6 +978,20 @@ const dataManager = {
         }
     },
 
+    // ✅ FUNGSI DEBUG: Cek pending modals
+    debugPendingModals() {
+        console.log('=== DEBUG PENDING MODALS ===');
+        console.log('pendingModals:', this.data.pendingModals);
+        console.log('pendingExtraModals:', this.data.pendingExtraModals);
+        console.log('activeShifts:', this.data.kasir.activeShifts);
+        console.log('===========================');
+        return {
+            pendingModals: this.data.pendingModals,
+            pendingExtraModals: this.data.pendingExtraModals,
+            activeShifts: this.data.kasir.activeShifts
+        };
+    },
+
     getActiveShifts() {
         return this.data.kasir.activeShifts || [];
     },
