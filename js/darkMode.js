@@ -2,9 +2,6 @@
  * ============================================
  * DARK MODE MODULE - HIFZI CELL POS
  * ============================================
- * File: js/darkmode.js
- * Deskripsi: Sistem Dark Mode dengan CSS variables override
- * Versi: 1.0.0
  */
 
 const darkModeModule = {
@@ -50,7 +47,6 @@ const darkModeModule = {
         this.injectStyles();
         this.apply();
         
-        // Render toggle button dengan delay untuk memastikan DOM siap
         setTimeout(() => this.renderToggleButton(), 100);
         setTimeout(() => this.renderToggleButton(), 500);
         setTimeout(() => this.renderToggleButton(), 1000);
@@ -105,17 +101,13 @@ const darkModeModule = {
     },
 
     renderToggleButton() {
-        // Cek jika sudah ada
         if (document.getElementById('darkModeBtn')) return;
         
-        // Cari container header-actions
         let container = document.querySelector('.header-actions');
         
-        // Jika belum ada, coba cari di header
         if (!container) {
             const header = document.querySelector('.header');
             if (header) {
-                // Buat container jika belum ada
                 container = document.createElement('div');
                 container.className = 'header-actions';
                 container.style.cssText = 'display: flex; align-items: center;';
@@ -160,7 +152,6 @@ const darkModeModule = {
             btn.style.transform = 'scale(1)';
         };
         
-        // Insert sebelum tombol settings
         const settingsBtn = container.querySelector('[onclick*="openSettings"]');
         if (settingsBtn) {
             container.insertBefore(btn, settingsBtn);
@@ -487,12 +478,10 @@ const darkModeModule = {
     }
 };
 
-// Init saat DOM ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => darkModeModule.init());
 } else {
     darkModeModule.init();
 }
 
-// Expose ke window
 window.darkModeModule = darkModeModule;
