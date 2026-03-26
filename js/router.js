@@ -1,14 +1,11 @@
 /**
  * Router System - Hifzi Cell POS
- * FIXED: All menus redirecting to cloud page
- * COMPLETE VERSION with all features
+ * FINAL FIX: Force proper navigation control
  */
 
 const router = {
     currentPage: null,
     isNavigating: false,
-
-    requiresKasirOpen: [],
 
     menuAccess: {
         'owner': ['pos', 'products', 'purchase', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
@@ -28,235 +25,302 @@ const router = {
         'users': 'Users',
         'telegram': 'Telegram',
         'cloud': 'Cloud',
-        'backup': 'Backup',
         'pencarian': 'Pencarian'
-    },
-
-    isModuleAvailable(moduleName) {
-        const modules = {
-            'pos': typeof posModule !== 'undefined',
-            'products': typeof productsModule !== 'undefined',
-            'purchase': typeof purchaseModule !== 'undefined',
-            'cash': typeof cashModule !== 'undefined',
-            'reports': typeof reportsModule !== 'undefined',
-            'transactions': typeof transactionsModule !== 'undefined',
-            'receipt': typeof receiptModule !== 'undefined',
-            'debt': typeof debtModule !== 'undefined',
-            'users': typeof usersModule !== 'undefined',
-            'telegram': typeof TelegramModule !== 'undefined',
-            'cloud': typeof backupModule !== 'undefined',
-            'backup': typeof backupModule !== 'undefined',
-            'pencarian': typeof n8nModule !== 'undefined'
-        };
-        return modules[moduleName] || false;
     },
 
     _container: null,
     
     getContainer() {
-        if (this._container && document.contains(this._container)) {
+        if (this._container && document.body.contains(this._container)) {
             return this._container;
         }
         
-        this._container = document.getElementById('mainContent') || 
-                         document.getElementById('module-container') || 
-                         document.getElementById('content-container') ||
-                         document.querySelector('.module-container') ||
-                         document.querySelector('.content-area') ||
-                         document.querySelector('main');
+        this._container = document.getElementById('mainContent');
         
         if (!this._container) {
-            console.error('[Router] No container found!');
-            const newContainer = document.createElement('div');
-            newContainer.id = 'mainContent';
-            document.body.appendChild(newContainer);
-            this._container = newContainer;
+            console.error('[Router] CRITICAL: mainContent not found!');
+            // Create emergency container
+            this._container = document.createElement('div');
+            this._container.id = 'mainContent';
+            document.body.appendChild(this._container);
         }
-        
-        this._container.style.display = 'block';
-        this._container.style.visibility = 'visible';
-        this._container.style.opacity = '1';
         
         return this._container;
     },
 
-    clearContainer() {
-        const container = this.getContainer();
-        if (container) {
-            container.innerHTML = '';
-        }
-    },
-
+    // ==========================================
+    // PERBAIKAN RADIKAL: Navigate dengan force render
+    // ==========================================
     navigate(page, element) {
+        console.log(`[Router] ========================================`);
+        console.log(`[Router] NAVIGATE START: ${page}`);
+        console.log(`[Router] ========================================`);
+
         if (this.isNavigating) {
-            console.log('[Router] Navigation in progress, ignoring...');
+            console.log('[Router] BLOCKED: Navigation in progress');
             return;
         }
         
         if (this.currentPage === page) {
-            console.log('[Router] Already on page:', page);
+            console.log('[Router] BLOCKED: Already on page:', page);
             return;
         }
 
-        console.log(`[Router] Navigating to: ${page}`);
         this.isNavigating = true;
+        const startTime = Date.now();
 
         try {
+            // 1. Get user
             const currentUser = dataManager.getCurrentUser();
-
             if (!currentUser) {
-                if (typeof app !== 'undefined' && app.showToast) {
-                    app.showToast('❌ Silakan login terlebih dahulu!');
-                }
+                app.showToast('❌ Silakan login terlebih dahulu!');
                 this.isNavigating = false;
                 return;
             }
 
-            const userRole = currentUser.role;
-            const allowedMenus = this.menuAccess[userRole] || [];
-
+            // 2. Check access
+            const allowedMenus = this.menuAccess[currentUser.role] || [];
             if (!allowedMenus.includes(page)) {
-                this.showAccessDeniedModal(userRole, page);
+                this.showAccessDeniedModal(currentUser.role, page);
                 this.isNavigating = false;
                 return;
             }
 
-            const operationalMenus = ['pos', 'cash', 'debt'];
-            const status = dataManager.checkKasirStatusForUser(currentUser.userId);
-            
-            if (operationalMenus.includes(page) && status.canOpen && !status.isContinue) {
-                this.showOpenKasirFirstModal(page, element);
-                this.isNavigating = false;
-                return;
+            // 3. Check kasir status
+            if (['pos', 'cash', 'debt'].includes(page)) {
+                const status = dataManager.checkKasirStatusForUser(currentUser.userId);
+                if (status.canOpen && !status.isContinue) {
+                    this.showOpenKasirFirstModal(page, element);
+                    this.isNavigating = false;
+                    return;
+                }
             }
 
+            // 4. Update UI state
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             if (element) element.classList.add('active');
 
             const cartBar = document.getElementById('cartBar');
             if (cartBar) cartBar.style.display = 'none';
 
+            // 5. CRITICAL: Clear and get fresh container
             this.currentPage = page;
-
-            this.clearContainer();
-
-            let initSuccess = false;
+            const container = this.getContainer();
             
-            switch(page) {
-                case 'pos':
-                    if (typeof posModule !== 'undefined' && posModule.init) {
-                        posModule.init();
-                        initSuccess = true;
-                        if (cartBar) cartBar.style.display = 'flex';
-                    }
-                    break;
-                case 'products':
-                    if (typeof productsModule !== 'undefined' && productsModule.init) {
-                        productsModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'purchase':
-                    if (typeof purchaseModule !== 'undefined' && purchaseModule.init) {
-                        purchaseModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'cash':
-                    if (typeof cashModule !== 'undefined' && cashModule.init) {
-                        cashModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'reports':
-                    if (typeof reportsModule !== 'undefined' && reportsModule.init) {
-                        reportsModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'transactions':
-                    if (typeof transactionsModule !== 'undefined' && transactionsModule.init) {
-                        transactionsModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'receipt':
-                    if (typeof receiptModule !== 'undefined' && receiptModule.init) {
-                        receiptModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'debt':
-                    if (typeof debtModule !== 'undefined' && debtModule.init) {
-                        debtModule.init();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'users':
-                    if (typeof usersModule !== 'undefined' && usersModule.init) {
-                        try {
-                            usersModule.init();
-                            initSuccess = true;
-                        } catch (userError) {
-                            console.error('[Router] Error initializing users module:', userError);
-                            throw userError;
-                        }
-                    }
-                    break;
-                case 'telegram':
-                    if (typeof TelegramModule !== 'undefined') {
-                        if (TelegramModule.init) TelegramModule.init();
-                        if (TelegramModule.renderPage) TelegramModule.renderPage();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'pencarian':
-                    if (typeof n8nModule !== 'undefined') {
-                        if (n8nModule.init) n8nModule.init();
-                        if (n8nModule.renderPage) n8nModule.renderPage();
-                        initSuccess = true;
-                    }
-                    break;
-                case 'cloud':
-                case 'backup':
-                    if (typeof backupModule !== 'undefined') {
-                        if (!backupModule.isInitialized && backupModule.init) {
-                            backupModule.init();
-                        }
-                        if (backupModule.render) backupModule.render();
-                        initSuccess = true;
-                    }
-                    break;
-                default:
-                    console.error(`[Router] Unknown page: ${page}`);
-                    if (typeof app !== 'undefined' && app.showToast) {
-                        app.showToast('❌ Halaman tidak ditemukan!');
-                    }
-            }
+            // Force clear dengan innerHTML = ''
+            container.innerHTML = '';
+            
+            // Force style reset
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
 
-            if (!initSuccess) {
-                throw new Error(`Failed to initialize module: ${page}`);
-            }
+            console.log(`[Router] Container cleared, rendering: ${page}`);
 
-            console.log(`[Router] Successfully navigated to: ${page}`);
+            // 6. Render module dengan switch yang benar
+            this.renderModule(page);
+
+            console.log(`[Router] Navigation completed in ${Date.now() - startTime}ms`);
 
         } catch (error) {
-            console.error(`[Router] Error navigating to ${page}:`, error);
-            if (typeof app !== 'undefined' && app.showToast) {
-                app.showToast(`❌ Error membuka menu ${this.menuLabels[page] || page}`);
-            }
+            console.error(`[Router] CRITICAL ERROR:`, error);
+            this.getContainer().innerHTML = `
+                <div style="padding: 40px; text-align: center; color: #c62828;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                    <h3>Error Memuat Halaman</h3>
+                    <p>${error.message}</p>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px;">
+                        🔄 Refresh Halaman
+                    </button>
+                </div>
+            `;
         } finally {
             setTimeout(() => {
                 this.isNavigating = false;
-            }, 100);
+            }, 150);
         }
 
         window.scrollTo(0, 0);
     },
 
+    // ==========================================
+    // PERBAIKAN: Render module terpisah
+    // ==========================================
+    renderModule(page) {
+        console.log(`[Router] renderModule(${page})`);
+        
+        const container = this.getContainer();
+        let success = false;
+
+        switch(page) {
+            case 'pos':
+                if (typeof posModule !== 'undefined' && posModule.init) {
+                    posModule.init();
+                    success = true;
+                    const cartBar = document.getElementById('cartBar');
+                    if (cartBar) cartBar.style.display = 'flex';
+                }
+                break;
+
+            case 'products':
+                if (typeof productsModule !== 'undefined' && productsModule.init) {
+                    productsModule.init();
+                    success = true;
+                } else {
+                    container.innerHTML = '<div style="padding: 40px; text-align: center;">📦 Module Produk tidak tersedia</div>';
+                }
+                break;
+
+            case 'purchase':
+                if (typeof purchaseModule !== 'undefined' && purchaseModule.init) {
+                    purchaseModule.init();
+                    success = true;
+                } else {
+                    container.innerHTML = '<div style="padding: 40px; text-align: center;">📥 Module Pembelian tidak tersedia</div>';
+                }
+                break;
+
+            case 'cash':
+                if (typeof cashModule !== 'undefined' && cashModule.init) {
+                    cashModule.init();
+                    success = true;
+                } else {
+                    container.innerHTML = '<div style="padding: 40px; text-align: center;">💰 Module Kas tidak tersedia</div>';
+                }
+                break;
+
+            case 'reports':
+                if (typeof reportsModule !== 'undefined' && reportsModule.init) {
+                    reportsModule.init();
+                    success = true;
+                }
+                break;
+
+            case 'transactions':
+                if (typeof transactionsModule !== 'undefined' && transactionsModule.init) {
+                    transactionsModule.init();
+                    success = true;
+                }
+                break;
+
+            case 'receipt':
+                if (typeof receiptModule !== 'undefined' && receiptModule.init) {
+                    receiptModule.init();
+                    success = true;
+                }
+                break;
+
+            case 'debt':
+                if (typeof debtModule !== 'undefined' && debtModule.init) {
+                    debtModule.init();
+                    success = true;
+                }
+                break;
+
+            case 'users':
+                if (typeof usersModule !== 'undefined' && usersModule.init) {
+                    usersModule.init();
+                    success = true;
+                }
+                break;
+
+            case 'telegram':
+                if (typeof TelegramModule !== 'undefined') {
+                    if (TelegramModule.init) TelegramModule.init();
+                    if (TelegramModule.renderPage) TelegramModule.renderPage();
+                    success = true;
+                }
+                break;
+
+            case 'pencarian':
+                if (typeof n8nModule !== 'undefined') {
+                    if (n8nModule.init) n8nModule.init();
+                    if (n8nModule.renderPage) n8nModule.renderPage();
+                    success = true;
+                }
+                break;
+
+            case 'cloud':
+                // PERBAIKAN: Render cloud secara manual, jangan panggil init lagi
+                if (typeof backupModule !== 'undefined' && backupModule.render) {
+                    // Hanya render, jangan init lagi
+                    backupModule.render();
+                    success = true;
+                } else {
+                    container.innerHTML = '<div style="padding: 40px; text-align: center;">☁️ Module Cloud tidak tersedia</div>';
+                }
+                break;
+
+            default:
+                container.innerHTML = `<div style="padding: 40px; text-align: center;">❓ Halaman "${page}" tidak dikenal</div>`;
+        }
+
+        console.log(`[Router] renderModule(${page}) success: ${success}`);
+        return success;
+    },
+
+    // ==========================================
+    // PERBAIKAN: Render navigation tanpa onclick inline
+    // ==========================================
+    renderNavigation() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) {
+            console.log('[Router] No user logged in');
+            return;
+        }
+
+        const allowedMenus = this.menuAccess[currentUser.role] || [];
+        const navContainer = document.getElementById('navTabs');
+
+        if (!navContainer) {
+            console.error('[Router] navTabs not found!');
+            return;
+        }
+
+        const menuIcons = {
+            'pos': '🛒',
+            'products': '📦',
+            'purchase': '📥',
+            'cash': '💰',
+            'reports': '📊',
+            'transactions': '📋',
+            'receipt': '🧾',
+            'debt': '💳',
+            'users': '👥',
+            'telegram': '✈️',
+            'cloud': '☁️',
+            'pencarian': '🔍'
+        };
+
+        // Kosongkan container
+        navContainer.innerHTML = '';
+
+        // Buat button dengan event listener (bukan onclick inline)
+        allowedMenus.forEach(menu => {
+            const btn = document.createElement('button');
+            btn.className = 'nav-tab';
+            btn.setAttribute('data-page', menu);
+            btn.innerHTML = `
+                <span class="nav-icon">${menuIcons[menu] || '📄'}</span>
+                <span class="nav-label">${this.menuLabels[menu] || menu}</span>
+            `;
+            
+            // Event listener terpisah
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.navigate(menu, btn);
+            });
+            
+            navContainer.appendChild(btn);
+        });
+
+        console.log(`[Router] Navigation rendered for ${currentUser.role}:`, allowedMenus);
+    },
+
+    // ... (methods lain tetap sama)
     showOpenKasirFirstModal(page, element) {
         const pageName = this.menuLabels[page] || page;
-        
         const modalHTML = `
             <div class="modal active" id="openKasirFirstModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 380px; text-align: center;">
@@ -277,13 +341,12 @@ const router = {
                 </div>
             </div>
         `;
-        this.removeExistingModal('openKasirFirstModal');
+        this.removeModal('openKasirFirstModal');
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
     openKasirAndNavigate(page) {
-        const modal = document.getElementById('openKasirFirstModal');
-        if (modal) modal.remove();
+        this.removeModal('openKasirFirstModal');
         
         if (typeof app !== 'undefined' && app.currentUser) {
             const result = dataManager.openKasir(app.currentUser.userId, true);
@@ -292,33 +355,19 @@ const router = {
                 if (typeof app.updateHeader === 'function') app.updateHeader();
                 if (typeof app.updateKasirStatus === 'function') app.updateKasirStatus();
                 
-                const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
-                this.navigate(page, navTab);
+                // Navigate after opening kasir
+                setTimeout(() => {
+                    const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
+                    this.navigate(page, navTab);
+                }, 100);
             }
         }
-    },
-
-    hasAccess(page) {
-        const currentUser = dataManager.getCurrentUser();
-        if (!currentUser) return false;
-
-        const allowedMenus = this.menuAccess[currentUser.role] || [];
-        return allowedMenus.includes(page);
-    },
-
-    getAllowedMenus() {
-        const currentUser = dataManager.getCurrentUser();
-        if (!currentUser) return [];
-        return this.menuAccess[currentUser.role] || [];
     },
 
     showAccessDeniedModal(userRole, page) {
         const menuName = this.menuLabels[page] || page;
         const allowedMenus = this.menuAccess[userRole] || [];
-
-        const allowedMenuList = allowedMenus
-            .map(m => `• ${this.menuLabels[m] || m}`)
-            .join('<br>');
+        const allowedMenuList = allowedMenus.map(m => `• ${this.menuLabels[m] || m}`).join('<br>');
 
         const modalHTML = `
             <div class="modal active" id="accessDeniedModal" style="display: flex; z-index: 3000; align-items: flex-start; padding-top: 100px;">
@@ -335,7 +384,6 @@ const router = {
                             Menu <strong>${menuName}</strong> hanya dapat diakses oleh role tertentu.
                         </div>
                     </div>
-
                     <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 10px; padding: 15px; margin-bottom: 20px; text-align: left;">
                         <div style="font-size: 12px; color: #1565c0; font-weight: 600; margin-bottom: 8px;">
                             📋 Menu yang dapat Anda akses:
@@ -344,111 +392,19 @@ const router = {
                             ${allowedMenuList}
                         </div>
                     </div>
-
-                    <button class="btn btn-primary" onclick="router.closeAccessDeniedModal()" style="padding: 10px 30px;">
+                    <button class="btn btn-primary" onclick="router.removeModal('accessDeniedModal')" style="padding: 10px 30px;">
                         Mengerti
                     </button>
                 </div>
             </div>
         `;
-        this.removeExistingModal('accessDeniedModal');
+        this.removeModal('accessDeniedModal');
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    closeAccessDeniedModal() {
-        const modal = document.getElementById('accessDeniedModal');
+    removeModal(id) {
+        const modal = document.getElementById(id);
         if (modal) modal.remove();
-    },
-
-    showModuleErrorModal(page) {
-        const menuName = this.menuLabels[page] || page;
-        const suggestions = {
-            'telegram': 'Pastikan file telegram.js ada di folder js/',
-            'cloud': 'Pastikan file backup.js sudah di-load di index.html',
-            'backup': 'Pastikan file backup.js sudah di-load di index.html',
-            'pencarian': 'Pastikan file n8n.js ada di folder js/',
-            'users': 'Pastikan file users.js sudah di-load di index.html',
-            'purchase': 'Pastikan file purchase.js sudah di-load di index.html'
-        };
-
-        const modalHTML = `
-            <div class="modal active" id="moduleErrorModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
-                <div class="modal-content" style="max-width: 380px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">⚙️</div>
-                    <div class="modal-header" style="justify-content: center;">
-                        <span class="modal-title" style="font-size: 16px;">Module Belum Siap</span>
-                    </div>
-                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
-                        Menu <b>${menuName}</b> sedang dalam pengembangan atau terjadi error loading.
-                    </p>
-                    ${suggestions[page] ? `
-                    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 12px; color: #856404;">
-                        💡 ${suggestions[page]}
-                    </div>
-                    ` : ''}
-                    <button class="btn btn-secondary" onclick="router.closeModuleErrorModal()" style="width: 100%;">Tutup</button>
-                </div>
-            </div>
-        `;
-        this.removeExistingModal('moduleErrorModal');
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    closeModuleErrorModal() {
-        const modal = document.getElementById('moduleErrorModal');
-        if (modal) modal.remove();
-    },
-
-    removeExistingModal(id) {
-        const existing = document.getElementById(id);
-        if (existing) existing.remove();
-    },
-
-    renderNavigation() {
-        const currentUser = dataManager.getCurrentUser();
-        if (!currentUser) {
-            console.log('[Router] No user logged in, skipping navigation render');
-            return;
-        }
-
-        const allowedMenus = this.menuAccess[currentUser.role] || [];
-        const navContainer = document.getElementById('navTabs');
-
-        if (!navContainer) {
-            console.error('[Router] navTabs container not found!');
-            return;
-        }
-
-        const menuIcons = {
-            'pos': '🛒',
-            'products': '📦',
-            'purchase': '📥',
-            'cash': '💰',
-            'reports': '📊',
-            'transactions': '📋',
-            'receipt': '🧾',
-            'debt': '💳',
-            'users': '👥',
-            'telegram': '✈️',
-            'cloud': '☁️',
-            'backup': '💾',
-            'pencarian': '🔍'
-        };
-
-        let navHTML = '';
-        allowedMenus.forEach(menu => {
-            const icon = menuIcons[menu] || '📄';
-            const label = this.menuLabels[menu] || menu;
-            navHTML += `
-                <button class="nav-tab" onclick="router.navigate('${menu}', this)" data-page="${menu}">
-                    <span class="nav-icon">${icon}</span>
-                    <span class="nav-label">${label}</span>
-                </button>
-            `;
-        });
-
-        navContainer.innerHTML = navHTML;
-        console.log(`[Router] Navigation rendered for role: ${currentUser.role}`);
     },
 
     refreshNavigation() {
@@ -469,8 +425,7 @@ const router = {
     }
 };
 
-if (typeof window !== 'undefined') {
-    window.router = router;
-}
+// Expose to window
+window.router = router;
 
-console.log('[Router] Router system loaded v2.6 - Fixed Cloud Redirect - Complete Features');
+console.log('[Router] FINAL VERSION loaded - v3.0');
