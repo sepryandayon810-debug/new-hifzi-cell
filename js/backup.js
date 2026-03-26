@@ -1,7 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.6)
-// FIXED: Config not available to search module after cloud sync
-// FIXED: N8N config broadcast to other modules
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.7)
+// FIXED: Config broadcast to search module after cloud sync
+// FIXED: Prevent navigation override to cloud page
 // ============================================
 
 const backupModule = {
@@ -48,6 +48,9 @@ const backupModule = {
     _firebaseAuthStateReady: false,
     _gasConfigValid: false,
     _isManualLogout: false,
+    
+    // PERBAIKAN: Flag untuk disable problematic listeners
+    _menuListenerDisabled: false,
     
     // Config objects - akan disinkron ke dataManager
     config: {
@@ -134,7 +137,16 @@ const backupModule = {
     },
 
     // ==========================================
-    // CONFIG METHODS - PERBAIKAN UTAMA
+    // PERBAIKAN BARU: Disable global listeners yang mengganggu router
+    // ==========================================
+    
+    disableGlobalListeners() {
+        console.log('[Backup] Disabling global listeners to prevent navigation override');
+        this._menuListenerDisabled = true;
+    },
+
+    // ==========================================
+    // CONFIG METHODS
     // ==========================================
     
     loadConfigFromDataManager() {
@@ -176,7 +188,7 @@ const backupModule = {
     },
 
     // ==========================================
-    // PERBAIKAN BARU: BROADCAST CONFIG KE MODUL LAIN
+    // BROADCAST CONFIG KE MODUL LAIN
     // ==========================================
     
     syncConfigToDataManager() {
@@ -194,7 +206,6 @@ const backupModule = {
         console.log('[Backup] Config synced to dataManager');
     },
 
-    // PERBAIKAN BARU: Broadcast config ke window/global agar modul lain bisa akses
     broadcastConfigToModules() {
         // Simpan ke localStorage (untuk modul yang baca dari localStorage)
         localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.config.telegram));
@@ -220,7 +231,6 @@ const backupModule = {
         console.log('[Backup] Config broadcasted to all modules');
     },
 
-    // PERBAIKAN BARU: Method untuk modul lain mendapatkan config N8N
     getN8nConfig() {
         return {
             ...this.config.n8n,
@@ -229,7 +239,6 @@ const backupModule = {
         };
     },
 
-    // PERBAIKAN BARU: Method untuk modul lain mendapatkan config Telegram
     getTelegramConfig() {
         return {
             ...this.config.telegram,
@@ -248,7 +257,7 @@ const backupModule = {
             updatedAt: new Date().toISOString()
         };
         
-        // PERBAIKAN: Broadcast ke semua modul
+        // Broadcast ke semua modul
         this.broadcastConfigToModules();
         
         // Simpan ke dataManager
@@ -280,7 +289,7 @@ const backupModule = {
             updatedAt: new Date().toISOString()
         };
         
-        // PERBAIKAN: Broadcast ke semua modul
+        // Broadcast ke semua modul
         this.broadcastConfigToModules();
         
         // Simpan ke dataManager
@@ -307,19 +316,18 @@ const backupModule = {
     init(forceReinit = false) {
         if (this.isInitialized && !forceReinit) {
             this.loadConfigFromDataManager();
-            // PERBAIKAN: Broadcast config saat init
             this.broadcastConfigToModules();
             return this;
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.3.6 - Config Broadcast Fix');
+        console.log('[Backup] Initializing v4.3.7 - Router Fix Edition');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
         this.loadConfigFromDataManager();
         
-        // PERBAIKAN: Broadcast config setelah load
+        // Broadcast config setelah load
         this.broadcastConfigToModules();
         
         this.lastLocalDataHash = localStorage.getItem(this.KEYS.LAST_DATA_HASH) || null;
@@ -358,9 +366,8 @@ const backupModule = {
 
         this.setupNetworkListeners();
         this.setupDataChangeObserver();
+        // PERBAIKAN: Setup menu listeners dengan check flag
         this.setupMenuListeners();
-        
-        // PERBAIKAN: Setup listener untuk config update dari modul lain
         this.setupConfigBroadcastListener();
 
         if (this.currentProvider === 'firebase') {
@@ -395,7 +402,7 @@ const backupModule = {
             if (e.key === 'hifzi_data' || e.key === 'hifzi_transactions') {
                 this.handleDataChange();
             }
-            // PERBAIKAN: Listen perubahan config dari tab/browser lain
+            // Listen perubahan config dari tab/browser lain
             if (e.key === this.KEYS.N8N_CONFIG || e.key === this.KEYS.TELEGRAM_CONFIG) {
                 console.log('[Backup] Config updated from another tab');
                 this.loadConfigFromDataManager();
@@ -404,7 +411,6 @@ const backupModule = {
         });
     },
 
-    // PERBAIKAN BARU: Setup listener untuk broadcast config
     setupConfigBroadcastListener() {
         window.addEventListener('hifzi-config-updated', (e) => {
             if (e.detail.source !== 'backupModule') {
@@ -441,13 +447,22 @@ const backupModule = {
         }, 2000);
     },
 
+    // PERBAIKAN: Setup menu listeners dengan check flag
     setupMenuListeners() {
         console.log('[Backup] Setup menu listeners...');
         document.addEventListener('click', (e) => {
+            // PERBAIKAN: Check flag sebelum proses
+            if (this._menuListenerDisabled) {
+                return;
+            }
+            
             const menuItem = e.target.closest('[data-page="cloud"], [data-page="backup"], #menu-cloud, #menu-backup');
             if (menuItem) {
                 console.log('[Backup] Menu cloud/backup clicked');
-                setTimeout(() => this.forceRender(), 50);
+                // PERBAIKAN: Hanya render jika memang di halaman cloud
+                if (this.isBackupPage()) {
+                    setTimeout(() => this.forceRender(), 50);
+                }
             }
         });
     },
@@ -460,10 +475,12 @@ const backupModule = {
     },
 
     isBackupPage() {
-        if (window.router && (router.currentPage === 'backup' || router.currentPage === 'cloud')) {
-            return true;
+        // PERBAIKAN: Check dengan router jika tersedia
+        if (typeof window !== 'undefined' && window.router) {
+            return router.currentPage === 'backup' || router.currentPage === 'cloud';
         }
         
+        // Fallback ke method lama
         const hash = window.location.hash.toLowerCase();
         if (hash && (hash.includes('backup') || hash.includes('cloud'))) return true;
         
@@ -510,7 +527,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.6 - Config Broadcast Edition</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.7 - Router Compatible</div>
                         </div>
                     </div>
                 </div>
@@ -953,7 +970,7 @@ const backupModule = {
     },
 
     // ==========================================
-    // SYNC METHODS - PERBAIKAN UTAMA
+    // SYNC METHODS
     // ==========================================
     
     prepareDataForSync() {
@@ -978,14 +995,14 @@ const backupModule = {
             pendingExtraModals: this.cleanUndefined(rawData.pendingExtraModals) || {},
             modalHistory: this.cleanUndefined(rawData.modalHistory) || [],
             
-            // PERBAIKAN: Config disimpan dalam data utama
+            // Config disimpan dalam data utama
             telegram: { ...this.config.telegram },
             n8nConfig: { ...this.config.n8n },
             
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.3.6',
+                version: '4.3.7',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -1003,7 +1020,7 @@ const backupModule = {
                 autoSync: this.isAutoSyncEnabled,
                 telegram: { ...this.config.telegram },
                 n8n: { ...this.config.n8n },
-                version: '4.3.6',
+                version: '4.3.7',
                 savedAt: new Date().toISOString(),
                 savedBy: this.deviceId
             }
@@ -1029,7 +1046,7 @@ const backupModule = {
         if (cloudData.pendingExtraModals) data.pendingExtraModals = cloudData.pendingExtraModals;
         if (cloudData.modalHistory) data.modalHistory = cloudData.modalHistory;
         
-        // PERBAIKAN: Apply config dari cloud
+        // Apply config dari cloud
         if (cloudData.telegram) {
             data.telegram = { ...cloudData.telegram };
             this.config.telegram = { ...cloudData.telegram };
@@ -1054,7 +1071,7 @@ const backupModule = {
             }
         }
         
-        // PERBAIKAN BARU: Broadcast config ke semua modul setelah restore
+        // Broadcast config ke semua modul setelah restore
         this.broadcastConfigToModules();
         
         // Save
@@ -1285,7 +1302,7 @@ const backupModule = {
     },
 
     // ==========================================
-    // PREVIEW - PERBAIKAN LENGKAP
+    // PREVIEW
     // ==========================================
     
     async previewCloudData() {
@@ -1344,7 +1361,6 @@ const backupModule = {
         const hasTelegram = data.telegram?.botToken ? true : false;
         const hasN8n = data.n8nConfig?.botToken ? true : false;
         
-        // Hapus modal lama jika ada
         const existingModal = document.getElementById('preview-modal');
         if (existingModal) existingModal.remove();
         
@@ -1613,36 +1629,22 @@ const backupModule = {
     },
 
     showToast(message) {
-        if (typeof Toastify !== 'undefined') {
-            Toastify({
-                text: message,
-                duration: 3000,
-                gravity: 'top',
-                position: 'right',
-                style: {
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '8px',
-                    padding: '12px 20px'
-                }
-            }).showToast();
-        } else {
-            const toast = document.createElement('div');
-            toast.style.cssText = `
-                position: fixed; top: 20px; right: 20px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white; padding: 16px 24px; border-radius: 12px;
-                z-index: 99999; font-family: system-ui, sans-serif;
-                font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-                animation: slideIn 0.3s ease; max-width: 400px;
-            `;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => toast.remove(), 300);
-            }, 4000);
-        }
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed; top: 20px; right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 16px 24px; border-radius: 12px;
+            z-index: 99999; font-family: system-ui, sans-serif;
+            font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease; max-width: 400px;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.animation = 'slideOut 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
     },
 
     setupNetworkListeners() {
