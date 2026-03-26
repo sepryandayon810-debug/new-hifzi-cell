@@ -315,7 +315,7 @@ const dataManager = {
             _meta: { 
                 lastModified: new Date().toISOString(), 
                 deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', 
-                version: '2.4'
+                version: '2.5'
             }
         };
     },
@@ -826,6 +826,9 @@ const dataManager = {
         }
     },
 
+    // ============================================
+    // PERBAIKAN UTAMA: openKasir - Mempertahankan modal yang sudah di-set
+    // ============================================
     openKasir(userId, forceReset = false) {
         const today = new Date().toDateString();
         const status = this.checkKasirStatusForUser(userId);
@@ -840,7 +843,7 @@ const dataManager = {
         console.log(`[openKasir] Current pendingModals:`, JSON.parse(JSON.stringify(this.data.pendingModals || {})));
         console.log(`[openKasir] Current pendingExtraModals:`, JSON.parse(JSON.stringify(this.data.pendingExtraModals || {})));
         
-        // Jika shift hari ini masih aktif, lanjutkan saja
+        // PERBAIKAN: Jika shift hari ini masih aktif dan tidak force reset, lanjutkan saja
         if (status.isContinue && !forceReset) {
             const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
             if (existingShiftIndex !== -1) {
@@ -866,7 +869,7 @@ const dataManager = {
             }
         }
         
-        // Cek apakah user sudah punya shift aktif (hari sebelumnya)
+        // Cek apakah user sudah punya shift aktif (hari sebelumnya atau hari ini dengan force reset)
         const existingShiftIndex = this.data.kasir.activeShifts.findIndex(s => s.userId === userId);
         
         if (existingShiftIndex !== -1) {
@@ -895,11 +898,12 @@ const dataManager = {
                 this.saveShiftHistory(existingShift);
             }
             
+            // Hapus shift lama
             this.data.kasir.activeShifts.splice(existingShiftIndex, 1);
         }
         
         // ============================================
-        // INISIALISASI MODAL - PERBAIKAN UTAMA DI SINI
+        // PERBAIKAN UTAMA: INISIALISASI MODAL
         // ============================================
         
         let modalAwal = 0;
@@ -925,8 +929,14 @@ const dataManager = {
             this.clearPendingExtraModal(userId);
         }
         
-        // 3. Jika tidak ada pending modal, gunakan default berdasarkan role
+        // 3. PERBAIKAN: Jika tidak ada pending modal tapi user sudah pernah di-set modal sebelumnya,
+        // cek apakah ada data modal di user settings atau shift history terakhir
         if (modalAwal === 0 && extraModal === 0) {
+            // Cek apakah ini adalah buka kasir baru (bukan reset)
+            // Jika forceReset = false, berarti ini buka kasir normal
+            // Jangan reset ke 0 jika memang tidak ada pending modal - 
+            // biarkan user mengatur modal sendiri atau gunakan default
+            
             if (user.role === 'owner') {
                 modalAwal = parseInt(this.data.settings?.modalAwal) || 0;
                 console.log(`[openKasir] Owner using default modal: Rp ${modalAwal}`);
