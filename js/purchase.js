@@ -1,5 +1,5 @@
 // ============================================
-// PURCHASE MODULE - Pembelian dari Supplier (FIXED)
+// PURCHASE MODULE - Pembelian dari Supplier (FIXED COMPLETE)
 // ============================================
 
 const purchaseModule = {
@@ -14,7 +14,6 @@ const purchaseModule = {
     renderHTML() {
         document.getElementById('mainContent').innerHTML = `
             <div class="content-section active" id="purchaseSection">
-                <!-- Quick Actions -->
                 <div class="quick-actions">
                     <button class="quick-btn" onclick="purchaseModule.openAddModal()">
                         <div class="quick-icon" style="background: #e3f2fd;">🛒</div>
@@ -30,7 +29,6 @@ const purchaseModule = {
                     </button>
                 </div>
 
-                <!-- Recent Purchases -->
                 <div class="card">
                     <div class="card-header">
                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -54,7 +52,6 @@ const purchaseModule = {
         const style = document.createElement('style');
         style.id = 'purchase-module-styles';
         style.textContent = `
-            /* Modal Styles - FIXED */
             .purchase-modal-overlay {
                 position: fixed;
                 top: 0;
@@ -140,17 +137,10 @@ const purchaseModule = {
             }
             
             @keyframes slideUp {
-                from { 
-                    opacity: 0;
-                    transform: translateY(20px);
-                }
-                to { 
-                    opacity: 1;
-                    transform: translateY(0);
-                }
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             
-            /* Form Styles */
             .purchase-form-row {
                 display: grid;
                 grid-template-columns: 2fr 1fr 1fr 1fr auto;
@@ -235,6 +225,7 @@ const purchaseModule = {
                 align-items: center;
                 justify-content: center;
                 gap: 8px;
+                margin-top: 10px;
             }
             
             .btn-add-item:hover {
@@ -243,7 +234,40 @@ const purchaseModule = {
                 color: #667eea;
             }
             
-            /* Purchase Item List */
+            .btn-add-new-product {
+                width: 100%;
+                padding: 12px;
+                background: #ecfdf5;
+                border: 2px dashed #10b981;
+                border-radius: 10px;
+                cursor: pointer;
+                color: #059669;
+                font-size: 14px;
+                font-weight: 500;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin-bottom: 15px;
+            }
+            
+            .btn-add-new-product:hover {
+                background: #d1fae5;
+                border-color: #059669;
+            }
+            
+            .new-product-badge {
+                display: inline-block;
+                background: #10b981;
+                color: white;
+                font-size: 10px;
+                padding: 2px 8px;
+                border-radius: 12px;
+                margin-left: 8px;
+                font-weight: 600;
+            }
+            
             .purchase-item {
                 display: flex;
                 justify-content: space-between;
@@ -263,9 +287,7 @@ const purchaseModule = {
                 transform: translateY(-2px);
             }
             
-            .purchase-info {
-                flex: 1;
-            }
+            .purchase-info { flex: 1; }
             
             .purchase-supplier {
                 font-weight: 600;
@@ -315,7 +337,6 @@ const purchaseModule = {
                 color: #6b7280;
             }
             
-            /* Supplier Card */
             .supplier-card {
                 display: flex;
                 justify-content: space-between;
@@ -325,12 +346,6 @@ const purchaseModule = {
                 margin-bottom: 10px;
                 border-radius: 12px;
                 border: 1px solid #e5e7eb;
-                transition: all 0.2s;
-            }
-            
-            .supplier-card:hover {
-                border-color: #667eea;
-                box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
             }
             
             .supplier-info h4 {
@@ -345,7 +360,6 @@ const purchaseModule = {
                 color: #6b7280;
             }
             
-            /* Form Groups */
             .form-row {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -381,7 +395,6 @@ const purchaseModule = {
                 box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
             }
             
-            /* Buttons */
             .btn {
                 padding: 10px 20px;
                 border-radius: 8px;
@@ -407,8 +420,16 @@ const purchaseModule = {
                 color: #374151;
             }
             
-            .btn-secondary:hover {
-                background: #d1d5db;
+            .btn-secondary:hover { background: #d1d5db; }
+            
+            .btn-success {
+                background: #10b981;
+                color: white;
+            }
+            
+            .btn-success:hover {
+                background: #059669;
+                transform: translateY(-1px);
             }
             
             .btn-sm {
@@ -425,20 +446,15 @@ const purchaseModule = {
                 color: #4338ca;
             }
             
-            .btn-primary-sm:hover {
-                background: #c7d2fe;
-            }
+            .btn-primary-sm:hover { background: #c7d2fe; }
             
             .btn-danger-sm {
                 background: #fee2e2;
                 color: #dc2626;
             }
             
-            .btn-danger-sm:hover {
-                background: #fecaca;
-            }
+            .btn-danger-sm:hover { background: #fecaca; }
             
-            /* Add Category Row */
             .add-category-row {
                 display: flex;
                 gap: 10px;
@@ -462,14 +478,8 @@ const purchaseModule = {
                 border-radius: 8px;
                 font-size: 20px;
                 cursor: pointer;
-                transition: all 0.2s;
             }
             
-            .add-category-btn:hover {
-                transform: scale(1.05);
-            }
-            
-            /* Search Bar */
             .search-bar {
                 display: flex;
                 gap: 10px;
@@ -484,7 +494,6 @@ const purchaseModule = {
                 font-size: 14px;
             }
             
-            /* Empty State */
             .empty-state {
                 text-align: center;
                 padding: 40px 20px;
@@ -497,37 +506,28 @@ const purchaseModule = {
                 opacity: 0.5;
             }
             
-            /* Toast Notification - PASTIKAN Z-INDEX LEBIH RENDAH */
-            .toast {
-                position: fixed;
-                top: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: #1f2937;
-                color: white;
-                padding: 12px 24px;
+            .inline-new-product {
+                background: #f0fdf4;
+                border: 2px solid #86efac;
                 border-radius: 8px;
-                font-size: 14px;
-                z-index: 10000;
-                animation: slideDown 0.3s ease;
+                padding: 15px;
+                margin-bottom: 10px;
             }
             
-            @keyframes slideDown {
-                from {
-                    opacity: 0;
-                    transform: translateX(-50%) translateY(-20px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateX(-50%) translateY(0);
-                }
+            .inline-new-product-header {
+                font-weight: 600;
+                color: #166534;
+                margin-bottom: 10px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
             }
         `;
         document.head.appendChild(style);
     },
 
     // ============================================
-    // MODAL: TAMBAH PEMBELIAN BARU (FIXED STRUCTURE)
+    // MODAL: TAMBAH PEMBELIAN BARU (FIXED)
     // ============================================
     openAddModal(purchaseId = null) {
         this.currentItems = [];
@@ -540,11 +540,10 @@ const purchaseModule = {
         if (purchaseId) {
             editData = dataManager.getPurchases().find(p => p.id === purchaseId);
             if (editData) {
-                this.currentItems = [...editData.items];
+                this.currentItems = editData.items.map(item => ({...item}));
             }
         }
 
-        // Create modal with proper overlay
         const modalHTML = `
             <div class="purchase-modal-overlay" id="purchaseModal">
                 <div class="purchase-modal-content">
@@ -554,7 +553,6 @@ const purchaseModule = {
                     </div>
 
                     <div class="purchase-modal-body">
-                        <!-- Info Faktur -->
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Supplier *</label>
@@ -593,16 +591,23 @@ const purchaseModule = {
                                    value="${editData?.creditNote || ''}">
                         </div>
 
+                        <!-- Tombol Tambah Produk Baru -->
+                        <button class="btn-add-new-product" onclick="purchaseModule.openAddNewProductInline()">
+                            <span>➕</span> Tambah Produk Baru (Belum Ada di Database)
+                        </button>
+
                         <!-- Daftar Produk -->
                         <div style="margin: 20px 0;">
-                            <label style="display: block; margin-bottom: 10px; font-weight: 600; color: #374151;">Produk Dibeli</label>
+                            <label style="display: block; margin-bottom: 10px; font-weight: 600; color: #374151;">
+                                Produk Dibeli <span style="font-weight: normal; color: #6b7280; font-size: 12px;">(${this.currentItems.length} item)</span>
+                            </label>
                             
                             <div id="purchaseItemsList">
                                 <!-- Items akan dirender di sini -->
                             </div>
 
                             <button class="btn-add-item" onclick="purchaseModule.addItemRow()">
-                                <span>➕</span> Tambah Produk
+                                <span>➕</span> Tambah Produk dari Database
                             </button>
                         </div>
 
@@ -635,19 +640,156 @@ const purchaseModule = {
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
 
-        // Render existing items atau tambah 1 row kosong
+        // Render existing items
         if (this.currentItems.length > 0) {
             this.currentItems.forEach((item, index) => this.renderItemRow(index, item));
-        } else {
-            this.addItemRow();
         }
         
         this.calculateTotal();
     },
 
+    // ============================================
+    // TAMBAH PRODUK BARU INLINE (FITUR BARU)
+    // ============================================
+    openAddNewProductInline() {
+        // Cek apakah sudah ada form new product yang terbuka
+        if (document.getElementById('newProductInlineForm')) {
+            document.getElementById('newProductInlineForm').scrollIntoView({ behavior: 'smooth' });
+            return;
+        }
+
+        const categories = dataManager.getCategories().filter(c => c.id !== 'all');
+
+        const formHTML = `
+            <div class="inline-new-product" id="newProductInlineForm">
+                <div class="inline-new-product-header">
+                    <span>✨</span> Produk Baru
+                </div>
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
+                    <div>
+                        <label style="font-size: 12px; color: #166534; font-weight: 600;">Nama Produk *</label>
+                        <input type="text" id="newProdName" placeholder="Nama produk baru" 
+                               style="width: 100%; padding: 8px; border: 1px solid #86efac; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; color: #166534; font-weight: 600;">Qty *</label>
+                        <input type="number" id="newProdQty" value="1" min="1"
+                               style="width: 100%; padding: 8px; border: 1px solid #86efac; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; color: #166534; font-weight: 600;">Harga Beli *</label>
+                        <input type="number" id="newProdBuyPrice" placeholder="0"
+                               style="width: 100%; padding: 8px; border: 1px solid #86efac; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; color: #166534; font-weight: 600;">Harga Jual *</label>
+                        <input type="number" id="newProdSellPrice" placeholder="0"
+                               style="width: 100%; padding: 8px; border: 1px solid #86efac; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <button onclick="purchaseModule.saveNewProductInline()" class="btn btn-success" style="padding: 8px 16px; white-space: nowrap;">
+                            ✓ Tambah
+                        </button>
+                    </div>
+                </div>
+                <div style="margin-top: 10px;">
+                    <label style="font-size: 12px; color: #166534; font-weight: 600;">Kategori</label>
+                    <select id="newProdCategory" style="width: 100%; padding: 8px; border: 1px solid #86efac; border-radius: 6px;">
+                        ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div style="margin-top: 8px; font-size: 11px; color: #15803d;">
+                    💡 Produk akan otomatis ditambahkan ke database dan langsung masuk ke daftar pembelian
+                </div>
+            </div>
+        `;
+
+        const container = document.getElementById('purchaseItemsList');
+        container.insertAdjacentHTML('beforebegin', formHTML);
+        
+        // Focus ke nama produk
+        setTimeout(() => document.getElementById('newProdName')?.focus(), 100);
+    },
+
+    saveNewProductInline() {
+        const name = document.getElementById('newProdName').value.trim();
+        const qty = parseInt(document.getElementById('newProdQty').value) || 1;
+        const buyPrice = parseInt(document.getElementById('newProdBuyPrice').value) || 0;
+        const sellPrice = parseInt(document.getElementById('newProdSellPrice').value) || 0;
+        const category = document.getElementById('newProdCategory').value;
+
+        if (!name) {
+            app.showToast('Nama produk wajib diisi!');
+            return;
+        }
+        if (buyPrice <= 0) {
+            app.showToast('Harga beli wajib diisi!');
+            return;
+        }
+        if (sellPrice <= 0) {
+            app.showToast('Harga jual wajib diisi!');
+            return;
+        }
+
+        // Cek apakah produk dengan nama yang sama sudah ada
+        const existingProduct = dataManager.getProducts().find(p => 
+            p.name.toLowerCase() === name.toLowerCase()
+        );
+
+        let productId;
+        if (existingProduct) {
+            if (!confirm(`Produk "${name}" sudah ada di database. Gunakan produk yang sudah ada?`)) {
+                return;
+            }
+            productId = existingProduct.id;
+            // Update harga jika berbeda
+            if (existingProduct.price !== sellPrice || existingProduct.cost !== buyPrice) {
+                dataManager.updateProduct(productId, {
+                    price: sellPrice,
+                    cost: buyPrice
+                });
+            }
+        } else {
+            // Buat produk baru
+            const newProduct = {
+                name: name,
+                price: sellPrice,
+                cost: buyPrice,
+                stock: 0, // Stok akan ditambahkan saat simpan pembelian
+                category: category
+            };
+            const savedProduct = dataManager.addProduct(newProduct);
+            productId = savedProduct.id;
+        }
+
+        // Hapus form inline
+        document.getElementById('newProductInlineForm')?.remove();
+
+        // Tambahkan ke currentItems
+        const index = this.currentItems.length;
+        this.currentItems.push({
+            productId: productId,
+            qty: qty,
+            buyPrice: buyPrice,
+            sellPrice: sellPrice,
+            isNewProduct: !existingProduct // Tandai sebagai produk baru
+        });
+
+        // Render row
+        this.renderItemRow(index, this.currentItems[index]);
+        this.calculateTotal();
+        
+        app.showToast(`Produk "${name}" ditambahkan ke daftar!`);
+    },
+
     addItemRow() {
         const index = this.currentItems.length;
-        this.currentItems.push({ productId: '', qty: 1, buyPrice: 0, sellPrice: 0 });
+        this.currentItems.push({ 
+            productId: '', 
+            qty: 1, 
+            buyPrice: 0, 
+            sellPrice: 0 
+        });
         this.renderItemRow(index);
         this.calculateTotal();
     },
@@ -659,9 +801,13 @@ const purchaseModule = {
         const div = document.createElement('div');
         div.className = 'purchase-form-row';
         div.id = `itemRow_${index}`;
+        div.dataset.index = index; // Simpan index untuk referensi
+        
+        const isNewProduct = itemData?.isNewProduct;
+        const product = itemData?.productId ? products.find(p => p.id === itemData.productId) : null;
         
         div.innerHTML = `
-            <select onchange="purchaseModule.updateItemProduct(${index}, this.value)">
+            <select onchange="purchaseModule.updateItemProduct(${index}, this.value)" ${isNewProduct ? 'disabled' : ''}>
                 <option value="">-- Pilih Produk --</option>
                 ${products.map(p => `
                     <option value="${p.id}" ${itemData?.productId === p.id ? 'selected' : ''}>
@@ -676,29 +822,31 @@ const purchaseModule = {
             <input type="number" placeholder="Harga Jual" value="${itemData?.sellPrice || ''}" 
                    onchange="purchaseModule.updateItemSellPrice(${index}, this.value)">
             <button onclick="purchaseModule.removeItem(${index})" title="Hapus">×</button>
+            ${isNewProduct ? '<span class="new-product-badge">BARU</span>' : ''}
         `;
         
         container.appendChild(div);
         
-        // Auto-fill harga jual jika produk dipilih
-        if (itemData?.productId) {
-            const product = products.find(p => p.id === itemData.productId);
-            if (product && !itemData.sellPrice) {
-                this.currentItems[index].sellPrice = product.price;
-                div.querySelector('input[placeholder="Harga Jual"]').value = product.price;
-            }
+        // Auto-fill harga jual jika produk dipilih dan belum diisi
+        if (itemData?.productId && !itemData?.sellPrice && product) {
+            this.currentItems[index].sellPrice = product.price;
+            div.querySelector('input[placeholder="Harga Jual"]').value = product.price;
         }
     },
 
     updateItemProduct(index, productId) {
+        if (!productId) return;
+        
         const product = dataManager.getProducts().find(p => p.id === productId);
         if (product) {
             this.currentItems[index].productId = productId;
             this.currentItems[index].sellPrice = product.price;
+            this.currentItems[index].buyPrice = product.cost || 0;
             
             const row = document.getElementById(`itemRow_${index}`);
             if (row) {
                 row.querySelector('input[placeholder="Harga Jual"]').value = product.price;
+                row.querySelector('input[placeholder="Harga Beli"]').value = product.cost || '';
             }
         }
         this.calculateTotal();
@@ -720,10 +868,8 @@ const purchaseModule = {
 
     removeItem(index) {
         this.currentItems.splice(index, 1);
-        const row = document.getElementById(`itemRow_${index}`);
-        if (row) row.remove();
         
-        // Re-render semua rows dengan index baru
+        // Re-render semua rows
         const container = document.getElementById('purchaseItemsList');
         container.innerHTML = '';
         this.currentItems.forEach((item, idx) => {
@@ -744,11 +890,15 @@ const purchaseModule = {
             return sum + ((item.buyPrice || 0) * (item.qty || 1));
         }, 0);
         
-        const itemCount = this.currentItems.filter(i => i.productId).length;
+        const itemCount = this.currentItems.length;
         
-        document.getElementById('subtotalDisplay').textContent = `Rp ${utils.formatNumber(subtotal)}`;
-        document.getElementById('itemCountDisplay').textContent = `${itemCount} produk`;
-        document.getElementById('totalDisplay').textContent = `Rp ${utils.formatNumber(subtotal)}`;
+        const subtotalEl = document.getElementById('subtotalDisplay');
+        const itemCountEl = document.getElementById('itemCountDisplay');
+        const totalEl = document.getElementById('totalDisplay');
+        
+        if (subtotalEl) subtotalEl.textContent = `Rp ${utils.formatNumber(subtotal)}`;
+        if (itemCountEl) itemCountEl.textContent = `${itemCount} produk`;
+        if (totalEl) totalEl.textContent = `Rp ${utils.formatNumber(subtotal)}`;
     },
 
     savePurchase() {
@@ -758,6 +908,7 @@ const purchaseModule = {
         const paymentType = document.getElementById('purchasePayment').value;
         const creditNote = document.getElementById('creditNote')?.value.trim() || '';
 
+        // Validasi
         if (!supplierId) {
             app.showToast('Pilih supplier terlebih dahulu!');
             return;
@@ -766,16 +917,18 @@ const purchaseModule = {
             app.showToast('Tanggal wajib diisi!');
             return;
         }
-        if (this.currentItems.length === 0 || !this.currentItems.some(i => i.productId)) {
-            app.showToast('Tambahkan minimal 1 produk!');
+        
+        // Filter items yang valid
+        const validItems = this.currentItems.filter(item => 
+            item.productId && item.productId !== '' && item.qty > 0 && item.buyPrice > 0
+        );
+        
+        if (validItems.length === 0) {
+            app.showToast('Tambahkan minimal 1 produk dengan data lengkap (produk, qty, harga beli)!');
             return;
         }
 
-        // Filter items yang valid
-        const validItems = this.currentItems.filter(item => item.productId && item.qty > 0);
-        
         const total = validItems.reduce((sum, item) => sum + (item.buyPrice * item.qty), 0);
-        
         const supplier = dataManager.getSuppliers().find(s => s.id === supplierId);
         
         const purchaseData = {
@@ -785,7 +938,12 @@ const purchaseModule = {
             date: new Date(date).toISOString(),
             paymentType,
             creditNote: paymentType === 'credit' ? creditNote : '',
-            items: validItems,
+            items: validItems.map(item => ({
+                productId: item.productId,
+                qty: item.qty,
+                buyPrice: item.buyPrice,
+                sellPrice: item.sellPrice
+            })),
             total,
             status: paymentType === 'credit' ? 'unpaid' : 'paid'
         };
@@ -815,7 +973,7 @@ const purchaseModule = {
     },
 
     // ============================================
-    // MODAL: MANAJEMEN SUPPLIER (FIXED)
+    // MODAL: SUPPLIER
     // ============================================
     openSupplierModal() {
         const suppliers = dataManager.getSuppliers();
@@ -875,11 +1033,7 @@ const purchaseModule = {
             return;
         }
 
-        dataManager.addSupplier({
-            name,
-            phone,
-            address: ''
-        });
+        dataManager.addSupplier({ name, phone, address: '' });
 
         document.getElementById('newSupplierName').value = '';
         document.getElementById('newSupplierPhone').value = '';
@@ -932,7 +1086,7 @@ const purchaseModule = {
     },
 
     // ============================================
-    // MODAL: RIWAYAT PEMBELIAN (FIXED)
+    // MODAL: RIWAYAT
     // ============================================
     openHistoryModal() {
         const purchases = dataManager.getPurchases().sort((a, b) => 
@@ -1154,9 +1308,6 @@ const purchaseModule = {
         printWindow.document.close();
     },
 
-    // ============================================
-    // RENDER LIST PEMBELIAN (HALAMAN UTAMA)
-    // ============================================
     renderPurchasesList() {
         const container = document.getElementById('purchasesList');
         if (!container) return;
@@ -1203,11 +1354,8 @@ const purchaseModule = {
 
     closeModal(id) {
         const modal = document.getElementById(id);
-        if (modal) {
-            modal.remove();
-        }
+        if (modal) modal.remove();
     }
 };
 
-// Expose to window
 window.purchaseModule = purchaseModule;
