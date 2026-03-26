@@ -1,7 +1,7 @@
 // ============================================
-// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.7)
-// FIXED: Config broadcast to search module after cloud sync
-// FIXED: Prevent navigation override to cloud page
+// BACKUP MODULE - HIFZI CELL (COMPLETE v4.3.8)
+// FIXED: Prevent render when not on backup page
+// FIXED: Stop observer from triggering unwanted renders
 // ============================================
 
 const backupModule = {
@@ -51,8 +51,9 @@ const backupModule = {
     
     // PERBAIKAN: Flag untuk disable problematic listeners
     _menuListenerDisabled: false,
+    _observerDisabled: false,
     
-    // Config objects - akan disinkron ke dataManager
+    // Config objects
     config: {
         telegram: {
             botToken: '',
@@ -108,6 +109,36 @@ const backupModule = {
     },
 
     // ==========================================
+    // PERBAIKAN BARU: Check if currently on backup page
+    // ==========================================
+    
+    isBackupPage() {
+        // Prioritas: cek router.currentPage jika tersedia
+        if (typeof router !== 'undefined' && router.currentPage) {
+            const isBackup = router.currentPage === 'backup' || router.currentPage === 'cloud';
+            console.log('[Backup] isBackupPage check (router):', isBackup, 'currentPage:', router.currentPage);
+            return isBackup;
+        }
+        
+        // Fallback: cek URL hash
+        const hash = window.location.hash.toLowerCase();
+        if (hash && (hash.includes('backup') || hash.includes('cloud'))) {
+            console.log('[Backup] isBackupPage check (hash): true');
+            return true;
+        }
+        
+        // Fallback: cek active nav tab
+        const activeMenu = document.querySelector('.nav-tab.active[data-page="cloud"], .nav-tab.active[data-page="backup"]');
+        if (activeMenu) {
+            console.log('[Backup] isBackupPage check (active tab): true');
+            return true;
+        }
+        
+        console.log('[Backup] isBackupPage check: false');
+        return false;
+    },
+
+    // ==========================================
     // CONTAINER METHODS
     // ==========================================
     
@@ -137,12 +168,19 @@ const backupModule = {
     },
 
     // ==========================================
-    // PERBAIKAN BARU: Disable global listeners yang mengganggu router
+    // PERBAIKAN: Disable global listeners
     // ==========================================
     
     disableGlobalListeners() {
         console.log('[Backup] Disabling global listeners to prevent navigation override');
         this._menuListenerDisabled = true;
+        this._observerDisabled = true;
+    },
+
+    enableGlobalListeners() {
+        console.log('[Backup] Enabling global listeners');
+        this._menuListenerDisabled = false;
+        this._observerDisabled = false;
     },
 
     // ==========================================
@@ -150,7 +188,6 @@ const backupModule = {
     // ==========================================
     
     loadConfigFromDataManager() {
-        // Load Telegram dari dataManager (prioritas) atau localStorage
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.telegram) {
             this.config.telegram = {
                 ...this.config.telegram,
@@ -168,7 +205,6 @@ const backupModule = {
             }
         }
         
-        // Load N8N dari dataManager (prioritas) atau localStorage
         if (typeof dataManager !== 'undefined' && dataManager.data && dataManager.data.n8nConfig) {
             this.config.n8n = {
                 ...this.config.n8n,
@@ -187,31 +223,22 @@ const backupModule = {
         }
     },
 
-    // ==========================================
-    // BROADCAST CONFIG KE MODUL LAIN
-    // ==========================================
-    
     syncConfigToDataManager() {
         if (typeof dataManager === 'undefined' || !dataManager.data) {
             console.warn('[Backup] dataManager not available');
             return;
         }
         
-        // Sync Telegram ke dataManager
         dataManager.data.telegram = { ...this.config.telegram };
-        
-        // Sync N8N ke dataManager
         dataManager.data.n8nConfig = { ...this.config.n8n };
         
         console.log('[Backup] Config synced to dataManager');
     },
 
     broadcastConfigToModules() {
-        // Simpan ke localStorage (untuk modul yang baca dari localStorage)
         localStorage.setItem(this.KEYS.TELEGRAM_CONFIG, JSON.stringify(this.config.telegram));
         localStorage.setItem(this.KEYS.N8N_CONFIG, JSON.stringify(this.config.n8n));
         
-        // Broadcast event agar modul lain tahu config telah update
         window.dispatchEvent(new CustomEvent('hifzi-config-updated', {
             detail: {
                 telegram: this.config.telegram,
@@ -221,7 +248,6 @@ const backupModule = {
             }
         }));
         
-        // Juga simpan ke window.globalConfig untuk akses langsung
         window.hifziConfig = {
             telegram: this.config.telegram,
             n8n: this.config.n8n,
@@ -234,7 +260,6 @@ const backupModule = {
     getN8nConfig() {
         return {
             ...this.config.n8n,
-            // Fallback ke dataManager jika config kosong
             ...(typeof dataManager !== 'undefined' && dataManager.data?.n8nConfig) || {}
         };
     },
@@ -242,7 +267,6 @@ const backupModule = {
     getTelegramConfig() {
         return {
             ...this.config.telegram,
-            // Fallback ke dataManager jika config kosong
             ...(typeof dataManager !== 'undefined' && dataManager.data?.telegram) || {}
         };
     },
@@ -257,13 +281,9 @@ const backupModule = {
             updatedAt: new Date().toISOString()
         };
         
-        // Broadcast ke semua modul
         this.broadcastConfigToModules();
-        
-        // Simpan ke dataManager
         this.syncConfigToDataManager();
         
-        // Trigger save
         if (typeof dataManager !== 'undefined' && typeof dataManager.save === 'function') {
             dataManager.save();
         }
@@ -271,7 +291,6 @@ const backupModule = {
         console.log('[Backup] Telegram config saved:', this.config.telegram);
         this.showToast('✅ Konfigurasi Telegram disimpan');
         
-        // Auto-sync jika aktif
         if (this.isAutoSyncEnabled && this.isOnline) {
             setTimeout(() => this.syncToCloud(true), 1000);
         }
@@ -289,13 +308,9 @@ const backupModule = {
             updatedAt: new Date().toISOString()
         };
         
-        // Broadcast ke semua modul
         this.broadcastConfigToModules();
-        
-        // Simpan ke dataManager
         this.syncConfigToDataManager();
         
-        // Trigger save
         if (typeof dataManager !== 'undefined' && typeof dataManager.save === 'function') {
             dataManager.save();
         }
@@ -303,7 +318,6 @@ const backupModule = {
         console.log('[Backup] N8N config saved:', this.config.n8n);
         this.showToast('✅ Konfigurasi Pencarian disimpan');
         
-        // Auto-sync jika aktif
         if (this.isAutoSyncEnabled && this.isOnline) {
             setTimeout(() => this.syncToCloud(true), 1000);
         }
@@ -321,13 +335,11 @@ const backupModule = {
         }
 
         console.log('[Backup] ========================================');
-        console.log('[Backup] Initializing v4.3.7 - Router Fix Edition');
+        console.log('[Backup] Initializing v4.3.8 - Router Fix Edition');
         console.log('[Backup] ========================================');
         
         this.loadBackupSettings();
         this.loadConfigFromDataManager();
-        
-        // Broadcast config setelah load
         this.broadcastConfigToModules();
         
         this.lastLocalDataHash = localStorage.getItem(this.KEYS.LAST_DATA_HASH) || null;
@@ -366,7 +378,6 @@ const backupModule = {
 
         this.setupNetworkListeners();
         this.setupDataChangeObserver();
-        // PERBAIKAN: Setup menu listeners dengan check flag
         this.setupMenuListeners();
         this.setupConfigBroadcastListener();
 
@@ -390,9 +401,15 @@ const backupModule = {
             const originalSave = dataManager.save;
             const self = this;
             dataManager.save = function(...args) {
-                self.syncConfigToDataManager();
+                // PERBAIKAN: Cek flag sebelum sync
+                if (!self._observerDisabled) {
+                    self.syncConfigToDataManager();
+                }
                 const result = originalSave.apply(dataManager, args);
-                setTimeout(() => self.handleDataChange(), 500);
+                // PERBAIKAN: Cek flag sebelum handle data change
+                if (!self._observerDisabled) {
+                    setTimeout(() => self.handleDataChange(), 500);
+                }
                 return result;
             };
             console.log('[Backup] Data change observer installed');
@@ -400,9 +417,10 @@ const backupModule = {
         
         window.addEventListener('storage', (e) => {
             if (e.key === 'hifzi_data' || e.key === 'hifzi_transactions') {
-                this.handleDataChange();
+                if (!this._observerDisabled) {
+                    this.handleDataChange();
+                }
             }
-            // Listen perubahan config dari tab/browser lain
             if (e.key === this.KEYS.N8N_CONFIG || e.key === this.KEYS.TELEGRAM_CONFIG) {
                 console.log('[Backup] Config updated from another tab');
                 this.loadConfigFromDataManager();
@@ -415,7 +433,6 @@ const backupModule = {
         window.addEventListener('hifzi-config-updated', (e) => {
             if (e.detail.source !== 'backupModule') {
                 console.log('[Backup] Received config update from:', e.detail.source);
-                // Update config jika lebih baru
                 if (e.detail.timestamp > (this.config.n8n.updatedAt || 0)) {
                     this.config.n8n = e.detail.n8n;
                 }
@@ -427,6 +444,12 @@ const backupModule = {
     },
 
     handleDataChange() {
+        // PERBAIKAN: Skip jika observer disabled atau tidak di halaman backup
+        if (this._observerDisabled) {
+            console.log('[Backup] Observer disabled, skipping data change handler');
+            return;
+        }
+        
         if (!this.isOnline) {
             console.log('[Backup] Offline, skipping auto-backup');
             return;
@@ -440,14 +463,15 @@ const backupModule = {
             return;
         }
         
+        // PERBAIKAN: Jangan render ulang jika tidak di halaman backup
+        // Hanya sync ke cloud, jangan render UI
         clearTimeout(this._backupDebounceTimer);
         this._backupDebounceTimer = setTimeout(() => {
-            console.log('[Backup] Data changed, triggering auto-backup...');
-            this.syncToCloud(true);
+            console.log('[Backup] Data changed, triggering auto-backup (no render)...');
+            this.syncToCloud(true); // silent mode, no render
         }, 2000);
     },
 
-    // PERBAIKAN: Setup menu listeners dengan check flag
     setupMenuListeners() {
         console.log('[Backup] Setup menu listeners...');
         document.addEventListener('click', (e) => {
@@ -462,32 +486,24 @@ const backupModule = {
                 // PERBAIKAN: Hanya render jika memang di halaman cloud
                 if (this.isBackupPage()) {
                     setTimeout(() => this.forceRender(), 50);
+                } else {
+                    console.log('[Backup] Not on backup page, skipping force render');
                 }
             }
         });
     },
 
     forceRender() {
+        // PERBAIKAN: Cek dulu apakah di halaman backup
+        if (!this.isBackupPage()) {
+            console.log('[Backup] forceRender blocked: not on backup page');
+            return;
+        }
+        
         console.log('[Backup] Force rendering...');
         this.isRendered = false;
         this.clearContainer();
         this.render();
-    },
-
-    isBackupPage() {
-        // PERBAIKAN: Check dengan router jika tersedia
-        if (typeof window !== 'undefined' && window.router) {
-            return router.currentPage === 'backup' || router.currentPage === 'cloud';
-        }
-        
-        // Fallback ke method lama
-        const hash = window.location.hash.toLowerCase();
-        if (hash && (hash.includes('backup') || hash.includes('cloud'))) return true;
-        
-        const activeMenu = document.querySelector('.nav-tab.active[data-page="cloud"], .nav-tab.active[data-page="backup"]');
-        if (activeMenu) return true;
-        
-        return false;
     },
 
     // ==========================================
@@ -495,9 +511,24 @@ const backupModule = {
     // ==========================================
     
     render() {
+        // PERBAIKAN KRITIS: Cek apakah benar-benar di halaman backup
+        if (!this.isBackupPage()) {
+            console.log('[Backup] RENDER BLOCKED: Not on backup page! Current page:', 
+                typeof router !== 'undefined' ? router.currentPage : 'unknown');
+            return;
+        }
+        
+        // PERBAIKAN: Cek apakah container sudah diisi oleh module lain
+        const container = this.getContainer();
+        const existingContent = container.innerHTML.trim();
+        if (existingContent && !existingContent.includes('backup-module') && !existingContent.includes('Backup & Sync')) {
+            // Ada content lain, jangan override
+            console.log('[Backup] Container has other content, skipping render');
+            return;
+        }
+        
         console.log('[Backup] Rendering backup module...');
         
-        const container = this.getContainer();
         if (!container) {
             console.error('[Backup] Container not found!');
             return;
@@ -527,7 +558,7 @@ const backupModule = {
                         <div style="font-size: 32px;">☁️</div>
                         <div>
                             <div style="font-size: 24px; font-weight: 700;">Backup & Sync</div>
-                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.7 - Router Compatible</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Versi 4.3.8 - Router Compatible</div>
                         </div>
                     </div>
                 </div>
@@ -956,7 +987,7 @@ const backupModule = {
             if (this.isOnline && !this.isSyncing) {
                 this.syncToCloud(true);
             }
-        }, 300000); // 5 menit
+        }, 300000);
         
         console.log('[Backup] Auto sync started (5 menit)');
     },
@@ -980,7 +1011,6 @@ const backupModule = {
         
         const rawData = dataManager.data;
         
-        // Pastikan config sudah tersinkron
         this.syncConfigToDataManager();
         
         return {
@@ -995,14 +1025,13 @@ const backupModule = {
             pendingExtraModals: this.cleanUndefined(rawData.pendingExtraModals) || {},
             modalHistory: this.cleanUndefined(rawData.modalHistory) || [],
             
-            // Config disimpan dalam data utama
             telegram: { ...this.config.telegram },
             n8nConfig: { ...this.config.n8n },
             
             _backupMeta: {
                 backupDate: new Date().toISOString(),
                 deviceId: this.deviceId,
-                version: '4.3.7',
+                version: '4.3.8',
                 recordCounts: {
                     products: (rawData.products || []).length,
                     transactions: (rawData.transactions || []).length,
@@ -1020,7 +1049,7 @@ const backupModule = {
                 autoSync: this.isAutoSyncEnabled,
                 telegram: { ...this.config.telegram },
                 n8n: { ...this.config.n8n },
-                version: '4.3.7',
+                version: '4.3.8',
                 savedAt: new Date().toISOString(),
                 savedBy: this.deviceId
             }
@@ -1034,7 +1063,6 @@ const backupModule = {
         
         const data = dataManager.data;
         
-        // Apply data utama
         if (cloudData.products) data.products = cloudData.products;
         if (cloudData.transactions) data.transactions = cloudData.transactions;
         if (cloudData.cashTransactions) data.cashTransactions = cloudData.cashTransactions;
@@ -1046,7 +1074,6 @@ const backupModule = {
         if (cloudData.pendingExtraModals) data.pendingExtraModals = cloudData.pendingExtraModals;
         if (cloudData.modalHistory) data.modalHistory = cloudData.modalHistory;
         
-        // Apply config dari cloud
         if (cloudData.telegram) {
             data.telegram = { ...cloudData.telegram };
             this.config.telegram = { ...cloudData.telegram };
@@ -1059,7 +1086,6 @@ const backupModule = {
             console.log('[Backup] N8N config restored from cloud');
         }
         
-        // Apply dari _configMeta juga
         if (cloudData._configMeta) {
             if (cloudData._configMeta.telegram) {
                 data.telegram = { ...cloudData._configMeta.telegram };
@@ -1071,10 +1097,8 @@ const backupModule = {
             }
         }
         
-        // Broadcast config ke semua modul setelah restore
         this.broadcastConfigToModules();
         
-        // Save
         if (typeof dataManager.save === 'function') {
             dataManager.save();
         }
@@ -1105,7 +1129,11 @@ const backupModule = {
         
         this.isSyncing = true;
         this.syncStatus = this.SYNC_STATUS.SYNCING;
-        this.render();
+        
+        // PERBAIKAN: Hanya render jika di halaman backup dan tidak silent
+        if (!silent && this.isBackupPage()) {
+            this.render();
+        }
         
         try {
             const dataToSync = this.prepareDataForSync();
@@ -1130,7 +1158,10 @@ const backupModule = {
             if (!silent) this.showToast('❌ Sync gagal: ' + err.message);
         } finally {
             this.isSyncing = false;
-            this.render();
+            // PERBAIKAN: Hanya render jika di halaman backup dan tidak silent
+            if (!silent && this.isBackupPage()) {
+                this.render();
+            }
         }
     },
 
@@ -1148,7 +1179,10 @@ const backupModule = {
         
         this.isSyncing = true;
         this.syncStatus = this.SYNC_STATUS.SYNCING;
-        this.render();
+        
+        if (this.isBackupPage()) {
+            this.render();
+        }
         
         try {
             let cloudData = null;
@@ -1179,7 +1213,9 @@ const backupModule = {
             this.showToast('❌ Download gagal: ' + err.message);
         } finally {
             this.isSyncing = false;
-            this.render();
+            if (this.isBackupPage()) {
+                this.render();
+            }
         }
     },
 
@@ -1259,7 +1295,10 @@ const backupModule = {
         if (this.currentProvider === 'firebase' && !this._firebaseAuthStateReady) return;
         
         this.syncStatus = this.SYNC_STATUS.CHECKING;
-        this.render();
+        
+        if (this.isBackupPage()) {
+            this.render();
+        }
         
         try {
             let cloudData = null;
@@ -1275,7 +1314,9 @@ const backupModule = {
             
             if (!cloudData) {
                 this.syncStatus = this.SYNC_STATUS.IDLE;
-                this.render();
+                if (this.isBackupPage()) {
+                    this.render();
+                }
                 return;
             }
             
@@ -1293,7 +1334,9 @@ const backupModule = {
             console.error('[Backup] Check cloud error:', err);
             this.syncStatus = this.SYNC_STATUS.ERROR;
         } finally {
-            this.render();
+            if (this.isBackupPage()) {
+                this.render();
+            }
         }
     },
 
@@ -1582,7 +1625,9 @@ const backupModule = {
                 const data = JSON.parse(e.target.result);
                 this.applyDataFromCloud(data);
                 this.showToast('✅ Backup berhasil diupload! Config juga direstore.');
-                this.render();
+                if (this.isBackupPage()) {
+                    this.render();
+                }
             } catch (err) {
                 this.showToast('❌ Format file tidak valid');
             }
@@ -1854,7 +1899,9 @@ const backupModule = {
     },
 
     refreshUI() {
-        if (this.isRendered) this.render();
+        if (this.isRendered && this.isBackupPage()) {
+            this.render();
+        }
     }
 };
 
