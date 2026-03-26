@@ -1,16 +1,13 @@
 /**
  * Router System - Hifzi Cell POS
- * FINAL FIX: Force proper navigation control
- * COMPLETE VERSION - v3.2 (Added: Kasir Lock for All Menus)
+ * FINAL FIX: Support ES6 Modules (Dynamic Import)
+ * COMPLETE VERSION - v3.3
  */
 
 const router = {
     currentPage: null,
     isNavigating: false,
 
-    // ==========================================
-    // TAMBAHAN BARU: Menu yang memerlukan kasir terbuka (SEMUA MENU)
-    // ==========================================
     menusRequireKasirOpen: [
         'pos', 'products', 'purchase', 'cash', 'reports', 
         'transactions', 'receipt', 'debt', 'users', 
@@ -49,7 +46,6 @@ const router = {
         
         if (!this._container) {
             console.error('[Router] CRITICAL: mainContent not found!');
-            // Create emergency container
             this._container = document.createElement('div');
             this._container.id = 'mainContent';
             document.body.appendChild(this._container);
@@ -58,13 +54,8 @@ const router = {
         return this._container;
     },
 
-    // ==========================================
-    // PERBAIKAN RADIKAL: Navigate dengan force render
-    // ==========================================
     navigate(page, element) {
-        console.log(`[Router] ========================================`);
         console.log(`[Router] NAVIGATE START: ${page}`);
-        console.log(`[Router] ========================================`);
 
         if (this.isNavigating) {
             console.log('[Router] BLOCKED: Navigation in progress');
@@ -80,7 +71,6 @@ const router = {
         const startTime = Date.now();
 
         try {
-            // 1. Get user
             const currentUser = dataManager.getCurrentUser();
             if (!currentUser) {
                 app.showToast('❌ Silakan login terlebih dahulu!');
@@ -88,7 +78,6 @@ const router = {
                 return;
             }
 
-            // 2. Check access
             const allowedMenus = this.menuAccess[currentUser.role] || [];
             if (!allowedMenus.includes(page)) {
                 this.showAccessDeniedModal(currentUser.role, page);
@@ -96,12 +85,8 @@ const router = {
                 return;
             }
 
-            // ==========================================
-            // TAMBAHAN BARU: Check kasir status untuk SEMUA MENU
-            // ==========================================
             const kasirStatus = dataManager.checkKasirStatusForUser(currentUser.userId);
             
-            // Jika kasir belum dibuka dan menu memerlukan kasir terbuka
             if (this.menusRequireKasirOpen.includes(page)) {
                 if (kasirStatus.canOpen && !kasirStatus.isContinue) {
                     console.log('[Router] BLOCKED: Kasir not opened yet');
@@ -110,33 +95,27 @@ const router = {
                     return;
                 }
             }
-            // ==========================================
 
-            // 4. Update UI state
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             if (element) element.classList.add('active');
 
             const cartBar = document.getElementById('cartBar');
             if (cartBar) cartBar.style.display = 'none';
 
-            // 5. CRITICAL: Clear and get fresh container
             this.currentPage = page;
             const container = this.getContainer();
             
-            // Force clear dengan innerHTML = ''
             container.innerHTML = '';
-            
-            // Force style reset
             container.style.display = 'block';
             container.style.visibility = 'visible';
             container.style.opacity = '1';
 
             console.log(`[Router] Container cleared, rendering: ${page}`);
 
-            // 6. Render module dengan switch yang benar
-            this.renderModule(page);
-
-            console.log(`[Router] Navigation completed in ${Date.now() - startTime}ms`);
+            // Render module dengan async support
+            this.renderModuleAsync(page).then(success => {
+                console.log(`[Router] Navigation completed in ${Date.now() - startTime}ms, success: ${success}`);
+            });
 
         } catch (error) {
             console.error(`[Router] CRITICAL ERROR:`, error);
@@ -160,124 +139,146 @@ const router = {
     },
 
     // ==========================================
-    // PERBAIKAN: Render module terpisah
+    // PERBAIKAN: Async render module dengan ES6 support
     // ==========================================
-    renderModule(page) {
-        console.log(`[Router] renderModule(${page})`);
+    async renderModuleAsync(page) {
+        console.log(`[Router] renderModuleAsync(${page})`);
         
         const container = this.getContainer();
         let success = false;
 
-        switch(page) {
-            case 'pos':
-                if (typeof posModule !== 'undefined' && posModule.init) {
-                    posModule.init();
-                    success = true;
-                    const cartBar = document.getElementById('cartBar');
-                    if (cartBar) cartBar.style.display = 'flex';
-                }
-                break;
+        try {
+            switch(page) {
+                case 'pos':
+                    if (typeof posModule !== 'undefined' && posModule.init) {
+                        posModule.init();
+                        success = true;
+                        const cartBar = document.getElementById('cartBar');
+                        if (cartBar) cartBar.style.display = 'flex';
+                    }
+                    break;
 
-            case 'products':
-                if (typeof productsModule !== 'undefined' && productsModule.init) {
-                    productsModule.init();
-                    success = true;
-                } else {
-                    container.innerHTML = '<div style="padding: 40px; text-align: center;">📦 Module Produk tidak tersedia</div>';
-                }
-                break;
+                case 'products':
+                    if (typeof productsModule !== 'undefined' && productsModule.init) {
+                        productsModule.init();
+                        success = true;
+                    } else {
+                        container.innerHTML = '<div style="padding: 40px; text-align: center;">📦 Module Produk tidak tersedia</div>';
+                    }
+                    break;
 
-            case 'purchase':
-                if (typeof purchaseModule !== 'undefined' && purchaseModule.init) {
-                    purchaseModule.init();
-                    success = true;
-                } else {
-                    container.innerHTML = '<div style="padding: 40px; text-align: center;">📥 Module Pembelian tidak tersedia</div>';
-                }
-                break;
+                case 'purchase':
+                    if (typeof purchaseModule !== 'undefined' && purchaseModule.init) {
+                        purchaseModule.init();
+                        success = true;
+                    } else {
+                        container.innerHTML = '<div style="padding: 40px; text-align: center;">📥 Module Pembelian tidak tersedia</div>';
+                    }
+                    break;
 
-            case 'cash':
-                if (typeof cashModule !== 'undefined' && cashModule.init) {
-                    cashModule.init();
-                    success = true;
-                } else {
-                    container.innerHTML = '<div style="padding: 40px; text-align: center;">💰 Module Kas tidak tersedia</div>';
-                }
-                break;
+                // ==========================================
+                // PERBAIKAN UTAMA: Cash dengan Dynamic Import
+                // ==========================================
+                case 'cash':
+                    try {
+                        // Coba load sebagai ES6 module
+                        const module = await import('./cash.js');
+                        const cashModule = module.default || window.cashModule;
+                        
+                        if (cashModule && cashModule.init) {
+                            await cashModule.init();
+                            success = true;
+                            console.log('[Router] Cash module loaded via ES6 import');
+                        } else {
+                            throw new Error('cashModule.init not found');
+                        }
+                    } catch (err) {
+                        console.error('[Router] Error loading cash module:', err);
+                        container.innerHTML = `
+                            <div style="padding: 40px; text-align: center;">
+                                <div style="font-size: 48px; margin-bottom: 16px;">💰</div>
+                                <h3>Module Kas tidak tersedia</h3>
+                                <p style="color: #666; margin-top: 10px;">${err.message}</p>
+                                <button onclick="router.navigate('cash', document.querySelector('[data-page=cash]'))" 
+                                        style="margin-top: 20px; padding: 10px 20px; cursor: pointer;">
+                                    🔄 Coba Lagi
+                                </button>
+                            </div>
+                        `;
+                    }
+                    break;
 
-            case 'reports':
-                if (typeof reportsModule !== 'undefined' && reportsModule.init) {
-                    reportsModule.init();
-                    success = true;
-                }
-                break;
+                case 'reports':
+                    if (typeof reportsModule !== 'undefined' && reportsModule.init) {
+                        reportsModule.init();
+                        success = true;
+                    }
+                    break;
 
-            case 'transactions':
-                if (typeof transactionsModule !== 'undefined' && transactionsModule.init) {
-                    transactionsModule.init();
-                    success = true;
-                }
-                break;
+                case 'transactions':
+                    if (typeof transactionsModule !== 'undefined' && transactionsModule.init) {
+                        transactionsModule.init();
+                        success = true;
+                    }
+                    break;
 
-            case 'receipt':
-                if (typeof receiptModule !== 'undefined' && receiptModule.init) {
-                    receiptModule.init();
-                    success = true;
-                }
-                break;
+                case 'receipt':
+                    if (typeof receiptModule !== 'undefined' && receiptModule.init) {
+                        receiptModule.init();
+                        success = true;
+                    }
+                    break;
 
-            case 'debt':
-                if (typeof debtModule !== 'undefined' && debtModule.init) {
-                    debtModule.init();
-                    success = true;
-                }
-                break;
+                case 'debt':
+                    if (typeof debtModule !== 'undefined' && debtModule.init) {
+                        debtModule.init();
+                        success = true;
+                    }
+                    break;
 
-            case 'users':
-                if (typeof usersModule !== 'undefined' && usersModule.init) {
-                    usersModule.init();
-                    success = true;
-                }
-                break;
+                case 'users':
+                    if (typeof usersModule !== 'undefined' && usersModule.init) {
+                        usersModule.init();
+                        success = true;
+                    }
+                    break;
 
-            case 'telegram':
-                if (typeof TelegramModule !== 'undefined') {
-                    if (TelegramModule.init) TelegramModule.init();
-                    if (TelegramModule.renderPage) TelegramModule.renderPage();
-                    success = true;
-                }
-                break;
+                case 'telegram':
+                    if (typeof TelegramModule !== 'undefined') {
+                        if (TelegramModule.init) TelegramModule.init();
+                        if (TelegramModule.renderPage) TelegramModule.renderPage();
+                        success = true;
+                    }
+                    break;
 
-            case 'pencarian':
-                if (typeof n8nModule !== 'undefined') {
-                    if (n8nModule.init) n8nModule.init();
-                    if (n8nModule.renderPage) n8nModule.renderPage();
-                    success = true;
-                }
-                break;
+                case 'pencarian':
+                    if (typeof n8nModule !== 'undefined') {
+                        if (n8nModule.init) n8nModule.init();
+                        if (n8nModule.renderPage) n8nModule.renderPage();
+                        success = true;
+                    }
+                    break;
 
-            case 'cloud':
-                // PERBAIKAN: Render cloud secara manual, jangan panggil init lagi
-                if (typeof backupModule !== 'undefined' && backupModule.render) {
-                    // Hanya render, jangan init lagi
-                    backupModule.render();
-                    success = true;
-                } else {
-                    container.innerHTML = '<div style="padding: 40px; text-align: center;">☁️ Module Cloud tidak tersedia</div>';
-                }
-                break;
+                case 'cloud':
+                    if (typeof backupModule !== 'undefined' && backupModule.render) {
+                        backupModule.render();
+                        success = true;
+                    } else {
+                        container.innerHTML = '<div style="padding: 40px; text-align: center;">☁️ Module Cloud tidak tersedia</div>';
+                    }
+                    break;
 
-            default:
-                container.innerHTML = `<div style="padding: 40px; text-align: center;">❓ Halaman "${page}" tidak dikenal</div>`;
+                default:
+                    container.innerHTML = `<div style="padding: 40px; text-align: center;">❓ Halaman "${page}" tidak dikenal</div>`;
+            }
+        } catch (error) {
+            console.error(`[Router] Error in renderModuleAsync(${page}):`, error);
+            container.innerHTML = `<div style="padding: 40px; text-align: center; color: red;">Error: ${error.message}</div>`;
         }
 
-        console.log(`[Router] renderModule(${page}) success: ${success}`);
         return success;
     },
 
-    // ==========================================
-    // PERBAIKAN: Render navigation tanpa onclick inline
-    // ==========================================
     renderNavigation() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) {
@@ -308,10 +309,8 @@ const router = {
             'pencarian': '🔍'
         };
 
-        // Kosongkan container
         navContainer.innerHTML = '';
 
-        // Buat button dengan event listener (bukan onclick inline)
         allowedMenus.forEach(menu => {
             const btn = document.createElement('button');
             btn.className = 'nav-tab';
@@ -321,7 +320,6 @@ const router = {
                 <span class="nav-label">${this.menuLabels[menu] || menu}</span>
             `;
             
-            // Event listener terpisah - PERBAIKAN UTAMA
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -335,9 +333,6 @@ const router = {
         console.log(`[Router] Navigation rendered for ${currentUser.role}:`, allowedMenus);
     },
 
-    // ==========================================
-    // MODAL METHODS
-    // ==========================================
     showOpenKasirFirstModal(page, element) {
         const pageName = this.menuLabels[page] || page;
         const modalHTML = `
@@ -374,7 +369,6 @@ const router = {
                 if (typeof app.updateHeader === 'function') app.updateHeader();
                 if (typeof app.updateKasirStatus === 'function') app.updateKasirStatus();
                 
-                // Navigate after opening kasir
                 setTimeout(() => {
                     const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
                     this.navigate(page, navTab);
@@ -443,9 +437,6 @@ const router = {
         return this.currentPage;
     },
 
-    // ==========================================
-    // PERBAIKAN BARU: Method untuk cek module availability
-    // ==========================================
     isModuleAvailable(moduleName) {
         const modules = {
             'pos': typeof posModule !== 'undefined',
@@ -464,18 +455,12 @@ const router = {
         return modules[moduleName] || false;
     },
 
-    // ==========================================
-    // PERBAIKAN BARU: Get allowed menus for current user
-    // ==========================================
     getAllowedMenus() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return [];
         return this.menuAccess[currentUser.role] || [];
     },
 
-    // ==========================================
-    // PERBAIKAN BARU: Check if user has access to page
-    // ==========================================
     hasAccess(page) {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return false;
@@ -483,9 +468,6 @@ const router = {
         return allowedMenus.includes(page);
     },
 
-    // ==========================================
-    // TAMBAHAN BARU: Check if kasir is opened for current user
-    // ==========================================
     isKasirOpened() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser) return false;
@@ -494,7 +476,6 @@ const router = {
     }
 };
 
-// Expose to window
 window.router = router;
 
-console.log('[Router] FINAL VERSION loaded - v3.2 - Kasir Lock for All Menus');
+console.log('[Router] FINAL VERSION loaded - v3.3 - ES6 Module Support');
