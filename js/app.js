@@ -1,5 +1,5 @@
 // ============================================
-// APP.JS - HIFZI CELL (v2.5) - Fixed Router & Modal Sync + Kasir Lock All Menus (Fixed)
+// APP.JS - HIFZI CELL (v2.6) - Fixed Kasir Lock - Check Active Shift Properly
 // ============================================
 
 const app = {
@@ -8,7 +8,7 @@ const app = {
     isCloudConfigLoaded: false,
 
     init() {
-        console.log('[App] Initializing v2.5...');
+        console.log('[App] Initializing v2.6...');
         
         // Init dataManager
         if (typeof dataManager !== 'undefined') {
@@ -35,7 +35,7 @@ const app = {
             return;
         }
 
-        // Sudah login, cek cloud config dulu (jika belum)
+        // Sudah login
         this.handleLoggedIn();
     },
 
@@ -144,54 +144,64 @@ const app = {
         if (loginContainer) loginContainer.style.display = 'none';
         if (appContainer) appContainer.classList.add('active');
         
-        // PERBAIKAN: Init backup module terlebih dahulu dan disable global listeners
+        // Init backup module
         if (typeof backupModule !== 'undefined') {
             backupModule.init();
-            // PERBAIKAN: Disable listeners yang mengganggu router
             if (typeof backupModule.disableGlobalListeners === 'function') {
                 backupModule.disableGlobalListeners();
             }
         }
         
-        // ==========================================
-        // PERBAIKAN BARU: Render navigation terlebih dahulu
-        // ==========================================
-        if (typeof router !== 'undefined') {
-            router.renderNavigation();
-        }
-        
+        // Update header dan status
         this.updateHeader();
         this.updateKasirStatus();
         
-        // Cek dan load cloud config jika belum diload
+        // Load cloud config
         if (!this.isCloudConfigLoaded && typeof backupModule !== 'undefined') {
             await this.loadCloudConfigIfAvailable();
         }
         
         // ==========================================
-        // PERBAIKAN BARU: Check kasir status dengan flow yang benar - BLOCK ALL MENUS IF KASIR CLOSED
+        // PERBAIKAN BARU: Cek kasir status dengan cara yang benar
         // ==========================================
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
-        console.log('[App] Kasir status:', kasirStatus);
+        const userShift = dataManager.getUserShift(this.currentUser.userId);
+        const hasActiveShift = !!userShift;
         
-        if (kasirStatus.reason === 'already_open_same_user') {
+        console.log('[App] Kasir status:', kasirStatus);
+        console.log('[App] User shift:', userShift);
+        console.log('[App] Has active shift:', hasActiveShift);
+        
+        // Render navigation terlebih dahulu
+        if (typeof router !== 'undefined') {
+            router.renderNavigation();
+        }
+        
+        // Jika punya shift aktif, kasir sudah dibuka
+        if (hasActiveShift) {
+            console.log('[App] Kasir is OPEN - allowing navigation');
             this.showToast(`Selamat datang kembali, ${this.currentUser.name}! 👋`);
-            // PERBAIKAN: Gunakan router.navigate, bukan posModule.init langsung
+            
+            // Navigate ke POS
             const posTab = document.querySelector('.nav-tab[data-page="pos"]');
             if (typeof router !== 'undefined') {
                 router.navigate('pos', posTab);
             } else if (typeof posModule !== 'undefined') {
                 posModule.init();
             }
-        } else if (kasirStatus.reason === 'new_day_same_user' || kasirStatus.reason === 'new_shift') {
+        } 
+        // Jika tidak punya shift aktif tapi bisa buka (new day/shift)
+        else if (kasirStatus.canOpen) {
+            console.log('[App] Kasir needs to be opened - showing open modal');
             this.showOpenKasirModal();
-        } else {
-            // Kasir tutup - tampilkan halaman kasir tutup dan BLOKIR SEMUA MENU
+        } 
+        // Kasir tutup dan tidak bisa buka
+        else {
+            console.log('[App] Kasir is CLOSED - blocking all navigation');
             this.showKasirClosedPage();
         }
     },
 
-    // Load config dari cloud jika tersedia
     async loadCloudConfigIfAvailable() {
         console.log('[App] Checking for cloud config...');
         
@@ -232,8 +242,6 @@ const app = {
                 return;
             }
             
-            console.log('[App] No cloud config found, user needs to setup manually');
-            
         } catch (err) {
             console.error('[App] Error loading cloud config:', err);
         }
@@ -242,7 +250,6 @@ const app = {
     },
 
     showOpenKasirModal() {
-        // Hapus modal lama jika ada
         const existingModal = document.getElementById('openKasirModal');
         if (existingModal) existingModal.remove();
         
@@ -282,10 +289,7 @@ const app = {
             this.updateKasirStatus();
             this.showToast(result.message);
             
-            // PERBAIKAN: Unblock navigation setelah kasir dibuka
-            this.unblockNavigation();
-            
-            // PERBAIKAN: Gunakan router.navigate untuk konsistensi
+            // Navigate ke POS
             const posTab = document.querySelector('.nav-tab[data-page="pos"]');
             if (typeof router !== 'undefined') {
                 router.navigate('pos', posTab);
@@ -325,7 +329,6 @@ const app = {
         location.reload();
     },
 
-    // PERBAIKAN: Update header dengan TOTAL GLOBAL
     updateHeader() {
         if (!this.data) return;
         
@@ -493,7 +496,7 @@ const app = {
     },
 
     // ==========================================
-    // TAMBAHAN BARU: Halaman Kasir Tutup yang memblokir semua akses menu
+    // TAMBAHAN: Halaman Kasir Tutup yang memblokir semua akses menu
     // ==========================================
     showKasirClosedPage() {
         const container = document.getElementById('mainContent');
@@ -549,16 +552,14 @@ const app = {
             </div>
         `;
 
-        // ==========================================
-        // PERBAIKAN BARU: Blokir navigasi SETELAH render selesai dengan delay
-        // ==========================================
+        // Blokir navigasi dengan delay
         setTimeout(() => {
             this.blockAllNavigation();
         }, 100);
     },
 
     // ==========================================
-    // TAMBAHAN BARU: Method untuk memblokir semua navigasi saat kasir tutup
+    // TAMBAHAN: Method untuk memblokir semua navigasi saat kasir tutup
     // ==========================================
     blockAllNavigation() {
         console.log('[App] Blocking all navigation - Kasir is closed');
@@ -566,11 +567,11 @@ const app = {
         const navTabs = document.querySelectorAll('.nav-tab');
         
         navTabs.forEach(tab => {
-            // Hapus semua event listener lama dengan clone
+            // Clone untuk hapus event listener lama
             const newTab = tab.cloneNode(true);
             tab.parentNode.replaceChild(newTab, tab);
             
-            // Tambahkan event listener blocker
+            // Tambah event listener blocker
             newTab.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -579,13 +580,13 @@ const app = {
                 return false;
             });
             
-            // Visual indicator menu disabled
+            // Visual indicator
             newTab.style.opacity = '0.5';
             newTab.style.cursor = 'not-allowed';
             newTab.classList.remove('active');
         });
         
-        // Blokir juga tombol settings
+        // Blokir tombol settings
         const settingsBtn = document.querySelector('.icon-btn[onclick*="openSettings"]');
         if (settingsBtn) {
             const newBtn = settingsBtn.cloneNode(true);
@@ -604,10 +605,9 @@ const app = {
     },
 
     // ==========================================
-    // TAMBAHAN BARU: Modal yang muncul saat user mencoba akses menu tanpa buka kasir
+    // TAMBAHAN: Modal yang muncul saat user mencoba akses menu tanpa buka kasir
     // ==========================================
     showKasirRequiredModal() {
-        // Hapus modal lama jika ada
         const existingModal = document.getElementById('kasirRequiredModal');
         if (existingModal) existingModal.remove();
         
@@ -634,32 +634,6 @@ const app = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    // ==========================================
-    // TAMBAHAN BARU: Unblock navigation setelah kasir dibuka
-    // ==========================================
-    unblockNavigation() {
-        console.log('[App] Unblocking navigation - Kasir is now open');
-        
-        // Re-render navigation dengan router (akan menghapus blocker listeners)
-        if (typeof router !== 'undefined') {
-            router.renderNavigation();
-        }
-        
-        // Restore settings button
-        const settingsBtn = document.querySelector('.icon-btn');
-        if (settingsBtn) {
-            const newBtn = settingsBtn.cloneNode(true);
-            settingsBtn.parentNode.replaceChild(newBtn, settingsBtn);
-            
-            newBtn.addEventListener('click', () => {
-                this.openSettings();
-            });
-            
-            newBtn.style.opacity = '1';
-            newBtn.style.cursor = 'pointer';
-        }
-    },
-
     // Method untuk saveAllModalKasir dengan sync pendingModals
     saveAllModalKasir(modalAwal, extraModal = 0) {
         if (!this.currentUser) return;
@@ -670,7 +644,6 @@ const app = {
             this.showToast(result.message);
             this.updateHeader();
             
-            // PERBAIKAN: Sync ke cloud jika auto sync aktif
             if (typeof backupModule !== 'undefined' && backupModule.isAutoSyncEnabled) {
                 setTimeout(() => backupModule.syncToCloud(true), 1000);
             }
@@ -682,26 +655,21 @@ const app = {
     },
 
     openSettings() {
-        // ==========================================
-        // TAMBAHAN BARU: Cek kasir status sebelum buka settings
-        // ==========================================
+        // Cek kasir status sebelum buka settings
         if (this.currentUser) {
-            const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
-            if (kasirStatus.canOpen && !kasirStatus.isContinue) {
+            const userShift = dataManager.getUserShift(this.currentUser.userId);
+            if (!userShift) {
                 this.showKasirRequiredModal();
                 return;
             }
         }
-        // ==========================================
 
         const existingModal = document.getElementById('settingsModal');
         if (existingModal) existingModal.remove();
 
-        // Check if dark mode module is available
         const hasDarkMode = typeof darkModeModule !== 'undefined';
         const isDark = hasDarkMode ? darkModeModule.isDark : false;
 
-        // Generate Dark Mode section if available
         let darkModeSection = '';
         if (hasDarkMode) {
             const icon = isDark ? '🌙' : '☀️';
