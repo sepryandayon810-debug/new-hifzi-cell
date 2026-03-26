@@ -25,6 +25,12 @@ const dataManager = {
         pendingModals: {},
         pendingExtraModals: {},
         
+        // ============================================
+        // TAMBAHAN BARU: SUPPLIERS & PURCHASES
+        // ============================================
+        suppliers: [],
+        purchases: [],
+        
         settings: {
             storeName: 'Hifzi Cell',
             address: '',
@@ -166,6 +172,12 @@ const dataManager = {
         if (!this.data.debts) this.data.debts = [];
         if (!this.data.shiftHistory) this.data.shiftHistory = [];
         if (!this.data.loginHistory) this.data.loginHistory = [];
+        
+        // ============================================
+        // TAMBAHAN BARU: Ensure suppliers & purchases
+        // ============================================
+        if (!this.data.suppliers) this.data.suppliers = [];
+        if (!this.data.purchases) this.data.purchases = [];
     },
 
     initUsers() {
@@ -211,6 +223,11 @@ const dataManager = {
             shiftHistory: [],
             pendingModals: {},
             pendingExtraModals: {},
+            // ============================================
+            // TAMBAHAN BARU
+            // ============================================
+            suppliers: [],
+            purchases: [],
             settings: this.data.settings,
             kasir: {
                 isOpen: false,
@@ -290,10 +307,15 @@ const dataManager = {
             pendingExtraModals: this.data.pendingExtraModals || {},
             settings: this.data.settings || {},
             kasir: this.data.kasir || {},
+            // ============================================
+            // TAMBAHAN BARU
+            // ============================================
+            suppliers: this.data.suppliers || [],
+            purchases: this.data.purchases || [],
             _meta: { 
                 lastModified: new Date().toISOString(), 
                 deviceId: typeof backupModule !== 'undefined' ? backupModule.deviceId : 'unknown', 
-                version: '2.3'
+                version: '2.4'
             }
         };
     },
@@ -312,6 +334,12 @@ const dataManager = {
         if (cleanData.pendingModals) this.data.pendingModals = cleanData.pendingModals;
         if (cleanData.pendingExtraModals) this.data.pendingExtraModals = cleanData.pendingExtraModals;
         if (cleanData.settings) this.data.settings = { ...this.data.settings, ...cleanData.settings };
+        
+        // ============================================
+        // TAMBAHAN BARU
+        // ============================================
+        if (cleanData.suppliers) this.data.suppliers = cleanData.suppliers;
+        if (cleanData.purchases) this.data.purchases = cleanData.purchases;
         
         if (cleanData.kasir) {
             this.data.kasir = cleanData.kasir;
@@ -386,6 +414,79 @@ const dataManager = {
             return this.data.transactions[idx];
         }
         return null;
+    },
+
+    // ============================================
+    // TAMBAHAN BARU: SUPPLIERS METHODS
+    // ============================================
+    getSuppliers() { 
+        return this.data.suppliers || []; 
+    },
+    
+    addSupplier(supplier) {
+        supplier.id = supplier.id || 'sup_' + Date.now();
+        supplier.createdAt = new Date().toISOString();
+        this.data.suppliers.push(supplier);
+        this.save();
+        return supplier;
+    },
+    
+    updateSupplier(id, updates) {
+        const idx = this.data.suppliers.findIndex(s => s.id === id);
+        if (idx !== -1) {
+            this.data.suppliers[idx] = { ...this.data.suppliers[idx], ...updates };
+            this.save();
+            return this.data.suppliers[idx];
+        }
+        return null;
+    },
+    
+    deleteSupplier(id) {
+        this.data.suppliers = this.data.suppliers.filter(s => s.id !== id);
+        this.save();
+    },
+
+    // ============================================
+    // TAMBAHAN BARU: PURCHASES METHODS
+    // ============================================
+    getPurchases() { 
+        return this.data.purchases || []; 
+    },
+    
+    addPurchase(purchase) {
+        purchase.id = purchase.id || 'pur_' + Date.now();
+        purchase.createdAt = new Date().toISOString();
+        this.data.purchases.push(purchase);
+        this.save();
+        return purchase;
+    },
+    
+    updatePurchase(id, updates) {
+        const idx = this.data.purchases.findIndex(p => p.id === id);
+        if (idx !== -1) {
+            this.data.purchases[idx] = { ...this.data.purchases[idx], ...updates };
+            this.save();
+            return this.data.purchases[idx];
+        }
+        return null;
+    },
+    
+    deletePurchase(id) {
+        this.data.purchases = this.data.purchases.filter(p => p.id !== id);
+        this.save();
+    },
+    
+    // Helper: Get purchases by date range
+    getPurchasesByDate(startDate, endDate) {
+        return this.data.purchases.filter(p => {
+            const pDate = new Date(p.date);
+            return pDate >= startDate && pDate <= endDate;
+        });
+    },
+    
+    // Helper: Get purchases by supplier
+    getPurchasesBySupplier(supplierId) {
+        return this.data.purchases.filter(p => p.supplierId === supplierId);
     },
 
     // ==================== USERS ====================
