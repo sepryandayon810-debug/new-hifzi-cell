@@ -1,6 +1,7 @@
 /**
  * Router System - Hifzi Cell POS
  * FINAL FIX: Force proper navigation control
+ * COMPLETE VERSION - v3.1
  */
 
 const router = {
@@ -305,10 +306,11 @@ const router = {
                 <span class="nav-label">${this.menuLabels[menu] || menu}</span>
             `;
             
-            // Event listener terpisah
+            // Event listener terpisah - PERBAIKAN UTAMA
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                console.log(`[Router] Nav tab clicked: ${menu}`);
                 this.navigate(menu, btn);
             });
             
@@ -318,7 +320,9 @@ const router = {
         console.log(`[Router] Navigation rendered for ${currentUser.role}:`, allowedMenus);
     },
 
-    // ... (methods lain tetap sama)
+    // ==========================================
+    // MODAL METHODS
+    // ==========================================
     showOpenKasirFirstModal(page, element) {
         const pageName = this.menuLabels[page] || page;
         const modalHTML = `
@@ -422,10 +426,50 @@ const router = {
 
     getCurrentPage() {
         return this.currentPage;
+    },
+
+    // ==========================================
+    // PERBAIKAN BARU: Method untuk cek module availability
+    // ==========================================
+    isModuleAvailable(moduleName) {
+        const modules = {
+            'pos': typeof posModule !== 'undefined',
+            'products': typeof productsModule !== 'undefined',
+            'purchase': typeof purchaseModule !== 'undefined',
+            'cash': typeof cashModule !== 'undefined',
+            'reports': typeof reportsModule !== 'undefined',
+            'transactions': typeof transactionsModule !== 'undefined',
+            'receipt': typeof receiptModule !== 'undefined',
+            'debt': typeof debtModule !== 'undefined',
+            'users': typeof usersModule !== 'undefined',
+            'telegram': typeof TelegramModule !== 'undefined',
+            'cloud': typeof backupModule !== 'undefined',
+            'pencarian': typeof n8nModule !== 'undefined'
+        };
+        return modules[moduleName] || false;
+    },
+
+    // ==========================================
+    // PERBAIKAN BARU: Get allowed menus for current user
+    // ==========================================
+    getAllowedMenus() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) return [];
+        return this.menuAccess[currentUser.role] || [];
+    },
+
+    // ==========================================
+    // PERBAIKAN BARU: Check if user has access to page
+    // ==========================================
+    hasAccess(page) {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) return false;
+        const allowedMenus = this.menuAccess[currentUser.role] || [];
+        return allowedMenus.includes(page);
     }
 };
 
 // Expose to window
 window.router = router;
 
-console.log('[Router] FINAL VERSION loaded - v3.0');
+console.log('[Router] FINAL VERSION loaded - v3.1 - Complete');
