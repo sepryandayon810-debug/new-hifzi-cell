@@ -1,9 +1,9 @@
 // ============================================
-// PURCHASE MODULE - Pembelian dari Supplier
+// PURCHASE MODULE - Pembelian dari Supplier (FIXED)
 // ============================================
 
 const purchaseModule = {
-    currentItems: [], // Items dalam faktur saat ini
+    currentItems: [],
     editingPurchaseId: null,
 
     init() {
@@ -54,104 +54,147 @@ const purchaseModule = {
         const style = document.createElement('style');
         style.id = 'purchase-module-styles';
         style.textContent = `
-            .purchase-item {
+            /* Modal Styles - FIXED */
+            .purchase-modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.6);
+                backdrop-filter: blur(4px);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                padding: 20px;
+                animation: fadeIn 0.2s ease;
+            }
+            
+            .purchase-modal-content {
+                background: white;
+                border-radius: 16px;
+                width: 100%;
+                max-width: 700px;
+                max-height: 90vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                animation: slideUp 0.3s ease;
+            }
+            
+            .purchase-modal-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 15px;
-                background: white;
-                margin-bottom: 10px;
-                border-radius: 12px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                border: 1px solid #f0f0f0;
-                transition: all 0.2s ease;
+                padding: 20px 24px;
+                border-bottom: 1px solid #e5e7eb;
+                background: #f9fafb;
             }
             
-            .purchase-item:hover {
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                transform: translateY(-2px);
+            .purchase-modal-title {
+                font-size: 18px;
+                font-weight: 700;
+                color: #111827;
             }
             
-            .purchase-info {
+            .purchase-modal-close {
+                background: none;
+                border: none;
+                font-size: 24px;
+                color: #6b7280;
+                cursor: pointer;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 8px;
+                transition: all 0.2s;
+            }
+            
+            .purchase-modal-close:hover {
+                background: #e5e7eb;
+                color: #111827;
+            }
+            
+            .purchase-modal-body {
+                padding: 24px;
+                overflow-y: auto;
                 flex: 1;
             }
             
-            .purchase-supplier {
-                font-weight: 600;
-                font-size: 15px;
-                margin-bottom: 4px;
-                color: #333;
-            }
-            
-            .purchase-meta {
-                font-size: 12px;
-                color: #666;
+            .purchase-modal-footer {
                 display: flex;
-                gap: 10px;
-                flex-wrap: wrap;
+                justify-content: flex-end;
+                gap: 12px;
+                padding: 16px 24px;
+                border-top: 1px solid #e5e7eb;
+                background: #f9fafb;
             }
             
-            .purchase-total {
-                font-weight: 700;
-                font-size: 16px;
-                color: #667eea;
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
             }
             
-            .purchase-status {
-                display: inline-block;
-                padding: 4px 10px;
-                border-radius: 20px;
-                font-size: 11px;
-                font-weight: 600;
+            @keyframes slideUp {
+                from { 
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to { 
+                    opacity: 1;
+                    transform: translateY(0);
+                }
             }
             
-            .purchase-status.cash {
-                background: #e8f5e9;
-                color: #2e7d32;
-            }
-            
-            .purchase-status.credit {
-                background: #fff3e0;
-                color: #ef6c00;
-            }
-            
-            .purchase-items-preview {
-                margin-top: 8px;
-                padding-top: 8px;
-                border-top: 1px dashed #eee;
-                font-size: 12px;
-                color: #888;
-            }
-            
+            /* Form Styles */
             .purchase-form-row {
                 display: grid;
                 grid-template-columns: 2fr 1fr 1fr 1fr auto;
                 gap: 10px;
                 align-items: center;
-                padding: 10px;
+                padding: 12px;
                 background: #f8f9fa;
                 border-radius: 8px;
                 margin-bottom: 8px;
             }
             
-            .purchase-form-row input, .purchase-form-row select {
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 6px;
+            .purchase-form-row input, 
+            .purchase-form-row select {
+                padding: 10px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
                 font-size: 14px;
+                width: 100%;
+            }
+            
+            .purchase-form-row input:focus,
+            .purchase-form-row select:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
             }
             
             .purchase-form-row button {
-                background: #ff5252;
+                background: #ef4444;
                 color: white;
                 border: none;
-                width: 32px;
-                height: 32px;
-                border-radius: 6px;
+                width: 36px;
+                height: 36px;
+                border-radius: 8px;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                font-size: 18px;
+                transition: all 0.2s;
+            }
+            
+            .purchase-form-row button:hover {
+                background: #dc2626;
             }
             
             .purchase-summary {
@@ -177,51 +220,314 @@ const purchaseModule = {
                 margin-top: 10px;
             }
             
+            .btn-add-item {
+                width: 100%;
+                padding: 14px;
+                background: #f3f4f6;
+                border: 2px dashed #d1d5db;
+                border-radius: 10px;
+                cursor: pointer;
+                color: #374151;
+                font-size: 14px;
+                font-weight: 500;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            
+            .btn-add-item:hover {
+                background: #e0e7ff;
+                border-color: #667eea;
+                color: #667eea;
+            }
+            
+            /* Purchase Item List */
+            .purchase-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 16px;
+                background: white;
+                margin-bottom: 10px;
+                border-radius: 12px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                border: 1px solid #e5e7eb;
+                transition: all 0.2s ease;
+                cursor: pointer;
+            }
+            
+            .purchase-item:hover {
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                transform: translateY(-2px);
+            }
+            
+            .purchase-info {
+                flex: 1;
+            }
+            
+            .purchase-supplier {
+                font-weight: 600;
+                font-size: 15px;
+                margin-bottom: 4px;
+                color: #111827;
+            }
+            
+            .purchase-meta {
+                font-size: 12px;
+                color: #6b7280;
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            
+            .purchase-total {
+                font-weight: 700;
+                font-size: 16px;
+                color: #667eea;
+            }
+            
+            .purchase-status {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 11px;
+                font-weight: 600;
+                margin-left: 8px;
+            }
+            
+            .purchase-status.cash {
+                background: #d1fae5;
+                color: #065f46;
+            }
+            
+            .purchase-status.credit {
+                background: #fef3c7;
+                color: #92400e;
+            }
+            
+            .purchase-items-preview {
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px dashed #e5e7eb;
+                font-size: 12px;
+                color: #6b7280;
+            }
+            
+            /* Supplier Card */
             .supplier-card {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 15px;
+                padding: 16px;
                 background: white;
                 margin-bottom: 10px;
                 border-radius: 12px;
-                border: 1px solid #f0f0f0;
+                border: 1px solid #e5e7eb;
+                transition: all 0.2s;
+            }
+            
+            .supplier-card:hover {
+                border-color: #667eea;
+                box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
             }
             
             .supplier-info h4 {
                 margin: 0 0 5px 0;
                 font-size: 15px;
+                color: #111827;
             }
             
             .supplier-info p {
                 margin: 0;
                 font-size: 12px;
-                color: #666;
+                color: #6b7280;
             }
             
-            .btn-add-item {
-                width: 100%;
-                padding: 12px;
-                background: #f0f0f0;
-                border: 2px dashed #ccc;
+            /* Form Groups */
+            .form-row {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+                margin-bottom: 16px;
+            }
+            
+            .form-group {
+                display: flex;
+                flex-direction: column;
+            }
+            
+            .form-group label {
+                font-size: 13px;
+                font-weight: 600;
+                color: #374151;
+                margin-bottom: 6px;
+            }
+            
+            .form-group input,
+            .form-group select {
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
                 border-radius: 8px;
-                cursor: pointer;
-                color: #666;
                 font-size: 14px;
+                background: white;
+            }
+            
+            .form-group input:focus,
+            .form-group select:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            }
+            
+            /* Buttons */
+            .btn {
+                padding: 10px 20px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                border: none;
+            }
+            
+            .btn-primary {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+            }
+            
+            .btn-primary:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            }
+            
+            .btn-secondary {
+                background: #e5e7eb;
+                color: #374151;
+            }
+            
+            .btn-secondary:hover {
+                background: #d1d5db;
+            }
+            
+            .btn-sm {
+                padding: 6px 12px;
+                font-size: 12px;
+                border-radius: 6px;
+                border: none;
+                cursor: pointer;
                 transition: all 0.2s;
             }
             
-            .btn-add-item:hover {
-                background: #e3f2fd;
-                border-color: #667eea;
-                color: #667eea;
+            .btn-primary-sm {
+                background: #e0e7ff;
+                color: #4338ca;
+            }
+            
+            .btn-primary-sm:hover {
+                background: #c7d2fe;
+            }
+            
+            .btn-danger-sm {
+                background: #fee2e2;
+                color: #dc2626;
+            }
+            
+            .btn-danger-sm:hover {
+                background: #fecaca;
+            }
+            
+            /* Add Category Row */
+            .add-category-row {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+            
+            .add-category-input {
+                flex: 1;
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 14px;
+            }
+            
+            .add-category-btn {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                width: 40px;
+                height: 40px;
+                border-radius: 8px;
+                font-size: 20px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            
+            .add-category-btn:hover {
+                transform: scale(1.05);
+            }
+            
+            /* Search Bar */
+            .search-bar {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 15px;
+            }
+            
+            .search-bar input {
+                flex: 1;
+                padding: 10px 14px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 14px;
+            }
+            
+            /* Empty State */
+            .empty-state {
+                text-align: center;
+                padding: 40px 20px;
+                color: #6b7280;
+            }
+            
+            .empty-icon {
+                font-size: 48px;
+                margin-bottom: 12px;
+                opacity: 0.5;
+            }
+            
+            /* Toast Notification - PASTIKAN Z-INDEX LEBIH RENDAH */
+            .toast {
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #1f2937;
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                z-index: 10000;
+                animation: slideDown 0.3s ease;
+            }
+            
+            @keyframes slideDown {
+                from {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(-20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
             }
         `;
         document.head.appendChild(style);
     },
 
     // ============================================
-    // MODAL: TAMBAH PEMBELIAN BARU
+    // MODAL: TAMBAH PEMBELIAN BARU (FIXED STRUCTURE)
     // ============================================
     openAddModal(purchaseId = null) {
         this.currentItems = [];
@@ -238,83 +544,86 @@ const purchaseModule = {
             }
         }
 
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="purchaseModal" style="z-index: 1000;">
-                <div class="modal-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
-                    <div class="modal-header">
-                        <span class="modal-title">${purchaseId ? '✏️ Edit' : '🛒 Tambah'} Pembelian</span>
-                        <button class="close-btn" onclick="purchaseModule.closeModal('purchaseModal')">×</button>
+        // Create modal with proper overlay
+        const modalHTML = `
+            <div class="purchase-modal-overlay" id="purchaseModal">
+                <div class="purchase-modal-content">
+                    <div class="purchase-modal-header">
+                        <span class="purchase-modal-title">${purchaseId ? '✏️ Edit' : '🛒 Tambah'} Pembelian</span>
+                        <button class="purchase-modal-close" onclick="purchaseModule.closeModal('purchaseModal')">×</button>
                     </div>
 
-                    <!-- Info Faktur -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Supplier *</label>
-                            <select id="purchaseSupplier">
-                                <option value="">-- Pilih Supplier --</option>
-                                ${suppliers.map(s => `
-                                    <option value="${s.id}" ${editData?.supplierId === s.id ? 'selected' : ''}>${s.name}</option>
-                                `).join('')}
-                            </select>
+                    <div class="purchase-modal-body">
+                        <!-- Info Faktur -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Supplier *</label>
+                                <select id="purchaseSupplier">
+                                    <option value="">-- Pilih Supplier --</option>
+                                    ${suppliers.map(s => `
+                                        <option value="${s.id}" ${editData?.supplierId === s.id ? 'selected' : ''}>${s.name}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>No. Faktur</label>
+                                <input type="text" id="purchaseInvoice" placeholder="INV-001" 
+                                       value="${editData?.invoiceNumber || ''}">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>No. Faktur</label>
-                            <input type="text" id="purchaseInvoice" placeholder="INV-001" 
-                                   value="${editData?.invoiceNumber || ''}">
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tanggal *</label>
+                                <input type="date" id="purchaseDate" 
+                                       value="${editData ? new Date(editData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <div class="form-group">
+                                <label>Pembayaran *</label>
+                                <select id="purchasePayment" onchange="purchaseModule.toggleCreditNote()">
+                                    <option value="cash" ${editData?.paymentType === 'cash' ? 'selected' : ''}>💵 Cash / Tunai</option>
+                                    <option value="credit" ${editData?.paymentType === 'credit' ? 'selected' : ''}>💳 Kredit / Hutang</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="creditNoteBox" style="display: ${editData?.paymentType === 'credit' ? 'block' : 'none'}; margin-bottom: 16px;">
+                            <label>Catatan Hutang (Jatuh Tempo)</label>
+                            <input type="text" id="creditNote" placeholder="Contoh: Jatuh tempo 30 hari" 
+                                   value="${editData?.creditNote || ''}">
+                        </div>
+
+                        <!-- Daftar Produk -->
+                        <div style="margin: 20px 0;">
+                            <label style="display: block; margin-bottom: 10px; font-weight: 600; color: #374151;">Produk Dibeli</label>
+                            
+                            <div id="purchaseItemsList">
+                                <!-- Items akan dirender di sini -->
+                            </div>
+
+                            <button class="btn-add-item" onclick="purchaseModule.addItemRow()">
+                                <span>➕</span> Tambah Produk
+                            </button>
+                        </div>
+
+                        <!-- Ringkasan -->
+                        <div class="purchase-summary">
+                            <div class="purchase-summary-row">
+                                <span>Subtotal:</span>
+                                <span id="subtotalDisplay">Rp 0</span>
+                            </div>
+                            <div class="purchase-summary-row">
+                                <span>Item:</span>
+                                <span id="itemCountDisplay">0 produk</span>
+                            </div>
+                            <div class="purchase-summary-row total">
+                                <span>TOTAL:</span>
+                                <span id="totalDisplay">Rp 0</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Tanggal *</label>
-                            <input type="date" id="purchaseDate" 
-                                   value="${editData ? new Date(editData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}">
-                        </div>
-                        <div class="form-group">
-                            <label>Pembayaran *</label>
-                            <select id="purchasePayment" onchange="purchaseModule.toggleCreditNote()">
-                                <option value="cash" ${editData?.paymentType === 'cash' ? 'selected' : ''}>💵 Cash / Tunai</option>
-                                <option value="credit" ${editData?.paymentType === 'credit' ? 'selected' : ''}>💳 Kredit / Hutang</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-group" id="creditNoteBox" style="display: ${editData?.paymentType === 'credit' ? 'block' : 'none'};">
-                        <label>Catatan Hutang (Jatuh Tempo)</label>
-                        <input type="text" id="creditNote" placeholder="Contoh: Jatuh tempo 30 hari" 
-                               value="${editData?.creditNote || ''}">
-                    </div>
-
-                    <!-- Daftar Produk -->
-                    <div style="margin: 20px 0;">
-                        <label style="display: block; margin-bottom: 10px; font-weight: 600;">Produk Dibeli</label>
-                        
-                        <div id="purchaseItemsList">
-                            <!-- Items akan dirender di sini -->
-                        </div>
-
-                        <button class="btn-add-item" onclick="purchaseModule.addItemRow()">
-                            ➕ Tambah Produk
-                        </button>
-                    </div>
-
-                    <!-- Ringkasan -->
-                    <div class="purchase-summary">
-                        <div class="purchase-summary-row">
-                            <span>Subtotal:</span>
-                            <span id="subtotalDisplay">Rp 0</span>
-                        </div>
-                        <div class="purchase-summary-row">
-                            <span>Item:</span>
-                            <span id="itemCountDisplay">0 produk</span>
-                        </div>
-                        <div class="purchase-summary-row total">
-                            <span>TOTAL:</span>
-                            <span id="totalDisplay">Rp 0</span>
-                        </div>
-                    </div>
-
-                    <div class="modal-footer">
+                    <div class="purchase-modal-footer">
                         <button class="btn btn-secondary" onclick="purchaseModule.closeModal('purchaseModal')">Batal</button>
                         <button class="btn btn-primary" onclick="purchaseModule.savePurchase()">
                             💾 ${purchaseId ? 'Update' : 'Simpan'} Pembelian
@@ -322,7 +631,9 @@ const purchaseModule = {
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
 
         // Render existing items atau tambah 1 row kosong
         if (this.currentItems.length > 0) {
@@ -350,7 +661,7 @@ const purchaseModule = {
         div.id = `itemRow_${index}`;
         
         div.innerHTML = `
-            <select onchange="purchaseModule.updateItemProduct(${index}, this.value)" style="width: 100%;">
+            <select onchange="purchaseModule.updateItemProduct(${index}, this.value)">
                 <option value="">-- Pilih Produk --</option>
                 ${products.map(p => `
                     <option value="${p.id}" ${itemData?.productId === p.id ? 'selected' : ''}>
@@ -359,11 +670,11 @@ const purchaseModule = {
                 `).join('')}
             </select>
             <input type="number" placeholder="Qty" min="1" value="${itemData?.qty || 1}" 
-                   onchange="purchaseModule.updateItemQty(${index}, this.value)" style="width: 100%;">
+                   onchange="purchaseModule.updateItemQty(${index}, this.value)">
             <input type="number" placeholder="Harga Beli" value="${itemData?.buyPrice || ''}" 
-                   onchange="purchaseModule.updateItemBuyPrice(${index}, this.value)" style="width: 100%;">
+                   onchange="purchaseModule.updateItemBuyPrice(${index}, this.value)">
             <input type="number" placeholder="Harga Jual" value="${itemData?.sellPrice || ''}" 
-                   onchange="purchaseModule.updateItemSellPrice(${index}, this.value)" style="width: 100%;">
+                   onchange="purchaseModule.updateItemSellPrice(${index}, this.value)">
             <button onclick="purchaseModule.removeItem(${index})" title="Hapus">×</button>
         `;
         
@@ -383,7 +694,6 @@ const purchaseModule = {
         const product = dataManager.getProducts().find(p => p.id === productId);
         if (product) {
             this.currentItems[index].productId = productId;
-            // Auto-fill harga jual dari data produk
             this.currentItems[index].sellPrice = product.price;
             
             const row = document.getElementById(`itemRow_${index}`);
@@ -484,19 +794,16 @@ const purchaseModule = {
         validItems.forEach(item => {
             const product = dataManager.getProducts().find(p => p.id === item.productId);
             if (product) {
-                // Update stok
                 const newStock = product.stock + item.qty;
-                // Update harga modal (harga beli baru)
                 dataManager.updateProduct(item.productId, {
                     stock: newStock,
-                    cost: item.buyPrice, // Update HPP
-                    price: item.sellPrice || product.price // Update harga jual jika diisi
+                    cost: item.buyPrice,
+                    price: item.sellPrice || product.price
                 });
             }
         });
 
         if (this.editingPurchaseId) {
-            // Hapus pembelian lama, tambah yang baru
             dataManager.deletePurchase(this.editingPurchaseId);
         }
         
@@ -508,51 +815,55 @@ const purchaseModule = {
     },
 
     // ============================================
-    // MODAL: MANAJEMEN SUPPLIER
+    // MODAL: MANAJEMEN SUPPLIER (FIXED)
     // ============================================
     openSupplierModal() {
         const suppliers = dataManager.getSuppliers();
 
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="supplierModal" style="z-index: 1000;">
-                <div class="modal-content" style="max-width: 500px;">
-                    <div class="modal-header">
-                        <span class="modal-title">🏢 Manajemen Supplier</span>
-                        <button class="close-btn" onclick="purchaseModule.closeModal('supplierModal')">×</button>
+        const modalHTML = `
+            <div class="purchase-modal-overlay" id="supplierModal">
+                <div class="purchase-modal-content" style="max-width: 500px;">
+                    <div class="purchase-modal-header">
+                        <span class="purchase-modal-title">🏢 Manajemen Supplier</span>
+                        <button class="purchase-modal-close" onclick="purchaseModule.closeModal('supplierModal')">×</button>
                     </div>
 
-                    <div class="add-category-row" style="margin-bottom: 20px;">
-                        <input type="text" class="add-category-input" id="newSupplierName" placeholder="Nama supplier...">
-                        <input type="text" style="flex: 1;" id="newSupplierPhone" placeholder="No. HP/WA...">
-                        <button class="add-category-btn" onclick="purchaseModule.addSupplier()">+</button>
-                    </div>
+                    <div class="purchase-modal-body">
+                        <div class="add-category-row">
+                            <input type="text" class="add-category-input" id="newSupplierName" placeholder="Nama supplier...">
+                            <input type="text" style="flex: 1;" id="newSupplierPhone" placeholder="No. HP/WA...">
+                            <button class="add-category-btn" onclick="purchaseModule.addSupplier()">+</button>
+                        </div>
 
-                    <div id="supplierList">
-                        ${suppliers.length === 0 ? `
-                            <div class="empty-state">
-                                <div class="empty-icon">🏢</div>
-                                <p>Belum ada supplier</p>
-                            </div>
-                        ` : suppliers.map(s => `
-                            <div class="supplier-card">
-                                <div class="supplier-info">
-                                    <h4>${s.name}</h4>
-                                    <p>📞 ${s.phone || '-'} | 📦 ${dataManager.getPurchasesBySupplier(s.id).length} pembelian</p>
+                        <div id="supplierList">
+                            ${suppliers.length === 0 ? `
+                                <div class="empty-state">
+                                    <div class="empty-icon">🏢</div>
+                                    <p>Belum ada supplier</p>
                                 </div>
-                                <div style="display: flex; gap: 8px;">
-                                    <button class="btn-sm btn-primary-sm" onclick="purchaseModule.editSupplier('${s.id}')" style="padding: 6px 10px;">
-                                        ✏️
-                                    </button>
-                                    <button class="btn-sm btn-danger-sm" onclick="purchaseModule.deleteSupplier('${s.id}')" style="padding: 6px 10px;">
-                                        🗑️
-                                    </button>
+                            ` : suppliers.map(s => `
+                                <div class="supplier-card">
+                                    <div class="supplier-info">
+                                        <h4>${s.name}</h4>
+                                        <p>📞 ${s.phone || '-'} | 📦 ${dataManager.getPurchasesBySupplier(s.id).length} pembelian</p>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="btn-sm btn-primary-sm" onclick="purchaseModule.editSupplier('${s.id}')">
+                                            ✏️
+                                        </button>
+                                        <button class="btn-sm btn-danger-sm" onclick="purchaseModule.deleteSupplier('${s.id}')">
+                                            🗑️
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        `).join('')}
+                            `).join('')}
+                        </div>
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
     addSupplier() {
@@ -621,37 +932,41 @@ const purchaseModule = {
     },
 
     // ============================================
-    // MODAL: RIWAYAT PEMBELIAN
+    // MODAL: RIWAYAT PEMBELIAN (FIXED)
     // ============================================
     openHistoryModal() {
         const purchases = dataManager.getPurchases().sort((a, b) => 
             new Date(b.date) - new Date(a.date)
         );
 
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="historyModal" style="z-index: 1000;">
-                <div class="modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
-                    <div class="modal-header">
-                        <span class="modal-title">📋 Riwayat Pembelian</span>
-                        <button class="close-btn" onclick="purchaseModule.closeModal('historyModal')">×</button>
+        const modalHTML = `
+            <div class="purchase-modal-overlay" id="historyModal">
+                <div class="purchase-modal-content" style="max-width: 700px;">
+                    <div class="purchase-modal-header">
+                        <span class="purchase-modal-title">📋 Riwayat Pembelian</span>
+                        <button class="purchase-modal-close" onclick="purchaseModule.closeModal('historyModal')">×</button>
                     </div>
 
-                    <div class="search-bar" style="margin-bottom: 15px;">
-                        <input type="text" placeholder="Cari faktur atau supplier..." 
-                               id="historySearch" onkeyup="purchaseModule.filterHistory()">
-                    </div>
+                    <div class="purchase-modal-body">
+                        <div class="search-bar">
+                            <input type="text" placeholder="Cari faktur atau supplier..." 
+                                   id="historySearch" onkeyup="purchaseModule.filterHistory()">
+                        </div>
 
-                    <div id="historyList">
-                        ${purchases.length === 0 ? `
-                            <div class="empty-state">
-                                <div class="empty-icon">📋</div>
-                                <p>Belum ada riwayat pembelian</p>
-                            </div>
-                        ` : purchases.map(p => this.renderHistoryItem(p)).join('')}
+                        <div id="historyList">
+                            ${purchases.length === 0 ? `
+                                <div class="empty-state">
+                                    <div class="empty-icon">📋</div>
+                                    <p>Belum ada riwayat pembelian</p>
+                                </div>
+                            ` : purchases.map(p => this.renderHistoryItem(p)).join('')}
+                        </div>
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
     renderHistoryItem(p) {
@@ -679,11 +994,11 @@ const purchaseModule = {
                 </div>
                 <div style="text-align: right;">
                     <div class="purchase-total">Rp ${utils.formatNumber(p.total)}</div>
-                    <div style="display: flex; gap: 5px; margin-top: 8px;">
-                        <button class="btn-sm btn-primary-sm" onclick="purchaseModule.viewPurchaseDetail('${p.id}')" style="padding: 6px 10px; font-size: 11px;">
+                    <div style="display: flex; gap: 5px; margin-top: 8px; justify-content: flex-end;">
+                        <button class="btn-sm btn-primary-sm" onclick="event.stopPropagation(); purchaseModule.viewPurchaseDetail('${p.id}')">
                             👁️ Detail
                         </button>
-                        <button class="btn-sm btn-danger-sm" onclick="purchaseModule.deletePurchase('${p.id}')" style="padding: 6px 10px; font-size: 11px;">
+                        <button class="btn-sm btn-danger-sm" onclick="event.stopPropagation(); purchaseModule.deletePurchase('${p.id}')">
                             🗑️
                         </button>
                     </div>
@@ -718,43 +1033,45 @@ const purchaseModule = {
             `;
         }).join('');
 
-        document.body.insertAdjacentHTML('beforeend', `
-            <div class="modal active" id="detailModal" style="z-index: 1100;">
-                <div class="modal-content" style="max-width: 500px;">
-                    <div class="modal-header">
-                        <span class="modal-title">📄 Detail Pembelian</span>
-                        <button class="close-btn" onclick="purchaseModule.closeModal('detailModal')">×</button>
+        const modalHTML = `
+            <div class="purchase-modal-overlay" id="detailModal" style="z-index: 10000;">
+                <div class="purchase-modal-content" style="max-width: 500px;">
+                    <div class="purchase-modal-header">
+                        <span class="purchase-modal-title">📄 Detail Pembelian</span>
+                        <button class="purchase-modal-close" onclick="purchaseModule.closeModal('detailModal')">×</button>
                     </div>
 
-                    <div style="margin-bottom: 15px;">
-                        <p><strong>Supplier:</strong> ${p.supplierName}</p>
-                        <p><strong>No. Faktur:</strong> ${p.invoiceNumber}</p>
-                        <p><strong>Tanggal:</strong> ${new Date(p.date).toLocaleDateString('id-ID')}</p>
-                        <p><strong>Pembayaran:</strong> ${p.paymentType === 'cash' ? '💵 Tunai' : '💳 Kredit'}</p>
-                        ${p.creditNote ? `<p><strong>Catatan:</strong> ${p.creditNote}</p>` : ''}
+                    <div class="purchase-modal-body">
+                        <div style="margin-bottom: 15px; line-height: 1.8;">
+                            <p><strong>Supplier:</strong> ${p.supplierName}</p>
+                            <p><strong>No. Faktur:</strong> ${p.invoiceNumber}</p>
+                            <p><strong>Tanggal:</strong> ${new Date(p.date).toLocaleDateString('id-ID')}</p>
+                            <p><strong>Pembayaran:</strong> ${p.paymentType === 'cash' ? '💵 Tunai' : '💳 Kredit'}</p>
+                            ${p.creditNote ? `<p><strong>Catatan:</strong> ${p.creditNote}</p>` : ''}
+                        </div>
+
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: #f5f5f5;">
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">Produk</th>
+                                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Qty</th>
+                                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #e5e7eb;">Harga</th>
+                                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #e5e7eb;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsHtml}
+                            </tbody>
+                            <tfoot>
+                                <tr style="font-weight: 700; background: #e0e7ff;">
+                                    <td colspan="3" style="padding: 12px; text-align: right; border-top: 2px solid #667eea;">TOTAL:</td>
+                                    <td style="padding: 12px; text-align: right; border-top: 2px solid #667eea; color: #667eea;">Rp ${utils.formatNumber(p.total)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </div>
 
-                    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                        <thead>
-                            <tr style="background: #f5f5f5;">
-                                <th style="padding: 8px; text-align: left;">Produk</th>
-                                <th style="padding: 8px; text-align: center;">Qty</th>
-                                <th style="padding: 8px; text-align: right;">Harga</th>
-                                <th style="padding: 8px; text-align: right;">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${itemsHtml}
-                        </tbody>
-                        <tfoot>
-                            <tr style="font-weight: 700; background: #e3f2fd;">
-                                <td colspan="3" style="padding: 10px; text-align: right;">TOTAL:</td>
-                                <td style="padding: 10px; text-align: right;">Rp ${utils.formatNumber(p.total)}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-
-                    <div class="modal-footer">
+                    <div class="purchase-modal-footer">
                         <button class="btn btn-secondary" onclick="purchaseModule.closeModal('detailModal')">Tutup</button>
                         <button class="btn btn-primary" onclick="purchaseModule.printPurchase('${p.id}')">
                             🖨️ Cetak
@@ -762,7 +1079,9 @@ const purchaseModule = {
                     </div>
                 </div>
             </div>
-        `);
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
     deletePurchase(purchaseId) {
@@ -844,7 +1163,7 @@ const purchaseModule = {
 
         const purchases = dataManager.getPurchases()
             .sort((a, b) => new Date(b.date) - new Date(a.date))
-            .slice(0, 10); // 10 terbaru saja
+            .slice(0, 10);
 
         document.getElementById('purchaseCount').textContent = `${dataManager.getPurchases().length} faktur`;
 
@@ -862,7 +1181,7 @@ const purchaseModule = {
         }
 
         container.innerHTML = purchases.map(p => `
-            <div class="purchase-item" style="cursor: pointer;" onclick="purchaseModule.viewPurchaseDetail('${p.id}')">
+            <div class="purchase-item" onclick="purchaseModule.viewPurchaseDetail('${p.id}')">
                 <div class="purchase-info">
                     <div class="purchase-supplier">
                         ${p.supplierName}
@@ -883,7 +1202,10 @@ const purchaseModule = {
     },
 
     closeModal(id) {
-        document.getElementById(id)?.remove();
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.remove();
+        }
     }
 };
 
