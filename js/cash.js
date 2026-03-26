@@ -277,7 +277,7 @@ const cashModule = {
         
         const selisih = currentCash - calculatedCash;
         const needsRepair = Math.abs(selisih) > 100;
-        
+
         const lastActiveDate = localStorage.getItem('hifzi_last_active_date');
         const today = new Date().toDateString();
         const isNewDay = lastActiveDate && lastActiveDate !== today;
@@ -1914,6 +1914,9 @@ const cashModule = {
         app.showToast(`✅ Tarik Tunai ${providerLabel} berhasil! Laba: Rp ${utils.formatNumber(adminFee)}`);
     },
 
+    // ============================================
+    // PERBAIKAN UTAMA: openModalAwal - Membaca dari shift aktif, bukan dari settings
+    // ============================================
     openModalAwal() {
         const currentUser = dataManager.getCurrentUser();
         if (!currentUser || (currentUser.role !== 'owner' && currentUser.role !== 'admin')) {
@@ -1921,12 +1924,25 @@ const cashModule = {
             return;
         }
         
-        const userShift = currentUser ? dataManager.getUserShift(currentUser.userId) : null;
+        // PERBAIKAN: Ambil modal dari shift aktif, bukan dari settings
+        const userShift = dataManager.getUserShift(currentUser.userId);
         
         let currentModal = 0;
+        let currentExtraModal = 0;
+        
         if (userShift) {
+            // Jika ada shift aktif, gunakan modal dari shift
             currentModal = userShift.modalAwal || 0;
+            currentExtraModal = userShift.extraModal || 0;
+            console.log(`[openModalAwal] Reading from active shift - modalAwal: ${currentModal}, extraModal: ${currentExtraModal}`);
+        } else {
+            // Jika tidak ada shift aktif, cek pending modal
+            currentModal = dataManager.getPendingModal(currentUser.userId);
+            currentExtraModal = dataManager.getPendingExtraModal(currentUser.userId);
+            console.log(`[openModalAwal] Reading from pending - modalAwal: ${currentModal}, extraModal: ${currentExtraModal}`);
         }
+        
+        const totalModal = currentModal + currentExtraModal;
 
         const modalHTML = `
             <div class="modal active" id="modalAwalModal" style="display: flex; z-index: 2000;">
@@ -1943,13 +1959,21 @@ const cashModule = {
                         </div>
 
                         <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Awal Saat Ini</label>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Utama Saat Ini</label>
                             <input type="text" value="Rp ${utils.formatNumber(currentModal)}" disabled 
                                    style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; background: #f1f5f9; color: #64748b; font-weight: 600;">
                         </div>
 
+                        ${currentExtraModal > 0 ? `
                         <div class="form-group" style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Awal Baru (Rp) *</label>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Tambahan Saat Ini</label>
+                            <input type="text" value="Rp ${utils.formatNumber(currentExtraModal)}" disabled 
+                                   style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; background: #f1f5f9; color: #64748b; font-weight: 600;">
+                        </div>
+                        ` : ''}
+
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cash-text); font-size: 14px;">Modal Utama Baru (Rp) *</label>
                             <input type="number" id="newModalAwal" placeholder="0" value="${currentModal}" 
                                    style="width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; outline: none; transition: all 0.2s; font-weight: 600;"
                                    onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#e2e8f0'">
@@ -1976,6 +2000,9 @@ const cashModule = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
+    // ============================================
+    // PERBAIKAN: saveModalAwal - Update shift aktif jika ada
+    // ============================================
     saveModalAwal() {
         const newModal = parseInt(document.getElementById('newModalAwal')?.value) || 0;
         const note = document.getElementById('modalNote')?.value;
@@ -1993,23 +2020,29 @@ const cashModule = {
 
         const userShift = dataManager.getUserShift(currentUser.userId);
         
-        const oldModal = userShift ? (userShift.modalAwal || 0) : 0;
-        const diff = newModal - oldModal;
-
         if (userShift) {
+            // Jika ada shift aktif, update langsung ke shift
+            const oldModal = userShift.modalAwal || 0;
+            const diff = newModal - oldModal;
+            
             userShift.modalAwal = newModal;
             
             const totalModal = newModal + (userShift.extraModal || 0);
             const newCash = dataManager.calculateShiftCash(currentUser.userId, totalModal);
             userShift.currentCash = newCash;
+            
             dataManager.updateUserShift(currentUser.userId, userShift);
+            
+            // Jika ada penambahan modal, catat sebagai transaksi modal_in
+            if (diff > 0) {
+                this.saveTransaction('modal_in', diff, 'modal_tambahan', note || `Penambahan modal ${currentUser.role}`);
+            }
+            
+            console.log(`[saveModalAwal] Updated active shift for ${currentUser.name} with modal: ${newModal}`);
         } else {
-            // Jika belum ada shift, buka dengan modal baru
-            dataManager.openKasir(currentUser.userId, newModal);
-        }
-
-        if (diff > 0) {
-            this.saveTransaction('modal_in', diff, 'modal_tambahan', note || `Penambahan modal ${currentUser.role}`);
+            // Jika belum ada shift, simpan ke pending
+            dataManager.setPendingModal(currentUser.userId, newModal);
+            console.log(`[saveModalAwal] Saved to pending for ${currentUser.name} with modal: ${newModal}`);
         }
 
         dataManager.save();
@@ -2200,11 +2233,11 @@ const cashModule = {
     },
 
     resetToZero() {
-        if (!confirm('⚠️ PERINGATAN!\\n\\nSemua kas akan dihapus dan diatur ke 0.\\nTindakan ini tidak dapat dibatalkan.\\n\\nLanjutkan?')) {
+        if (!confirm('⚠️ PERINGATAN!\n\nSemua kas akan dihapus dan diatur ke 0.\nTindakan ini tidak dapat dibatalkan.\n\nLanjutkan?')) {
             return;
         }
 
-        const confirmation = prompt('Ketik \"RESET\" untuk konfirmasi:');
+        const confirmation = prompt('Ketik "RESET" untuk konfirmasi:');
         if (confirmation !== 'RESET') {
             app.showToast('❌ Reset dibatalkan');
             return;
@@ -2240,7 +2273,7 @@ const cashModule = {
     },
 
     carryOverCash() {
-        if (!confirm('Carry over akan mempertahankan kas saat ini untuk shift berikutnya.\\n\\nLanjutkan?')) {
+        if (!confirm('Carry over akan mempertahankan kas saat ini untuk shift berikutnya.\n\nLanjutkan?')) {
             return;
         }
 
@@ -2298,7 +2331,7 @@ const cashModule = {
                 const userShift = dataManager.getUserShift(currentUser.userId);
                 if (userShift) {
                     userShift.currentCash = (userShift.currentCash || 0) - parseInt(amount);
-                    dataManagerManager.updateUserShift(currentUser.userId, userShift);
+                    dataManager.updateUserShift(currentUser.userId, userShift);
                 }
             }
         }
