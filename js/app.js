@@ -1,5 +1,5 @@
 // ============================================
-// APP.JS - HIFZI CELL (v2.4) - Fixed Router & Modal Sync + Kasir Lock All Menus
+// APP.JS - HIFZI CELL (v2.5) - Fixed Router & Modal Sync + Kasir Lock All Menus (Fixed)
 // ============================================
 
 const app = {
@@ -8,7 +8,7 @@ const app = {
     isCloudConfigLoaded: false,
 
     init() {
-        console.log('[App] Initializing v2.4...');
+        console.log('[App] Initializing v2.5...');
         
         // Init dataManager
         if (typeof dataManager !== 'undefined') {
@@ -153,7 +153,9 @@ const app = {
             }
         }
         
-        // PERBAIKAN: Render navigation dengan router yang sudah diperbaiki
+        // ==========================================
+        // PERBAIKAN BARU: Render navigation terlebih dahulu
+        // ==========================================
         if (typeof router !== 'undefined') {
             router.renderNavigation();
         }
@@ -167,7 +169,7 @@ const app = {
         }
         
         // ==========================================
-        // TAMBAHAN BARU: Check kasir status dengan flow yang benar - BLOCK ALL MENUS IF KASIR CLOSED
+        // PERBAIKAN BARU: Check kasir status dengan flow yang benar - BLOCK ALL MENUS IF KASIR CLOSED
         // ==========================================
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         console.log('[App] Kasir status:', kasirStatus);
@@ -184,7 +186,7 @@ const app = {
         } else if (kasirStatus.reason === 'new_day_same_user' || kasirStatus.reason === 'new_shift') {
             this.showOpenKasirModal();
         } else {
-            // Kasir tutup - tampilkan halaman kasir tutup (semua menu diblokir)
+            // Kasir tutup - tampilkan halaman kasir tutup dan BLOKIR SEMUA MENU
             this.showKasirClosedPage();
         }
     },
@@ -279,6 +281,9 @@ const app = {
             this.updateHeader();
             this.updateKasirStatus();
             this.showToast(result.message);
+            
+            // PERBAIKAN: Unblock navigation setelah kasir dibuka
+            this.unblockNavigation();
             
             // PERBAIKAN: Gunakan router.navigate untuk konsistensi
             const posTab = document.querySelector('.nav-tab[data-page="pos"]');
@@ -497,11 +502,7 @@ const app = {
         const activeShifts = dataManager.getActiveShifts();
         const otherUsersActive = activeShifts.filter(s => s.userId !== this.currentUser.userId);
 
-        // ==========================================
-        // TAMBAHAN BARU: Override semua navigation buttons untuk memblokir akses
-        // ==========================================
-        this.blockAllNavigation();
-
+        // Render halaman kasir tutup
         container.innerHTML = `
             <div class="content-section active" style="text-align: center; padding: 40px 20px;">
                 <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
@@ -547,6 +548,13 @@ const app = {
                 </div>
             </div>
         `;
+
+        // ==========================================
+        // PERBAIKAN BARU: Blokir navigasi SETELAH render selesai dengan delay
+        // ==========================================
+        setTimeout(() => {
+            this.blockAllNavigation();
+        }, 100);
     },
 
     // ==========================================
@@ -555,14 +563,14 @@ const app = {
     blockAllNavigation() {
         console.log('[App] Blocking all navigation - Kasir is closed');
         
-        // Blokir semua nav-tab clicks
         const navTabs = document.querySelectorAll('.nav-tab');
+        
         navTabs.forEach(tab => {
-            // Clone dan replace untuk remove old listeners
+            // Hapus semua event listener lama dengan clone
             const newTab = tab.cloneNode(true);
             tab.parentNode.replaceChild(newTab, tab);
             
-            // Add blocker listener
+            // Tambahkan event listener blocker
             newTab.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -571,11 +579,28 @@ const app = {
                 return false;
             });
             
-            // Add visual indicator that menu is disabled
+            // Visual indicator menu disabled
             newTab.style.opacity = '0.5';
             newTab.style.cursor = 'not-allowed';
-            newTab.style.pointerEvents = 'auto'; // Keep pointer events for click blocker
+            newTab.classList.remove('active');
         });
+        
+        // Blokir juga tombol settings
+        const settingsBtn = document.querySelector('.icon-btn[onclick*="openSettings"]');
+        if (settingsBtn) {
+            const newBtn = settingsBtn.cloneNode(true);
+            settingsBtn.parentNode.replaceChild(newBtn, settingsBtn);
+            
+            newBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.showKasirRequiredModal();
+                return false;
+            });
+            
+            newBtn.style.opacity = '0.5';
+            newBtn.style.cursor = 'not-allowed';
+        }
     },
 
     // ==========================================
@@ -615,9 +640,23 @@ const app = {
     unblockNavigation() {
         console.log('[App] Unblocking navigation - Kasir is now open');
         
-        // Re-render navigation dengan router
+        // Re-render navigation dengan router (akan menghapus blocker listeners)
         if (typeof router !== 'undefined') {
             router.renderNavigation();
+        }
+        
+        // Restore settings button
+        const settingsBtn = document.querySelector('.icon-btn');
+        if (settingsBtn) {
+            const newBtn = settingsBtn.cloneNode(true);
+            settingsBtn.parentNode.replaceChild(newBtn, settingsBtn);
+            
+            newBtn.addEventListener('click', () => {
+                this.openSettings();
+            });
+            
+            newBtn.style.opacity = '1';
+            newBtn.style.cursor = 'pointer';
         }
     },
 
