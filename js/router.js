@@ -1,12 +1,21 @@
 /**
  * Router System - Hifzi Cell POS
  * FINAL FIX: Force proper navigation control
- * COMPLETE VERSION - v3.1
+ * COMPLETE VERSION - v3.2 (Added: Kasir Lock for All Menus)
  */
 
 const router = {
     currentPage: null,
     isNavigating: false,
+
+    // ==========================================
+    // TAMBAHAN BARU: Menu yang memerlukan kasir terbuka (SEMUA MENU)
+    // ==========================================
+    menusRequireKasirOpen: [
+        'pos', 'products', 'purchase', 'cash', 'reports', 
+        'transactions', 'receipt', 'debt', 'users', 
+        'telegram', 'cloud', 'pencarian'
+    ],
 
     menuAccess: {
         'owner': ['pos', 'products', 'purchase', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
@@ -87,15 +96,21 @@ const router = {
                 return;
             }
 
-            // 3. Check kasir status
-            if (['pos', 'cash', 'debt'].includes(page)) {
-                const status = dataManager.checkKasirStatusForUser(currentUser.userId);
-                if (status.canOpen && !status.isContinue) {
+            // ==========================================
+            // TAMBAHAN BARU: Check kasir status untuk SEMUA MENU
+            // ==========================================
+            const kasirStatus = dataManager.checkKasirStatusForUser(currentUser.userId);
+            
+            // Jika kasir belum dibuka dan menu memerlukan kasir terbuka
+            if (this.menusRequireKasirOpen.includes(page)) {
+                if (kasirStatus.canOpen && !kasirStatus.isContinue) {
+                    console.log('[Router] BLOCKED: Kasir not opened yet');
                     this.showOpenKasirFirstModal(page, element);
                     this.isNavigating = false;
                     return;
                 }
             }
+            // ==========================================
 
             // 4. Update UI state
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -466,10 +481,20 @@ const router = {
         if (!currentUser) return false;
         const allowedMenus = this.menuAccess[currentUser.role] || [];
         return allowedMenus.includes(page);
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Check if kasir is opened for current user
+    // ==========================================
+    isKasirOpened() {
+        const currentUser = dataManager.getCurrentUser();
+        if (!currentUser) return false;
+        const kasirStatus = dataManager.checkKasirStatusForUser(currentUser.userId);
+        return kasirStatus.isContinue || !kasirStatus.canOpen;
     }
 };
 
 // Expose to window
 window.router = router;
 
-console.log('[Router] FINAL VERSION loaded - v3.1 - Complete');
+console.log('[Router] FINAL VERSION loaded - v3.2 - Kasir Lock for All Menus');
