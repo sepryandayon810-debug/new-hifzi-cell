@@ -82,104 +82,138 @@ const router = {
     navigate(page, element) {
         console.log(`[Router] Navigating to: ${page}`);
 
-        const currentUser = dataManager.getCurrentUser();
-
-        if (!currentUser) {
-            app.showToast('❌ Silakan login terlebih dahulu!');
-            return;
-        }
-
-        const userRole = currentUser.role;
-        const allowedMenus = this.menuAccess[userRole] || [];
-
-        if (!allowedMenus.includes(page)) {
-            this.showAccessDeniedModal(userRole, page);
-            return;
-        }
-
-        // Check shift dengan logika hari baru
-        const operationalMenus = ['pos', 'cash', 'debt'];
-        const userShift = dataManager.getUserShift(currentUser.userId);
-        const status = dataManager.checkKasirStatusForUser(currentUser.userId);
-        
-        if (operationalMenus.includes(page) && status.canOpen && !status.isContinue) {
-            this.showOpenKasirFirstModal(page, element);
-            return;
-        }
-
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        if (element) element.classList.add('active');
-
-        const cartBar = document.getElementById('cartBar');
-        if (cartBar) cartBar.style.display = 'none';
-
-        this.currentPage = page;
-
-        // Clear container sebelum render module baru
-        this.clearContainer();
-
-        if (!this.isModuleAvailable(page)) {
-            console.warn(`[Router] Module ${page} not available`);
-            this.showModuleErrorModal(page);
-            return;
-        }
-
         try {
+            const currentUser = dataManager.getCurrentUser();
+
+            if (!currentUser) {
+                if (typeof app !== 'undefined' && app.showToast) {
+                    app.showToast('❌ Silakan login terlebih dahulu!');
+                }
+                return;
+            }
+
+            const userRole = currentUser.role;
+            const allowedMenus = this.menuAccess[userRole] || [];
+
+            if (!allowedMenus.includes(page)) {
+                this.showAccessDeniedModal(userRole, page);
+                return;
+            }
+
+            // Check shift dengan logika hari baru
+            const operationalMenus = ['pos', 'cash', 'debt'];
+            const status = dataManager.checkKasirStatusForUser(currentUser.userId);
+            
+            if (operationalMenus.includes(page) && status.canOpen && !status.isContinue) {
+                this.showOpenKasirFirstModal(page, element);
+                return;
+            }
+
+            // Update active tab
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            const cartBar = document.getElementById('cartBar');
+            if (cartBar) cartBar.style.display = 'none';
+
+            this.currentPage = page;
+
+            // Clear container sebelum render module baru
+            this.clearContainer();
+
+            // Check if module is available
+            if (!this.isModuleAvailable(page)) {
+                console.warn(`[Router] Module ${page} not available`);
+                this.showModuleErrorModal(page);
+                return;
+            }
+
+            // Initialize module dengan error handling
+            let initSuccess = false;
+            
             switch(page) {
                 case 'pos':
-                    posModule.init();
-                    if (cartBar) cartBar.style.display = 'flex';
+                    if (typeof posModule !== 'undefined' && posModule.init) {
+                        posModule.init();
+                        initSuccess = true;
+                        if (cartBar) cartBar.style.display = 'flex';
+                    }
                     break;
                 case 'products':
-                    productsModule.init();
+                    if (typeof productsModule !== 'undefined' && productsModule.init) {
+                        productsModule.init();
+                        initSuccess = true;
+                    }
                     break;
                 case 'cash':
-                    cashModule.init();
+                    if (typeof cashModule !== 'undefined' && cashModule.init) {
+                        cashModule.init();
+                        initSuccess = true;
+                    }
                     break;
                 case 'reports':
-                    reportsModule.init();
+                    if (typeof reportsModule !== 'undefined' && reportsModule.init) {
+                        reportsModule.init();
+                        initSuccess = true;
+                    }
                     break;
                 case 'transactions':
-                    transactionsModule.init();
+                    if (typeof transactionsModule !== 'undefined' && transactionsModule.init) {
+                        transactionsModule.init();
+                        initSuccess = true;
+                    }
                     break;
                 case 'receipt':
-                    receiptModule.init();
+                    if (typeof receiptModule !== 'undefined' && receiptModule.init) {
+                        receiptModule.init();
+                        initSuccess = true;
+                    }
                     break;
                 case 'debt':
-                    debtModule.init();
+                    if (typeof debtModule !== 'undefined' && debtModule.init) {
+                        debtModule.init();
+                        initSuccess = true;
+                    }
                     break;
                 case 'users':
-                    usersModule.init();
+                    if (typeof usersModule !== 'undefined' && usersModule.init) {
+                        try {
+                            usersModule.init();
+                            initSuccess = true;
+                        } catch (userError) {
+                            console.error('[Router] Error initializing users module:', userError);
+                            throw userError;
+                        }
+                    }
                     break;
                 case 'telegram':
                     if (typeof TelegramModule !== 'undefined') {
-                        TelegramModule.init();
-                        TelegramModule.renderPage();
+                        if (TelegramModule.init) TelegramModule.init();
+                        if (TelegramModule.renderPage) TelegramModule.renderPage();
+                        initSuccess = true;
                     }
                     break;
                 case 'pencarian':
                     if (typeof n8nModule !== 'undefined') {
-                        n8nModule.init();
-                        n8nModule.renderPage();
+                        if (n8nModule.init) n8nModule.init();
+                        if (n8nModule.renderPage) n8nModule.renderPage();
+                        initSuccess = true;
                     }
                     break;
-                // ============================================
-                // PERBAIKAN UTAMA: Cloud/Backup Module
-                // ============================================
                 case 'cloud':
                 case 'backup':
                     if (typeof backupModule !== 'undefined') {
                         console.log('[Router] Initializing cloud/backup module...');
                         
                         // 1. Pastikan backupModule initialized
-                        if (!backupModule.isInitialized) {
+                        if (!backupModule.isInitialized && backupModule.init) {
                             backupModule.init();
                         }
                         
                         // 2. Render langsung ke container
                         setTimeout(() => {
                             console.log('[Router] Rendering backup module to container...');
-                            backupModule.render();
+                            if (backupModule.render) backupModule.render();
                             
                             // 3. Setup listeners setelah render
                             setTimeout(() => {
@@ -188,18 +222,28 @@ const router = {
                                 }
                             }, 100);
                         }, 50);
-                    } else {
-                        console.error('[Router] backupModule not found!');
-                        this.showModuleErrorModal(page);
+                        
+                        initSuccess = true;
                     }
                     break;
                 default:
                     console.error(`[Router] Unknown page: ${page}`);
-                    app.showToast('❌ Halaman tidak ditemukan!');
+                    if (typeof app !== 'undefined' && app.showToast) {
+                        app.showToast('❌ Halaman tidak ditemukan!');
+                    }
             }
+
+            if (!initSuccess) {
+                throw new Error(`Failed to initialize module: ${page}`);
+            }
+
+            console.log(`[Router] Successfully navigated to: ${page}`);
+
         } catch (error) {
-            console.error(`[Router] Error initializing ${page}:`, error);
-            app.showToast(`❌ Error membuka menu ${this.menuLabels[page] || page}`);
+            console.error(`[Router] Error navigating to ${page}:`, error);
+            if (typeof app !== 'undefined' && app.showToast) {
+                app.showToast(`❌ Error membuka menu ${this.menuLabels[page] || page}`);
+            }
         }
 
         window.scrollTo(0, 0);
@@ -236,14 +280,16 @@ const router = {
         const modal = document.getElementById('openKasirFirstModal');
         if (modal) modal.remove();
         
-        const result = dataManager.openKasir(app.currentUser.userId, true);
-        if (result.success) {
-            app.showToast(result.message);
-            app.updateHeader();
-            app.updateKasirStatus();
-            
-            const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
-            this.navigate(page, navTab);
+        if (typeof app !== 'undefined' && app.currentUser) {
+            const result = dataManager.openKasir(app.currentUser.userId, true);
+            if (result.success) {
+                if (typeof app.showToast === 'function') app.showToast(result.message);
+                if (typeof app.updateHeader === 'function') app.updateHeader();
+                if (typeof app.updateKasirStatus === 'function') app.updateKasirStatus();
+                
+                const navTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
+                this.navigate(page, navTab);
+            }
         }
     },
 
@@ -315,7 +361,8 @@ const router = {
             'telegram': 'Pastikan file telegram.js ada di folder js/',
             'cloud': 'Pastikan file backup.js sudah di-load di index.html',
             'backup': 'Pastikan file backup.js sudah di-load di index.html',
-            'pencarian': 'Pastikan file n8n.js ada di folder js/'
+            'pencarian': 'Pastikan file n8n.js ada di folder js/',
+            'users': 'Pastikan file users.js sudah di-load di index.html'
         };
 
         const modalHTML = `
@@ -415,6 +462,9 @@ const router = {
     }
 };
 
-window.router = router;
+// Expose to window
+if (typeof window !== 'undefined') {
+    window.router = router;
+}
 
-console.log('[Router] Router system loaded v2.3 - Cloud Fix Edition');
+console.log('[Router] Router system loaded v2.4 - Users Fix Edition');
