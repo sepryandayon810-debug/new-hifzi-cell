@@ -1,10 +1,13 @@
 // ============================================
-// PURCHASE MODULE - Pembelian dari Supplier (FIXED COMPLETE)
+// PURCHASE MODULE - Pembelian dari Supplier (FIXED COMPLETE + FILTER WAKTU)
 // ============================================
 
 const purchaseModule = {
     currentItems: [],
     editingPurchaseId: null,
+    filterMode: 'all', // all, today, yesterday, monthly, yearly, custom
+    customDateRange: { start: null, end: null },
+    expandedNewPurchases: true, // State untuk expand/collapse
 
     init() {
         this.renderHTML();
@@ -29,14 +32,54 @@ const purchaseModule = {
                     </button>
                 </div>
 
+                <!-- Filter Section -->
+                <div class="card" style="margin-bottom: 15px;">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <span class="card-title">📊 Filter Pembelian</span>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                            <button class="filter-btn ${this.filterMode === 'today' ? 'active' : ''}" onclick="purchaseModule.setFilter('today')">📅 Hari Ini</button>
+                            <button class="filter-btn ${this.filterMode === 'yesterday' ? 'active' : ''}" onclick="purchaseModule.setFilter('yesterday')">📆 Kemarin</button>
+                            <button class="filter-btn ${this.filterMode === 'monthly' ? 'active' : ''}" onclick="purchaseModule.setFilter('monthly')">📈 Bulan Ini</button>
+                            <button class="filter-btn ${this.filterMode === 'yearly' ? 'active' : ''}" onclick="purchaseModule.setFilter('yearly')">📊 Tahun Ini</button>
+                            <button class="filter-btn ${this.filterMode === 'custom' ? 'active' : ''}" onclick="purchaseModule.toggleCustomDate()">🔧 Custom</button>
+                            <button class="filter-btn ${this.filterMode === 'all' ? 'active' : ''}" onclick="purchaseModule.setFilter('all')">📋 Semua</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom Date Range -->
+                    <div id="customDateContainer" style="display: ${this.filterMode === 'custom' ? 'block' : 'none'}; padding: 15px; border-top: 1px solid #e5e7eb; background: #f9fafb;">
+                        <div style="display: flex; gap: 15px; align-items: end; flex-wrap: wrap;">
+                            <div class="form-group" style="flex: 1; min-width: 150px;">
+                                <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">Dari Tanggal</label>
+                                <input type="date" id="customStartDate" value="${this.customDateRange.start || ''}" 
+                                       style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px;">
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 150px;">
+                                <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">Sampai Tanggal</label>
+                                <input type="date" id="customEndDate" value="${this.customDateRange.end || ''}" 
+                                       style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px;">
+                            </div>
+                            <button class="btn btn-primary" onclick="purchaseModule.applyCustomFilter()" style="padding: 8px 20px;">
+                                ✓ Terapkan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Purchases with Expand/Collapse -->
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" 
+                         onclick="purchaseModule.toggleNewPurchases()">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span class="card-title">📦 Pembelian Terbaru</span>
                             <span style="font-size: 12px; color: #666;" id="purchaseCount">0 faktur</span>
+                            <span style="font-size: 11px; color: #10b981; background: #d1fae5; padding: 2px 8px; border-radius: 12px; font-weight: 600;" id="newPurchaseBadge">0 baru</span>
                         </div>
+                        <button class="expand-btn" id="expandBtn" style="background: none; border: none; font-size: 20px; cursor: pointer; transition: transform 0.3s; ${this.expandedNewPurchases ? 'transform: rotate(180deg);' : ''}">
+                            ▼
+                        </button>
                     </div>
-                    <div class="card-content">
+                    <div class="card-content" id="newPurchasesContainer" style="${this.expandedNewPurchases ? '' : 'display: none;'}">
                         <div id="purchasesList"></div>
                     </div>
                 </div>
@@ -44,6 +87,7 @@ const purchaseModule = {
         `;
         
         this.addStyles();
+        this.addFilterStyles();
     },
 
     addStyles() {
@@ -524,6 +568,245 @@ const purchaseModule = {
             }
         `;
         document.head.appendChild(style);
+    },
+
+    // ============================================
+    // FILTER STYLES - TAMBAHAN BARU
+    // ============================================
+    addFilterStyles() {
+        if (document.getElementById('purchase-filter-styles')) return;
+        
+        const style = document.createElement('style');
+        style.id = 'purchase-filter-styles';
+        style.textContent = `
+            .filter-btn {
+                padding: 6px 12px;
+                border: 1px solid #e5e7eb;
+                background: white;
+                border-radius: 20px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s;
+                white-space: nowrap;
+            }
+            
+            .filter-btn:hover {
+                background: #f3f4f6;
+                border-color: #d1d5db;
+            }
+            
+            .filter-btn.active {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border-color: #667eea;
+            }
+            
+            .expand-btn {
+                transition: transform 0.3s ease;
+            }
+            
+            .expand-btn.collapsed {
+                transform: rotate(0deg) !important;
+            }
+            
+            .expand-btn.expanded {
+                transform: rotate(180deg) !important;
+            }
+            
+            #newPurchasesContainer {
+                transition: all 0.3s ease;
+            }
+            
+            .date-badge {
+                display: inline-block;
+                font-size: 10px;
+                padding: 2px 8px;
+                border-radius: 12px;
+                margin-left: 8px;
+                font-weight: 600;
+            }
+            
+            .date-badge.today {
+                background: #dbeafe;
+                color: #1e40af;
+            }
+            
+            .date-badge.yesterday {
+                background: #fef3c7;
+                color: #92400e;
+            }
+            
+            .date-badge.this-month {
+                background: #e0e7ff;
+                color: #4338ca;
+            }
+            
+            .date-badge.old {
+                background: #f3f4f6;
+                color: #6b7280;
+            }
+            
+            .filter-summary {
+                background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+                border: 1px solid #bae6fd;
+                border-radius: 8px;
+                padding: 12px 16px;
+                margin-bottom: 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            
+            .filter-summary-text {
+                font-size: 14px;
+                color: #0369a1;
+                font-weight: 500;
+            }
+            
+            .filter-summary-total {
+                font-size: 16px;
+                font-weight: 700;
+                color: #0284c7;
+            }
+        `;
+        document.head.appendChild(style);
+    },
+
+    // ============================================
+    // FILTER FUNCTIONS - TAMBAHAN BARU
+    // ============================================
+    setFilter(mode) {
+        this.filterMode = mode;
+        if (mode !== 'custom') {
+            this.customDateRange = { start: null, end: null };
+        }
+        this.renderHTML();
+        this.renderPurchasesList();
+    },
+
+    toggleCustomDate() {
+        if (this.filterMode === 'custom') {
+            this.filterMode = 'all';
+            this.customDateRange = { start: null, end: null };
+        } else {
+            this.filterMode = 'custom';
+            // Set default range ke hari ini
+            const today = new Date().toISOString().split('T')[0];
+            this.customDateRange = { start: today, end: today };
+        }
+        this.renderHTML();
+        this.renderPurchasesList();
+    },
+
+    applyCustomFilter() {
+        const start = document.getElementById('customStartDate').value;
+        const end = document.getElementById('customEndDate').value;
+        
+        if (!start || !end) {
+            app.showToast('Pilih rentang tanggal terlebih dahulu!');
+            return;
+        }
+        
+        if (new Date(start) > new Date(end)) {
+            app.showToast('Tanggal awal tidak boleh lebih besar dari tanggal akhir!');
+            return;
+        }
+        
+        this.customDateRange = { start, end };
+        this.renderPurchasesList();
+        app.showToast(`Filter: ${new Date(start).toLocaleDateString('id-ID')} - ${new Date(end).toLocaleDateString('id-ID')}`);
+    },
+
+    toggleNewPurchases() {
+        this.expandedNewPurchases = !this.expandedNewPurchases;
+        const container = document.getElementById('newPurchasesContainer');
+        const btn = document.getElementById('expandBtn');
+        
+        if (this.expandedNewPurchases) {
+            container.style.display = 'block';
+            btn.classList.remove('collapsed');
+            btn.classList.add('expanded');
+            btn.style.transform = 'rotate(180deg)';
+        } else {
+            container.style.display = 'none';
+            btn.classList.remove('expanded');
+            btn.classList.add('collapsed');
+            btn.style.transform = 'rotate(0deg)';
+        }
+    },
+
+    getFilteredPurchases() {
+        const allPurchases = dataManager.getPurchases().sort((a, b) => 
+            new Date(b.date) - new Date(a.date)
+        );
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        switch (this.filterMode) {
+            case 'today':
+                return allPurchases.filter(p => {
+                    const pDate = new Date(p.date);
+                    return pDate >= today;
+                });
+                
+            case 'yesterday':
+                return allPurchases.filter(p => {
+                    const pDate = new Date(p.date);
+                    return pDate >= yesterday && pDate < today;
+                });
+                
+            case 'monthly':
+                const thisMonth = now.getMonth();
+                const thisYear = now.getFullYear();
+                return allPurchases.filter(p => {
+                    const pDate = new Date(p.date);
+                    return pDate.getMonth() === thisMonth && pDate.getFullYear() === thisYear;
+                });
+                
+            case 'yearly':
+                return allPurchases.filter(p => {
+                    const pDate = new Date(p.date);
+                    return pDate.getFullYear() === now.getFullYear();
+                });
+                
+            case 'custom':
+                if (this.customDateRange.start && this.customDateRange.end) {
+                    const start = new Date(this.customDateRange.start);
+                    const end = new Date(this.customDateRange.end);
+                    end.setHours(23, 59, 59, 999);
+                    return allPurchases.filter(p => {
+                        const pDate = new Date(p.date);
+                        return pDate >= start && pDate <= end;
+                    });
+                }
+                return allPurchases;
+                
+            default:
+                return allPurchases;
+        }
+    },
+
+    getDateBadge(purchaseDate) {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const pDate = new Date(purchaseDate);
+        
+        if (pDate >= today) {
+            return '<span class="date-badge today">HARI INI</span>';
+        } else if (pDate >= yesterday && pDate < today) {
+            return '<span class="date-badge yesterday">KEMARIN</span>';
+        } else if (pDate.getMonth() === now.getMonth() && pDate.getFullYear() === now.getFullYear()) {
+            return '<span class="date-badge this-month">BULAN INI</span>';
+        } else {
+            return '<span class="date-badge old">LAMA</span>';
+        }
     },
 
     // ============================================
@@ -1308,21 +1591,66 @@ const purchaseModule = {
         printWindow.document.close();
     },
 
+    // ============================================
+    // RENDER LIST PEMBELIAN - UPDATED WITH FILTER
+    // ============================================
     renderPurchasesList() {
         const container = document.getElementById('purchasesList');
         if (!container) return;
 
-        const purchases = dataManager.getPurchases()
-            .sort((a, b) => new Date(b.date) - new Date(a.date))
-            .slice(0, 10);
+        const filteredPurchases = this.getFilteredPurchases();
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        // Hitung jumlah pembelian baru (hari ini)
+        const newPurchases = filteredPurchases.filter(p => new Date(p.date) >= today);
+        const newCount = newPurchases.length;
+        
+        // Update badge
+        const badge = document.getElementById('newPurchaseBadge');
+        if (badge) {
+            badge.textContent = `${newCount} baru`;
+            badge.style.display = newCount > 0 ? 'inline-block' : 'none';
+        }
+        
+        // Update count
+        const countEl = document.getElementById('purchaseCount');
+        if (countEl) {
+            const totalFiltered = filteredPurchases.length;
+            const totalAll = dataManager.getPurchases().length;
+            if (this.filterMode !== 'all') {
+                countEl.textContent = `${totalFiltered} dari ${totalAll} faktur`;
+            } else {
+                countEl.textContent = `${totalAll} faktur`;
+            }
+        }
 
-        document.getElementById('purchaseCount').textContent = `${dataManager.getPurchases().length} faktur`;
+        // Render filter summary jika ada filter aktif
+        let summaryHTML = '';
+        if (this.filterMode !== 'all' && filteredPurchases.length > 0) {
+            const totalAmount = filteredPurchases.reduce((sum, p) => sum + p.total, 0);
+            const filterLabels = {
+                'today': 'Hari Ini',
+                'yesterday': 'Kemarin',
+                'monthly': 'Bulan Ini',
+                'yearly': 'Tahun Ini',
+                'custom': 'Custom'
+            };
+            summaryHTML = `
+                <div class="filter-summary">
+                    <span class="filter-summary-text">📊 ${filterLabels[this.filterMode]}: ${filteredPurchases.length} faktur</span>
+                    <span class="filter-summary-total">Rp ${utils.formatNumber(totalAmount)}</span>
+                </div>
+            `;
+        }
 
-        if (purchases.length === 0) {
-            container.innerHTML = `
+        if (filteredPurchases.length === 0) {
+            container.innerHTML = summaryHTML + `
                 <div class="empty-state">
                     <div class="empty-icon">🛒</div>
-                    <p>Belum ada pembelian</p>
+                    <p>Belum ada pembelian${this.filterMode !== 'all' ? ' di periode ini' : ''}</p>
                     <button class="btn btn-primary" onclick="purchaseModule.openAddModal()" style="margin-top: 10px;">
                         Buat Pembelian Pertama
                     </button>
@@ -1331,7 +1659,7 @@ const purchaseModule = {
             return;
         }
 
-        container.innerHTML = purchases.map(p => `
+        container.innerHTML = summaryHTML + filteredPurchases.map(p => `
             <div class="purchase-item" onclick="purchaseModule.viewPurchaseDetail('${p.id}')">
                 <div class="purchase-info">
                     <div class="purchase-supplier">
@@ -1339,6 +1667,7 @@ const purchaseModule = {
                         <span class="purchase-status ${p.paymentType}">
                             ${p.paymentType === 'cash' ? '💵' : '💳'}
                         </span>
+                        ${this.getDateBadge(p.date)}
                     </div>
                     <div class="purchase-meta">
                         <span>📄 ${p.invoiceNumber}</span>
