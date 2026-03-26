@@ -455,6 +455,29 @@ const dataManager = {
         return true;
     },
 
+    // ==================== USER LAST LOGIN (TAMBAHAN BARU) ====================
+    getUserLastLogin(userId) {
+        try {
+            const users = this.getUsers();
+            const user = users.find(u => u && u.id === userId);
+            return user ? user.lastLogin : null;
+        } catch (error) {
+            console.error('[DataManager] Error getting user last login:', error);
+            return null;
+        }
+    },
+
+    deleteUserLoginHistory(userId) {
+        try {
+            if (this.data.loginHistory) {
+                this.data.loginHistory = this.data.loginHistory.filter(log => log && log.userId !== userId);
+                this.save();
+            }
+        } catch (error) {
+            console.error('[DataManager] Error deleting user login history:', error);
+        }
+    },
+
     // ==================== AUTH ====================
     login(username, password) {
         console.log('[DataManager] Login attempt:', username);
