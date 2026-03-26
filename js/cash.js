@@ -42,12 +42,15 @@ const cashModule = {
     },
 
     init() {
+        console.log('[CashModule] Initializing...');
         this.loadCustomProviders();
         this.ensureCashInitialized();
         this.checkDayChange();
         this.renderHTML();
         this.updateStats();
         this.renderTransactions();
+        console.log('[CashModule] Initialized successfully');
+        // PERBAIKAN: Hapus setTimeout yang mengarah ke cloud
     },
 
     ensureCashInitialized() {
@@ -2295,7 +2298,7 @@ const cashModule = {
                 const userShift = dataManager.getUserShift(currentUser.userId);
                 if (userShift) {
                     userShift.currentCash = (userShift.currentCash || 0) - parseInt(amount);
-                    dataManager.updateUserShift(currentUser.userId, userShift);
+                    dataManagerManager.updateUserShift(currentUser.userId, userShift);
                 }
             }
         }
