@@ -1,5 +1,5 @@
 // ============================================
-// APP.JS - HIFZI CELL (v2.3) - Fixed Router & Modal Sync
+// APP.JS - HIFZI CELL (v2.4) - Fixed Router & Modal Sync + Kasir Lock All Menus
 // ============================================
 
 const app = {
@@ -8,7 +8,7 @@ const app = {
     isCloudConfigLoaded: false,
 
     init() {
-        console.log('[App] Initializing v2.3...');
+        console.log('[App] Initializing v2.4...');
         
         // Init dataManager
         if (typeof dataManager !== 'undefined') {
@@ -166,7 +166,9 @@ const app = {
             await this.loadCloudConfigIfAvailable();
         }
         
-        // PERBAIKAN: Check status kasir dengan flow yang benar
+        // ==========================================
+        // TAMBAHAN BARU: Check kasir status dengan flow yang benar - BLOCK ALL MENUS IF KASIR CLOSED
+        // ==========================================
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         console.log('[App] Kasir status:', kasirStatus);
         
@@ -182,6 +184,7 @@ const app = {
         } else if (kasirStatus.reason === 'new_day_same_user' || kasirStatus.reason === 'new_shift') {
             this.showOpenKasirModal();
         } else {
+            // Kasir tutup - tampilkan halaman kasir tutup (semua menu diblokir)
             this.showKasirClosedPage();
         }
     },
@@ -484,6 +487,9 @@ const app = {
         this.updateKasirButton();
     },
 
+    // ==========================================
+    // TAMBAHAN BARU: Halaman Kasir Tutup yang memblokir semua akses menu
+    // ==========================================
     showKasirClosedPage() {
         const container = document.getElementById('mainContent');
         if (!container) return;
@@ -491,13 +497,18 @@ const app = {
         const activeShifts = dataManager.getActiveShifts();
         const otherUsersActive = activeShifts.filter(s => s.userId !== this.currentUser.userId);
 
+        // ==========================================
+        // TAMBAHAN BARU: Override semua navigation buttons untuk memblokir akses
+        // ==========================================
+        this.blockAllNavigation();
+
         container.innerHTML = `
             <div class="content-section active" style="text-align: center; padding: 40px 20px;">
                 <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
                 <h2 style="color: #c62828; margin-bottom: 15px; font-size: 20px;">Kasir Anda Sedang Tutup</h2>
                 <p style="color: #666; margin-bottom: 30px; line-height: 1.6; font-size: 14px;">
                     Selamat datang, <b>${this.currentUser ? this.currentUser.name : ''}</b>!<br>
-                    Silakan buka kasir untuk memulai shift kerja.
+                    Silakan buka kasir untuk mengakses semua menu.
                 </p>
 
                 ${otherUsersActive.length > 0 ? `
@@ -538,7 +549,79 @@ const app = {
         `;
     },
 
-    // PERBAIKAN: Method untuk saveAllModalKasir dengan sync pendingModals
+    // ==========================================
+    // TAMBAHAN BARU: Method untuk memblokir semua navigasi saat kasir tutup
+    // ==========================================
+    blockAllNavigation() {
+        console.log('[App] Blocking all navigation - Kasir is closed');
+        
+        // Blokir semua nav-tab clicks
+        const navTabs = document.querySelectorAll('.nav-tab');
+        navTabs.forEach(tab => {
+            // Clone dan replace untuk remove old listeners
+            const newTab = tab.cloneNode(true);
+            tab.parentNode.replaceChild(newTab, tab);
+            
+            // Add blocker listener
+            newTab.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[App] Navigation blocked - Kasir closed');
+                this.showKasirRequiredModal();
+                return false;
+            });
+            
+            // Add visual indicator that menu is disabled
+            newTab.style.opacity = '0.5';
+            newTab.style.cursor = 'not-allowed';
+            newTab.style.pointerEvents = 'auto'; // Keep pointer events for click blocker
+        });
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Modal yang muncul saat user mencoba akses menu tanpa buka kasir
+    // ==========================================
+    showKasirRequiredModal() {
+        // Hapus modal lama jika ada
+        const existingModal = document.getElementById('kasirRequiredModal');
+        if (existingModal) existingModal.remove();
+        
+        const modalHTML = `
+            <div class="modal active" id="kasirRequiredModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
+                <div class="modal-content" style="max-width: 350px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🔒</div>
+                    <div class="modal-header" style="justify-content: center;">
+                        <span class="modal-title" style="font-size: 16px;">Akses Ditolak</span>
+                    </div>
+                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
+                        Anda harus membuka kasir terlebih dahulu<br>
+                        untuk mengakses menu ini.
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('kasirRequiredModal').remove()">Batal</button>
+                        <button class="btn btn-primary" onclick="document.getElementById('kasirRequiredModal').remove(); app.confirmOpenKasir(true)" style="background: #4caf50;">
+                            🔓 Buka Kasir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Unblock navigation setelah kasir dibuka
+    // ==========================================
+    unblockNavigation() {
+        console.log('[App] Unblocking navigation - Kasir is now open');
+        
+        // Re-render navigation dengan router
+        if (typeof router !== 'undefined') {
+            router.renderNavigation();
+        }
+    },
+
+    // Method untuk saveAllModalKasir dengan sync pendingModals
     saveAllModalKasir(modalAwal, extraModal = 0) {
         if (!this.currentUser) return;
         
@@ -560,6 +643,18 @@ const app = {
     },
 
     openSettings() {
+        // ==========================================
+        // TAMBAHAN BARU: Cek kasir status sebelum buka settings
+        // ==========================================
+        if (this.currentUser) {
+            const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
+            if (kasirStatus.canOpen && !kasirStatus.isContinue) {
+                this.showKasirRequiredModal();
+                return;
+            }
+        }
+        // ==========================================
+
         const existingModal = document.getElementById('settingsModal');
         if (existingModal) existingModal.remove();
 
