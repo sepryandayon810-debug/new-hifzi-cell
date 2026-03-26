@@ -8,6 +8,7 @@ const darkModeModule = {
     isDark: false,
     storageKey: 'hifzi_darkmode',
     initialized: false,
+    observer: null,
     
     darkTheme: {
         '--primary': '#818cf8',
@@ -47,10 +48,16 @@ const darkModeModule = {
         this.injectStyles();
         this.apply();
         
-        setTimeout(() => this.renderToggleButton(), 100);
-        setTimeout(() => this.renderToggleButton(), 500);
-        setTimeout(() => this.renderToggleButton(), 1000);
+        // Coba render langsung
+        this.renderToggleButton();
         
+        // Setup observer untuk menunggu DOM siap
+        this.setupObserver();
+        
+        // Fallback dengan interval
+        this.startIntervalCheck();
+        
+        // Listen system theme change
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
             if (localStorage.getItem(this.storageKey) === null) {
                 this.isDark = e.matches;
@@ -60,6 +67,43 @@ const darkModeModule = {
         
         this.initialized = true;
         console.log('[DarkMode] Initialized, mode:', this.isDark ? 'dark' : 'light');
+    },
+
+    setupObserver() {
+        // Observer untuk memantau perubahan DOM
+        this.observer = new MutationObserver((mutations) => {
+            for (let mutation of mutations) {
+                if (mutation.type === 'childList') {
+                    // Cek jika header-actions muncul
+                    if (document.querySelector('.header-actions')) {
+                        this.renderToggleButton();
+                    }
+                }
+            }
+        });
+        
+        // Mulai observe body
+        this.observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    },
+
+    startIntervalCheck() {
+        // Check setiap 500ms selama 10 detik pertama
+        let attempts = 0;
+        const maxAttempts = 20;
+        
+        const interval = setInterval(() => {
+            attempts++;
+            this.renderToggleButton();
+            
+            // Stop jika sudah terlalu banyak attempt atau button sudah ada
+            if (attempts >= maxAttempts || document.getElementById('darkModeBtn')) {
+                clearInterval(interval);
+                console.log('[DarkMode] Interval check stopped after', attempts, 'attempts');
+            }
+        }, 500);
     },
 
     apply() {
@@ -101,25 +145,37 @@ const darkModeModule = {
     },
 
     renderToggleButton() {
-        if (document.getElementById('darkModeBtn')) return;
-        
-        let container = document.querySelector('.header-actions');
-        
-        if (!container) {
-            const header = document.querySelector('.header');
-            if (header) {
-                container = document.createElement('div');
-                container.className = 'header-actions';
-                container.style.cssText = 'display: flex; align-items: center;';
-                header.querySelector('.header-top')?.appendChild(container);
+        // Cek jika sudah ada
+        if (document.getElementById('darkModeBtn')) {
+            // Sudah ada, stop observer jika masih aktif
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
             }
-        }
-        
-        if (!container) {
-            console.log('[DarkMode] Header actions not found, retrying...');
             return;
         }
         
+        let container = document.querySelector('.header-actions');
+        
+        // Jika tidak ada header-actions, coba cari atau buat
+        if (!container) {
+            const headerTop = document.querySelector('.header-top');
+            if (!headerTop) return; // Header belum ada, abort
+            
+            // Cek lagi di dalam header-top
+            container = headerTop.querySelector('.header-actions');
+            
+            if (!container) {
+                // Buat container baru
+                container = document.createElement('div');
+                container.className = 'header-actions';
+                container.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+                headerTop.appendChild(container);
+                console.log('[DarkMode] Created new .header-actions');
+            }
+        }
+        
+        // Buat tombol
         const btn = document.createElement('button');
         btn.id = 'darkModeBtn';
         btn.className = 'icon-btn darkmode-toggle';
@@ -141,7 +197,6 @@ const darkModeModule = {
             flex-shrink: 0;
             margin-right: 5px;
         `;
-        btn.onclick = () => this.toggle();
         
         btn.onmouseenter = () => {
             btn.style.background = 'rgba(255,255,255,0.3)';
@@ -151,7 +206,9 @@ const darkModeModule = {
             btn.style.background = 'rgba(255,255,255,0.2)';
             btn.style.transform = 'scale(1)';
         };
+        btn.onclick = () => this.toggle();
         
+        // Insert sebelum tombol settings
         const settingsBtn = container.querySelector('[onclick*="openSettings"]');
         if (settingsBtn) {
             container.insertBefore(btn, settingsBtn);
@@ -159,7 +216,13 @@ const darkModeModule = {
             container.appendChild(btn);
         }
         
-        console.log('[DarkMode] Toggle button rendered');
+        console.log('[DarkMode] Toggle button rendered successfully!');
+        
+        // Stop observer karena sudah berhasil
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
     },
 
     updateToggleUI() {
@@ -478,10 +541,23 @@ const darkModeModule = {
     }
 };
 
+// Initialize saat DOM ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => darkModeModule.init());
 } else {
     darkModeModule.init();
 }
 
+// Expose to window
 window.darkModeModule = darkModeModule;
+
+// Also init when app loads (backup)
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        if (!darkModeModule.initialized) {
+            darkModeModule.init();
+        } else {
+            darkModeModule.renderToggleButton();
+        }
+    }, 1000);
+});
