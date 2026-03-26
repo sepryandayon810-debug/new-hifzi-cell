@@ -1,11 +1,12 @@
 /**
  * Router System - Hifzi Cell POS
- * FIXED: Cloud menu rendering, Container detection, Module initialization
- * TAMBAHAN: Purchase Module
+ * FIXED: All menus redirecting to cloud page
+ * COMPLETE VERSION with all features
  */
 
 const router = {
     currentPage: null,
+    isNavigating: false,
 
     requiresKasirOpen: [],
 
@@ -50,40 +51,55 @@ const router = {
         return modules[moduleName] || false;
     },
 
+    _container: null,
+    
     getContainer() {
-        // Cari container dengan berbagai kemungkinan ID
-        const container = document.getElementById('mainContent') || 
+        if (this._container && document.contains(this._container)) {
+            return this._container;
+        }
+        
+        this._container = document.getElementById('mainContent') || 
                          document.getElementById('module-container') || 
                          document.getElementById('content-container') ||
                          document.querySelector('.module-container') ||
                          document.querySelector('.content-area') ||
                          document.querySelector('main');
         
-        if (!container) {
+        if (!this._container) {
             console.error('[Router] No container found!');
-            // Buat container baru sebagai fallback
             const newContainer = document.createElement('div');
             newContainer.id = 'mainContent';
             document.body.appendChild(newContainer);
-            return newContainer;
+            this._container = newContainer;
         }
         
-        return container;
+        this._container.style.display = 'block';
+        this._container.style.visibility = 'visible';
+        this._container.style.opacity = '1';
+        
+        return this._container;
     },
 
     clearContainer() {
         const container = this.getContainer();
         if (container) {
             container.innerHTML = '';
-            // Reset style untuk memastikan tampil
-            container.style.display = 'block';
-            container.style.visibility = 'visible';
-            container.style.opacity = '1';
         }
     },
 
     navigate(page, element) {
+        if (this.isNavigating) {
+            console.log('[Router] Navigation in progress, ignoring...');
+            return;
+        }
+        
+        if (this.currentPage === page) {
+            console.log('[Router] Already on page:', page);
+            return;
+        }
+
         console.log(`[Router] Navigating to: ${page}`);
+        this.isNavigating = true;
 
         try {
             const currentUser = dataManager.getCurrentUser();
@@ -92,6 +108,7 @@ const router = {
                 if (typeof app !== 'undefined' && app.showToast) {
                     app.showToast('❌ Silakan login terlebih dahulu!');
                 }
+                this.isNavigating = false;
                 return;
             }
 
@@ -100,19 +117,19 @@ const router = {
 
             if (!allowedMenus.includes(page)) {
                 this.showAccessDeniedModal(userRole, page);
+                this.isNavigating = false;
                 return;
             }
 
-            // Check shift dengan logika hari baru
             const operationalMenus = ['pos', 'cash', 'debt'];
             const status = dataManager.checkKasirStatusForUser(currentUser.userId);
             
             if (operationalMenus.includes(page) && status.canOpen && !status.isContinue) {
                 this.showOpenKasirFirstModal(page, element);
+                this.isNavigating = false;
                 return;
             }
 
-            // Update active tab
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             if (element) element.classList.add('active');
 
@@ -121,17 +138,8 @@ const router = {
 
             this.currentPage = page;
 
-            // Clear container sebelum render module baru
             this.clearContainer();
 
-            // Check if module is available
-            if (!this.isModuleAvailable(page)) {
-                console.warn(`[Router] Module ${page} not available`);
-                this.showModuleErrorModal(page);
-                return;
-            }
-
-            // Initialize module dengan error handling
             let initSuccess = false;
             
             switch(page) {
@@ -148,9 +156,6 @@ const router = {
                         initSuccess = true;
                     }
                     break;
-                // ============================================
-                // TAMBAHAN BARU: Purchase Module
-                // ============================================
                 case 'purchase':
                     if (typeof purchaseModule !== 'undefined' && purchaseModule.init) {
                         purchaseModule.init();
@@ -215,26 +220,10 @@ const router = {
                 case 'cloud':
                 case 'backup':
                     if (typeof backupModule !== 'undefined') {
-                        console.log('[Router] Initializing cloud/backup module...');
-                        
-                        // 1. Pastikan backupModule initialized
                         if (!backupModule.isInitialized && backupModule.init) {
                             backupModule.init();
                         }
-                        
-                        // 2. Render langsung ke container
-                        setTimeout(() => {
-                            console.log('[Router] Rendering backup module to container...');
-                            if (backupModule.render) backupModule.render();
-                            
-                            // 3. Setup listeners setelah render
-                            setTimeout(() => {
-                                if (typeof backupModule.setupMenuListeners === 'function') {
-                                    backupModule.setupMenuListeners();
-                                }
-                            }, 100);
-                        }, 50);
-                        
+                        if (backupModule.render) backupModule.render();
                         initSuccess = true;
                     }
                     break;
@@ -256,6 +245,10 @@ const router = {
             if (typeof app !== 'undefined' && app.showToast) {
                 app.showToast(`❌ Error membuka menu ${this.menuLabels[page] || page}`);
             }
+        } finally {
+            setTimeout(() => {
+                this.isNavigating = false;
+            }, 100);
         }
 
         window.scrollTo(0, 0);
@@ -476,9 +469,8 @@ const router = {
     }
 };
 
-// Expose to window
 if (typeof window !== 'undefined') {
     window.router = router;
 }
 
-console.log('[Router] Router system loaded v2.5 - Purchase Module Edition');
+console.log('[Router] Router system loaded v2.6 - Fixed Cloud Redirect - Complete Features');
