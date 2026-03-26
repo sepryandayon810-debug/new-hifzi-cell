@@ -1,5 +1,5 @@
 // ============================================
-// APP.JS - HIFZI CELL (v2.2) - Better Login Flow
+// APP.JS - HIFZI CELL (v2.3) - Fixed Router & Modal Sync
 // ============================================
 
 const app = {
@@ -8,7 +8,7 @@ const app = {
     isCloudConfigLoaded: false,
 
     init() {
-        console.log('[App] Initializing v2.2...');
+        console.log('[App] Initializing v2.3...');
         
         // Init dataManager
         if (typeof dataManager !== 'undefined') {
@@ -144,6 +144,16 @@ const app = {
         if (loginContainer) loginContainer.style.display = 'none';
         if (appContainer) appContainer.classList.add('active');
         
+        // PERBAIKAN: Init backup module terlebih dahulu dan disable global listeners
+        if (typeof backupModule !== 'undefined') {
+            backupModule.init();
+            // PERBAIKAN: Disable listeners yang mengganggu router
+            if (typeof backupModule.disableGlobalListeners === 'function') {
+                backupModule.disableGlobalListeners();
+            }
+        }
+        
+        // PERBAIKAN: Render navigation dengan router yang sudah diperbaiki
         if (typeof router !== 'undefined') {
             router.renderNavigation();
         }
@@ -151,24 +161,24 @@ const app = {
         this.updateHeader();
         this.updateKasirStatus();
         
-        // ✅ BARU: Cek dan load cloud config jika belum diload
+        // Cek dan load cloud config jika belum diload
         if (!this.isCloudConfigLoaded && typeof backupModule !== 'undefined') {
             await this.loadCloudConfigIfAvailable();
         }
         
-        // Check status kasir
+        // PERBAIKAN: Check status kasir dengan flow yang benar
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         console.log('[App] Kasir status:', kasirStatus);
         
         if (kasirStatus.reason === 'already_open_same_user') {
             this.showToast(`Selamat datang kembali, ${this.currentUser.name}! 👋`);
-            const defaultTab = document.querySelector('.nav-tab');
-            if (defaultTab) defaultTab.classList.add('active');
-            if (typeof posModule !== 'undefined') {
+            // PERBAIKAN: Gunakan router.navigate, bukan posModule.init langsung
+            const posTab = document.querySelector('.nav-tab[data-page="pos"]');
+            if (typeof router !== 'undefined') {
+                router.navigate('pos', posTab);
+            } else if (typeof posModule !== 'undefined') {
                 posModule.init();
             }
-            const cartBar = document.getElementById('cartBar');
-            if (cartBar) cartBar.style.display = 'flex';
         } else if (kasirStatus.reason === 'new_day_same_user' || kasirStatus.reason === 'new_shift') {
             this.showOpenKasirModal();
         } else {
@@ -176,23 +186,19 @@ const app = {
         }
     },
 
-    // ✅ BARU: Load config dari cloud jika tersedia
+    // Load config dari cloud jika tersedia
     async loadCloudConfigIfAvailable() {
         console.log('[App] Checking for cloud config...');
         
-        // Cek apakah sudah ada config lokal
         const localProvider = localStorage.getItem('hifzi_provider') || 'local';
         
-        // Jika sudah setup cloud secara lokal, tidak perlu auto-load
         if (localProvider !== 'local') {
             console.log('[App] Local cloud config exists, skipping auto-load');
             this.isCloudConfigLoaded = true;
             return;
         }
         
-        // Coba load config dari cloud (tanpa blocking UI)
         try {
-            // Cek Firebase config terlebih dahulu (jika ada)
             const savedFBConfig = localStorage.getItem('hifzi_firebase_config');
             if (savedFBConfig) {
                 const fbConfig = JSON.parse(savedFBConfig);
@@ -201,13 +207,11 @@ const app = {
                     backupModule.firebaseConfig = fbConfig;
                     backupModule.initFirebase(true);
                     
-                    // Tunggu auth state
                     setTimeout(async () => {
                         if (backupModule.currentUser) {
                             const configUpdated = await backupModule.loadConfigFromCloud();
                             if (configUpdated) {
                                 this.showToast('✅ Konfigurasi cloud dimuat!');
-                                // Re-init dengan config baru
                                 location.reload();
                             }
                         }
@@ -215,7 +219,6 @@ const app = {
                 }
             }
             
-            // Cek GAS config
             const savedGASUrl = localStorage.getItem('hifzi_gas_url');
             const savedSheetId = localStorage.getItem('hifzi_sheet_id');
             if (savedGASUrl && savedSheetId) {
@@ -224,7 +227,6 @@ const app = {
                 return;
             }
             
-            // Jika tidak ada config sama sekali, user perlu setup manual di menu Cloud
             console.log('[App] No cloud config found, user needs to setup manually');
             
         } catch (err) {
@@ -235,6 +237,10 @@ const app = {
     },
 
     showOpenKasirModal() {
+        // Hapus modal lama jika ada
+        const existingModal = document.getElementById('openKasirModal');
+        if (existingModal) existingModal.remove();
+        
         const modalHTML = `
             <div class="modal active" id="openKasirModal" style="display: flex; z-index: 3500; align-items: flex-start; padding-top: 100px;">
                 <div class="modal-content" style="max-width: 350px; text-align: center;">
@@ -271,13 +277,15 @@ const app = {
             this.updateKasirStatus();
             this.showToast(result.message);
             
-            const defaultTab = document.querySelector('.nav-tab');
-            if (defaultTab) defaultTab.classList.add('active');
-            if (typeof posModule !== 'undefined') {
+            // PERBAIKAN: Gunakan router.navigate untuk konsistensi
+            const posTab = document.querySelector('.nav-tab[data-page="pos"]');
+            if (typeof router !== 'undefined') {
+                router.navigate('pos', posTab);
+            } else if (typeof posModule !== 'undefined') {
                 posModule.init();
+                const cartBar = document.getElementById('cartBar');
+                if (cartBar) cartBar.style.display = 'flex';
             }
-            const cartBar = document.getElementById('cartBar');
-            if (cartBar) cartBar.style.display = 'flex';
         }
     },
 
@@ -309,7 +317,7 @@ const app = {
         location.reload();
     },
 
-    // ✅ PERBAIKAN: Update header dengan TOTAL GLOBAL
+    // PERBAIKAN: Update header dengan TOTAL GLOBAL
     updateHeader() {
         if (!this.data) return;
         
@@ -528,6 +536,27 @@ const app = {
                 </div>
             </div>
         `;
+    },
+
+    // PERBAIKAN: Method untuk saveAllModalKasir dengan sync pendingModals
+    saveAllModalKasir(modalAwal, extraModal = 0) {
+        if (!this.currentUser) return;
+        
+        const result = dataManager.saveAllModalKasir(this.currentUser.userId, modalAwal, extraModal);
+        
+        if (result.success) {
+            this.showToast(result.message);
+            this.updateHeader();
+            
+            // PERBAIKAN: Sync ke cloud jika auto sync aktif
+            if (typeof backupModule !== 'undefined' && backupModule.isAutoSyncEnabled) {
+                setTimeout(() => backupModule.syncToCloud(true), 1000);
+            }
+        } else {
+            this.showToast('❌ ' + result.message);
+        }
+        
+        return result;
     },
 
     openSettings() {
