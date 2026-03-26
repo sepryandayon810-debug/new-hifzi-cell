@@ -6,1043 +6,325 @@
     <title>Hifzi Cell - Kasir Pintar</title>
     
     <!-- CSS Modules -->
-    <link rel="stylesheet" href="css/main.css">
-    <link rel="stylesheet" href="css/pos.css">
-    <link rel="stylesheet" href="css/products.css">
-    <link rel="stylesheet" href="css/cash.css">
-    <link rel="stylesheet" href="css/reports.css">
-    <link rel="stylesheet" href="css/transactions.css">
-    <link rel="stylesheet" href="css/receipt.css">
-    <link rel="stylesheet" href="css/debt.css">
-    <link rel="stylesheet" href="css/n8n.css">
-    <link rel="stylesheet" href="css/telegram.css">
-    <link rel="stylesheet" href="css/purchase.css">
-    
-    <!-- ==================== BLUETOOTH PRINTER STYLES ==================== -->
-    <style>
-        .bluetooth-control-panel {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 20px;
-            color: white;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .bluetooth-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-
-        .bluetooth-icon {
-            font-size: 32px;
-            width: 48px;
-            height: 48px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(10px);
-        }
-
-        .bluetooth-info {
-            flex: 1;
-        }
-
-        .bluetooth-title {
-            font-weight: 600;
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .bluetooth-status {
-            font-size: 12px;
-            margin-top: 2px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .bluetooth-status.connected {
-            color: #4ade80;
-        }
-
-        .bluetooth-status.disconnected {
-            color: #f87171;
-        }
-
-        .bluetooth-status.error {
-            color: #fbbf24;
-        }
-
-        .bluetooth-toggle-btn {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            backdrop-filter: blur(10px);
-        }
-
-        .bluetooth-toggle-btn:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-1px);
-        }
-
-        .bluetooth-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .bluetooth-print-btn {
-            flex: 2;
-            background: white;
-            color: #667eea;
-            border: none;
-            padding: 12px;
-            border-radius: 10px;
-            font-weight: 700;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .bluetooth-print-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-
-        .bluetooth-print-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .bluetooth-print-btn.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background: #e5e7eb;
-            color: #9ca3af;
-        }
-
-        .bluetooth-test-btn {
-            flex: 1;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 12px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .bluetooth-test-btn:hover {
-            background: rgba(255,255,255,0.2);
-        }
-
-        .bluetooth-settings {
-            margin-top: 12px;
-            padding: 12px;
-            background: rgba(0,0,0,0.2);
-            border-radius: 10px;
-            backdrop-filter: blur(10px);
-        }
-
-        .bluetooth-setting-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .bluetooth-setting-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .bluetooth-setting-item label {
-            font-size: 12px;
-            opacity: 0.9;
-        }
-
-        .bluetooth-setting-item select {
-            background: rgba(255,255,255,0.9);
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            color: #333;
-            min-width: 120px;
-        }
-
-        .bluetooth-settings-toggle {
-            width: 100%;
-            margin-top: 12px;
-            background: transparent;
-            border: 1px solid rgba(255,255,255,0.3);
-            color: rgba(255,255,255,0.8);
-            padding: 8px;
-            border-radius: 8px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .bluetooth-settings-toggle:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-        }
-
-        .bluetooth-fab {
-            position: fixed;
-            bottom: 80px;
-            right: 20px;
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s;
-        }
-
-        .bluetooth-fab:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
-        }
-
-        .bluetooth-fab.connected {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        }
-
-        .bluetooth-fab.disconnected {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        }
-
-        @keyframes printing {
-            0% { transform: translateY(0); }
-            50% { transform: translateY(-5px); }
-            100% { transform: translateY(0); }
-        }
-
-        .printing-animation {
-            animation: printing 0.5s ease-in-out infinite;
-        }
-
-        @media (max-width: 480px) {
-            .bluetooth-control-panel {
-                padding: 12px;
-            }
-            
-            .bluetooth-actions {
-                flex-direction: column;
-            }
-            
-            .bluetooth-print-btn,
-            .bluetooth-test-btn {
-                width: 100%;
-            }
-        }
-    </style>
-    
-    <!-- ==================== FIREBASE SDK ==================== -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <link rel="stylesheet" href="css/base/variables.css">
+    <link rel="stylesheet" href="css/base/reset.css">
+    <link rel="stylesheet" href="css/base/animations.css">
+    <link rel="stylesheet" href="css/components/buttons.css">
+    <link rel="stylesheet" href="css/components/cards.css">
+    <link rel="stylesheet" href="css/components/forms.css">
+    <link rel="stylesheet" href="css/components/tables.css">
+    <link rel="stylesheet" href="css/components/modals.css">
+    <link rel="stylesheet" href="css/components/sidebar.css">
+    <link rel="stylesheet" href="css/components/toast.css">
+    <link rel="stylesheet" href="css/components/cart-bar.css">
+    <link rel="stylesheet" href="css/layouts/main.css">
+    <link rel="stylesheet" href="css/layouts/login.css">
+    <link rel="stylesheet" href="css/layouts/responsive.css">
+    <link rel="stylesheet" href="css/modules/pos.css">
+    <link rel="stylesheet" href="css/modules/products.css">
+    <link rel="stylesheet" href="css/modules/cash.css">
+    <link rel="stylesheet" href="css/modules/reports.css">
+    <link rel="stylesheet" href="css/modules/transactions.css">
+    <link rel="stylesheet" href="css/modules/receipt.css">
+    <link rel="stylesheet" href="css/modules/debt.css">
+    <link rel="stylesheet" href="css/modules/purchase.css">
+    <link rel="stylesheet" href="css/modules/backup.css">
     
     <!-- External Libraries -->
-    <script src='https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js'></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    
-    <style>
-        .login-container {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
-        }
-        
-        .login-box {
-            background: white;
-            border-radius: 24px;
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            text-align: center;
-        }
-        
-        .login-logo {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-        
-        .login-title {
-            font-size: 24px;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .login-subtitle {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 30px;
-        }
-        
-        .login-form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        
-        .login-form-group label {
-            display: block;
-            font-weight: 600;
-            color: #555;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-        
-        .login-input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            font-size: 16px;
-            transition: all 0.3s;
-            box-sizing: border-box;
-        }
-        
-        .login-input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        
-        .login-btn {
-            width: 100%;
-            padding: 16px;
-            font-size: 16px;
-            font-weight: 600;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-            transition: all 0.3s;
-        }
-        
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
-        }
-        
-        .login-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .login-error {
-            color: #f44336;
-            font-size: 14px;
-            margin: 15px 0;
-            padding: 12px;
-            background: #ffebee;
-            border-radius: 8px;
-            display: none;
-            border-left: 4px solid #f44336;
-        }
-        
-        .login-error.show {
-            display: block;
-        }
-        
-        .user-info-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(255,255,255,0.2);
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 13px;
-            margin-right: 10px;
-        }
-        
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-        
-        .user-details {
-            text-align: left;
-        }
-        
-        .user-name {
-            font-weight: 600;
-            color: white;
-        }
-        
-        .user-role {
-            font-size: 11px;
-            opacity: 0.8;
-            color: white;
-        }
-        
-        .logout-btn {
-            background: rgba(255,255,255,0.3);
-            border: none;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 15px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .logout-btn:hover {
-            background: rgba(255,255,255,0.5);
-        }
-        
-        #appContainer {
-            display: none;
-        }
-        
-        #appContainer.active {
-            display: block;
-        }
-        
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.9);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-        
-        .loading-overlay.active {
-            display: flex;
-        }
-        
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .loading-text {
-            margin-top: 15px;
-            color: #666;
-        }
-        
-        .toast {
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%) translateY(100px);
-            background: #333;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 25px;
-            font-size: 14px;
-            z-index: 10000;
-            opacity: 0;
-            transition: all 0.3s;
-        }
-        
-        .toast.show {
-            transform: translateX(-50%) translateY(0);
-            opacity: 1;
-        }
-
-        .cash-card {
-            position: relative;
-        }
-        
-        .profit-highlight {
-            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
-            margin-left: auto;
-            min-width: 140px;
-        }
-
-        .profit-highlight .profit-icon {
-            font-size: 24px;
-        }
-
-        .profit-highlight .profit-label {
-            font-size: 11px;
-            opacity: 0.9;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
-        }
-
-        .profit-highlight .profit-value {
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        .kasir-toggle-btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 20px;
-            color: white;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-right: 10px;
-        }
-        
-        .kasir-toggle-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-
-        @media (max-width: 768px) {
-            .cash-detail {
-                flex-direction: column;
-                align-items: flex-start !important;
-            }
-            
-            .profit-highlight {
-                margin-left: 0;
-                margin-top: 10px;
-                width: 100%;
-                justify-content: center;
-            }
-            
-            .header-actions {
-                flex-wrap: wrap;
-            }
-        }
-
-        .modal {
-            align-items: flex-start !important;
-            padding-top: 60px !important;
-        }
-        
-        .modal-content {
-            max-height: 85vh !important;
-            overflow-y: auto !important;
-        }
-
-        .backup-container {
-            padding: 20px;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
-        .backup-status-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 24px;
-            border-radius: 16px;
-            margin-bottom: 24px;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .backup-status-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-
-        .backup-provider {
-            font-size: 28px;
-            font-weight: bold;
-        }
-
-        .backup-status-info {
-            font-size: 13px;
-            opacity: 0.9;
-            margin-top: 4px;
-        }
-
-        .backup-last-sync {
-            text-align: right;
-        }
-
-        .backup-last-sync-label {
-            font-size: 11px;
-            opacity: 0.8;
-        }
-
-        .backup-provider-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .backup-provider-btn {
-            padding: 24px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 16px;
-            background: white;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-align: center;
-        }
-
-        .backup-provider-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .backup-provider-btn.active {
-            border-color: #48bb78;
-            background: #f0fff4;
-        }
-
-        .backup-provider-icon {
-            font-size: 40px;
-            margin-bottom: 12px;
-        }
-
-        .backup-provider-name {
-            font-weight: 600;
-            font-size: 16px;
-            margin-bottom: 4px;
-        }
-
-        .backup-provider-desc {
-            font-size: 12px;
-            color: #718096;
-        }
-
-        .backup-section {
-            background: white;
-            padding: 24px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .backup-section-title {
-            font-weight: 600;
-            font-size: 18px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .backup-input-group {
-            margin-bottom: 16px;
-        }
-
-        .backup-input {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 14px;
-            transition: all 0.3s;
-            box-sizing: border-box;
-        }
-
-        .backup-input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .backup-btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .backup-btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .backup-btn-success {
-            background: #48bb78;
-            color: white;
-        }
-
-        .backup-btn-danger {
-            background: #e53e3e;
-            color: white;
-        }
-
-        .backup-btn-warning {
-            background: #ed8936;
-            color: white;
-        }
-
-        .backup-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-
-        .backup-btn-block {
-            width: 100%;
-            justify-content: center;
-        }
-
-        .backup-toggle {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            background: #f7fafc;
-            border-radius: 12px;
-            margin-bottom: 16px;
-        }
-
-        .backup-toggle-switch {
-            width: 52px;
-            height: 28px;
-            background: #cbd5e0;
-            border-radius: 14px;
-            cursor: pointer;
-            position: relative;
-            transition: all 0.3s;
-        }
-
-        .backup-toggle-switch.active {
-            background: #48bb78;
-        }
-
-        .backup-toggle-knob {
-            width: 24px;
-            height: 24px;
-            background: white;
-            border-radius: 50%;
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            transition: all 0.3s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .backup-toggle-switch.active .backup-toggle-knob {
-            left: 26px;
-        }
-
-        .backup-grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .backup-file-drop {
-            border: 2px dashed #cbd5e0;
-            border-radius: 12px;
-            padding: 32px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .backup-file-drop:hover {
-            border-color: #667eea;
-            background: #f7fafc;
-        }
-
-        .backup-danger-zone {
-            background: #fff5f5;
-            border: 1px solid #feb2b2;
-            padding: 24px;
-            border-radius: 16px;
-        }
-
-        .backup-danger-title {
-            color: #c53030;
-            font-weight: 600;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .backup-sync-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        @media (max-width: 768px) {
-            .backup-provider-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .backup-grid-2 {
-                grid-template-columns: 1fr;
-            }
-            
-            .backup-sync-actions {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .backup-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .backup-stat-card {
-            background: #f7fafc;
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-        }
-
-        .backup-stat-icon {
-            font-size: 28px;
-            margin-bottom: 8px;
-        }
-
-        .backup-stat-label {
-            font-size: 12px;
-            color: #718096;
-            margin-bottom: 4px;
-        }
-
-        .backup-stat-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #2d3748;
-        }
-    </style>
+    <script src="https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
 </head>
 <body>
-    <!-- LOGIN CONTAINER -->
-    <div id="loginContainer" class="login-container">
-        <div class="login-box">
-            <div class="login-logo">🏪</div>
-            <div class="login-title" id="loginStoreName">Hifzi Cell</div>
-            <div class="login-subtitle">Sistem Kasir Pintar</div>
-            
-            <div id="loginFormContainer">
-                <div class="login-form-group">
-                    <label>👤 Username</label>
-                    <input type="text" id="loginUsername" class="login-input" placeholder="Masukkan username" autocomplete="username">
+    <!-- ==================== LOGIN PAGE ==================== -->
+    <div id="loginPage" class="login-page">
+        <div class="login-container">
+            <div class="login-box">
+                <div class="login-logo">
+                    <div class="logo-icon">🏪</div>
+                    <h1 id="loginStoreName">Hifzi Cell</h1>
+                    <p>Sistem Kasir Pintar</p>
                 </div>
                 
-                <div class="login-form-group">
-                    <label>🔒 Password</label>
-                    <input type="password" id="loginPassword" class="login-input" placeholder="Masukkan password" autocomplete="current-password">
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="loginUsername">👤 Username</label>
+                        <input 
+                            type="text" 
+                            id="loginUsername" 
+                            class="form-input"
+                            placeholder="Masukkan username"
+                            autocomplete="username"
+                            required
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="loginPassword">🔒 Password</label>
+                        <input 
+                            type="password" 
+                            id="loginPassword" 
+                            class="form-input"
+                            placeholder="Masukkan password"
+                            autocomplete="current-password"
+                            required
+                        >
+                    </div>
+                    
+                    <div id="loginError" class="login-error"></div>
+                    
+                    <button type="submit" id="loginBtn" class="btn btn-primary btn-block">
+                        🔓 Login
+                    </button>
+                </form>
+                
+                <div class="login-footer">
+                    <p>Default Login:</p>
+                    <small>owner / owner123 | admin / admin123 | kasir1 / kasir123</small>
                 </div>
-                
-                <div id="loginError" class="login-error"></div>
-                
-                <button type="button" id="loginBtn" class="login-btn">🔓 Login</button>
             </div>
         </div>
     </div>
 
-    <!-- MAIN APP CONTAINER -->
-    <div id="appContainer">
+    <!-- ==================== MAIN APP ==================== -->
+    <div id="appPage" class="app-page" style="display: none;">
+        
         <!-- Loading Overlay -->
-        <div class="loading-overlay" id="loadingOverlay">
+        <div id="loadingOverlay" class="loading-overlay">
             <div class="loading-spinner"></div>
             <div class="loading-text">Memuat...</div>
         </div>
 
-        <!-- Header -->
-        <div class="header">
-            <div class="header-top">
-                <div>
-                    <h1 id="headerStoreName">HIFZI CELL</h1>
-                    <div id="headerStoreAddress">Alamat Toko</div>
-                    
-                    <div id="kasirStatusIndicator" class="kasir-indicator closed" style="margin-top: 8px;">
-                        <span id="kasirStatusDot" class="kasir-dot"></span>
-                        <span id="kasirStatusText">🔒 Kasir Tutup</span>
-                    </div>
-                </div>
-                <div class="header-actions" style="display: flex; align-items: center;">
-                    <button id="kasirToggleBtn" class="kasir-toggle-btn" style="background: #2ed573;">
-                        🔓 Buka Kasir
-                    </button>
-                    
-                    <div class="user-info-header" id="userInfoHeader" style="display: none;">
-                        <div class="user-avatar">👤</div>
-                        <div class="user-details">
-                            <div class="user-name" id="headerUserName">User</div>
-                            <div class="user-role" id="headerUserRole">Kasir</div>
-                        </div>
-                        <button class="logout-btn" onclick="app.logout()">Logout</button>
-                    </div>
-                    
-                    <div class="sync-status" id="syncStatus" onclick="if(typeof backupModule !== 'undefined') backupModule.manualSync()">
-                        <span>☁️</span>
-                        <span id="syncText">Ready</span>
-                    </div>
-                    <button class="icon-btn" onclick="app.openSettings()" title="Pengaturan" style="cursor: pointer;">
-                        ⚙️
-                    </button>
-                </div>
+        <!-- Mobile Header -->
+        <header class="mobile-header">
+            <button id="menuToggle" class="menu-toggle" title="Menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <div class="mobile-brand">
+                <span>🏪</span>
+                <span id="mobileStoreName">Hifzi Cell</span>
             </div>
-            
-            <!-- CASH CARD -->
-            <div class="cash-card">
-                <div class="cash-label">Kas di Tangan</div>
-                <div class="cash-amount" id="currentCash">Rp 0</div>
+            <div class="mobile-actions">
+                <button id="syncStatus" class="sync-btn" title="Sync">
+                    <span>☁️</span>
+                    <span id="syncText">Ready</span>
+                </button>
+                <button id="userMenuBtn" class="btn-icon" title="User">👤</button>
+            </div>
+        </header>
+
+        <!-- Sidebar Navigation -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <span class="brand-icon">🏪</span>
+                    <div class="brand-text">
+                        <h2 id="sidebarStoreName">HIFZI CELL</h2>
+                        <small id="sidebarStoreAddress">Alamat Toko</small>
+                    </div>
+                </div>
+                <button id="sidebarClose" class="sidebar-close">✕</button>
+            </div>
+
+            <!-- Kasir Status Indicator -->
+            <div class="kasir-status-sidebar" id="kasirStatusSidebar">
+                <div class="kasir-indicator closed" id="kasirIndicator">
+                    <span class="kasir-dot"></span>
+                    <span id="kasirStatusText">🔒 Kasir Tutup</span>
+                </div>
+                <button id="kasirToggleBtn" class="btn btn-success btn-sm btn-block">
+                    🔓 Buka Kasir
+                </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <span class="nav-label">Menu Utama</span>
+                    <a href="#dashboard" class="nav-link active" data-module="dashboard">
+                        <span class="nav-icon">📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="#pos" class="nav-link" data-module="pos">
+                        <span class="nav-icon">🛒</span>
+                        <span>Kasir (POS)</span>
+                        <span id="cartBadge" class="badge" style="display: none;">0</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <span class="nav-label">Data Master</span>
+                    <a href="#products" class="nav-link" data-module="products">
+                        <span class="nav-icon">📦</span>
+                        <span>Produk</span>
+                    </a>
+                    <a href="#categories" class="nav-link" data-module="categories">
+                        <span class="nav-icon">🏷️</span>
+                        <span>Kategori</span>
+                    </a>
+                    <a href="#suppliers" class="nav-link" data-module="suppliers">
+                        <span class="nav-icon">🚚</span>
+                        <span>Supplier</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <span class="nav-label">Transaksi</span>
+                    <a href="#transactions" class="nav-link" data-module="transactions">
+                        <span class="nav-icon">📝</span>
+                        <span>Riwayat Transaksi</span>
+                    </a>
+                    <a href="#cash" class="nav-link" data-module="cash">
+                        <span class="nav-icon">💰</span>
+                        <span>Kas & Shift</span>
+                    </a>
+                    <a href="#debts" class="nav-link" data-module="debts">
+                        <span class="nav-icon">💳</span>
+                        <span>Hutang/Piutang</span>
+                    </a>
+                    <a href="#purchases" class="nav-link" data-module="purchases">
+                        <span class="nav-icon">🛍️</span>
+                        <span>Pembelian</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <span class="nav-label">Laporan & Tools</span>
+                    <a href="#reports" class="nav-link" data-module="reports">
+                        <span class="nav-icon">📈</span>
+                        <span>Laporan</span>
+                    </a>
+                    <a href="#receipt" class="nav-link" data-module="receipt">
+                        <span class="nav-icon">🧾</span>
+                        <span>Struk & Printer</span>
+                    </a>
+                    <a href="#backup" class="nav-link" data-module="backup">
+                        <span class="nav-icon">💾</span>
+                        <span>Backup & Sync</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <span class="nav-label">Sistem</span>
+                    <a href="#users" class="nav-link" data-module="users">
+                        <span class="nav-icon">👥</span>
+                        <span>Pengguna</span>
+                    </a>
+                    <a href="#settings" class="nav-link" data-module="settings">
+                        <span class="nav-icon">⚙️</span>
+                        <span>Pengaturan</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info" id="userInfoSidebar">
+                    <div class="user-avatar" id="userAvatar">👤</div>
+                    <div class="user-details">
+                        <span id="userName" class="user-name">-</span>
+                        <span id="userRole" class="user-role">-</span>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="btn btn-outline btn-sm btn-block">
+                    🚪 Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Overlay untuk mobile -->
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header Info -->
+            <header class="content-header">
+                <div class="header-top">
+                    <div class="header-title">
+                        <h1 id="pageTitle">Dashboard</h1>
+                        <p id="currentDate">-</p>
+                        
+                        <!-- Kasir Status di Header -->
+                        <div id="kasirStatusHeader" class="kasir-indicator closed">
+                            <span id="kasirStatusDot" class="kasir-dot"></span>
+                            <span id="kasirStatusHeaderText">🔒 Kasir Tutup</span>
+                        </div>
+                    </div>
+                    
+                    <div class="header-actions">
+                        <button id="headerKasirToggle" class="kasir-toggle-btn" style="display: none;">
+                            🔓 Buka Kasir
+                        </button>
+                        
+                        <div class="user-info-header" id="userInfoHeader" style="display: none;">
+                            <div class="user-avatar">👤</div>
+                            <div class="user-details">
+                                <div class="user-name" id="headerUserName">User</div>
+                                <div class="user-role" id="headerUserRole">Kasir</div>
+                            </div>
+                            <button class="btn btn-sm btn-outline" onclick="app.logout()">Logout</button>
+                        </div>
+                        
+                        <button class="btn-icon" onclick="app.openSettings()" title="Pengaturan">⚙️</button>
+                    </div>
+                </div>
                 
-                <div class="cash-detail" style="display: flex; align-items: center; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
-                    <div class="cash-detail-item">
-                        <span>💰</span>
-                        <span>Modal: <b id="modalAwal">Rp 0</b></span>
-                    </div>
-                    <div class="cash-detail-item">
-                        <span>📊</span>
-                        <span>Total Transaksi: <b id="headerTransactionCount">0</b></span>
-                    </div>
-                    <div class="cash-detail-item">
-                        <span>📝</span>
-                        <span>Shift: <b id="shiftStatus">Tutup</b></span>
-                    </div>
+                <!-- Cash Card -->
+                <div class="cash-card" id="cashCard">
+                    <div class="cash-label">Kas di Tangan</div>
+                    <div class="cash-amount" id="currentCash">Rp 0</div>
                     
-                    <div class="profit-highlight" id="profitContainer">
-                        <div class="profit-icon">📈</div>
-                        <div>
-                            <div class="profit-label">Laba</div>
-                            <div class="profit-value" id="headerProfit">Rp 0</div>
+                    <div class="cash-detail">
+                        <div class="cash-detail-item">
+                            <span>💰</span>
+                            <span>Modal: <b id="modalAwal">Rp 0</b></span>
+                        </div>
+                        <div class="cash-detail-item">
+                            <span>📊</span>
+                            <span>Total Transaksi: <b id="headerTransactionCount">0</b></span>
+                        </div>
+                        <div class="cash-detail-item">
+                            <span>📝</span>
+                            <span>Shift: <b id="shiftStatus">Tutup</b></span>
+                        </div>
+                        
+                        <div class="profit-highlight" id="profitContainer">
+                            <div class="profit-icon">📈</div>
+                            <div>
+                                <div class="profit-label">Laba</div>
+                                <div class="profit-value" id="headerProfit">Rp 0</div>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </header>
+
+            <!-- Dynamic Module Content -->
+            <div id="moduleContent" class="module-content">
+                <!-- Content akan di-render oleh module -->
             </div>
-        </div>
+        </main>
 
-        <!-- Navigation -->
-        <div class="nav-tabs" id="navTabs">
-            <!-- Navigation akan di-render oleh router.renderNavigation() -->
-        </div>
-
-        <!-- Content Container -->
-        <div id="mainContent"></div>
-
-        <!-- Cart Bar -->
+        <!-- Cart Bar (untuk POS) -->
         <div class="cart-bar" id="cartBar" style="display: none;">
             <div class="cart-info">
                 <div class="cart-label">Total Belanja (<span id="cartItemCount">0 item</span>)</div>
                 <div class="cart-total" id="cartTotal">Rp 0</div>
             </div>
-            <button class="btn-checkout" onclick="if(typeof posModule !== 'undefined') posModule.openCheckout()" id="checkoutBtn">
+            <button class="btn btn-primary btn-checkout" id="checkoutBtn">
                 Bayar →
             </button>
         </div>
 
-        <!-- Toast -->
-        <div class="toast" id="toast"></div>
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
+        
+        <!-- Modal Container -->
+        <div id="modalContainer" class="modal-container" style="display: none;">
+            <!-- Modals akan di-render di sini -->
+        </div>
     </div>
 
     <!-- ==================== SCRIPTS ==================== -->
-    <!-- PERBAIKAN URUTAN: Load dari yang paling dasar ke yang paling tinggi -->
-    
-    <!-- 1. Utils & Data (Paling Dasar) -->
-    <script src="js/utils.js"></script>
-    <script src="js/data.js"></script>
-    
-    <!-- 2. Feature Modules (Independen) -->
-    <script src="js/pos.js"></script>
-    <script src="js/products.js"></script>
-    <script src="js/cash.js"></script>
-    <script src="js/reports.js"></script>
-    <script src="js/transactions.js"></script>
-    <script src="js/receipt.js"></script>
-    <script src="js/debt.js"></script>
-    <script src="js/users.js"></script>
-    
-    <!-- ============================================
-         TAMBAHAN BARU: Purchase Module
-         ============================================ -->
-    <script src="js/purchase.js"></script>
-    
-    <!-- 3. Backup Module (Untuk Cloud) -->
-    <script src="js/backup.js"></script>
-    
-    <!-- 4. Telegram Module -->
-    <script src="js/telegram.js"></script>
-
-    <!-- 5. N8N Integration Module (Pencarian Data) -->
-    <script src="js/n8n.js"></script>
-    
-    <!-- 6. BLUETOOTH PRINTER MODULE (TAMBAHAN BARU) -->
-    <script src="js/bluetooth.js"></script>
-    
-    <!-- 7. Router System (Bergantung pada modules di atas) -->
-    <script src="js/router.js"></script>
-    
-    <!-- ============================================
-         8. DARK MODE MODULE (TAMBAHAN BARU)
-         HARUS SEBELUM APP.JS
-         ============================================ -->
-    <script src="js/darkmode.js"></script>
-    
-    <!-- 9. App Core (Paling Akhir, bergantung pada semua di atas) -->
-    <script src="js/app.js"></script>
-    
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>
