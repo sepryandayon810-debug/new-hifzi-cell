@@ -1,6 +1,7 @@
 /**
  * Router System - Hifzi Cell POS
  * FIXED: Cloud menu rendering, Container detection, Module initialization
+ * TAMBAHAN: Purchase Module
  */
 
 const router = {
@@ -9,14 +10,15 @@ const router = {
     requiresKasirOpen: [],
 
     menuAccess: {
-        'owner': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
-        'admin': ['pos', 'products', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
+        'owner': ['pos', 'products', 'purchase', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
+        'admin': ['pos', 'products', 'purchase', 'cash', 'reports', 'transactions', 'receipt', 'debt', 'users', 'telegram', 'cloud', 'pencarian'],
         'kasir': ['pos', 'products', 'cash', 'transactions', 'pencarian']
     },
 
     menuLabels: {
         'pos': 'Kasir',
         'products': 'Produk',
+        'purchase': 'Pembelian',
         'cash': 'Kas',
         'reports': 'Laporan',
         'transactions': 'Transaksi',
@@ -33,6 +35,7 @@ const router = {
         const modules = {
             'pos': typeof posModule !== 'undefined',
             'products': typeof productsModule !== 'undefined',
+            'purchase': typeof purchaseModule !== 'undefined',
             'cash': typeof cashModule !== 'undefined',
             'reports': typeof reportsModule !== 'undefined',
             'transactions': typeof transactionsModule !== 'undefined',
@@ -142,6 +145,15 @@ const router = {
                 case 'products':
                     if (typeof productsModule !== 'undefined' && productsModule.init) {
                         productsModule.init();
+                        initSuccess = true;
+                    }
+                    break;
+                // ============================================
+                // TAMBAHAN BARU: Purchase Module
+                // ============================================
+                case 'purchase':
+                    if (typeof purchaseModule !== 'undefined' && purchaseModule.init) {
+                        purchaseModule.init();
                         initSuccess = true;
                     }
                     break;
@@ -362,7 +374,8 @@ const router = {
             'cloud': 'Pastikan file backup.js sudah di-load di index.html',
             'backup': 'Pastikan file backup.js sudah di-load di index.html',
             'pencarian': 'Pastikan file n8n.js ada di folder js/',
-            'users': 'Pastikan file users.js sudah di-load di index.html'
+            'users': 'Pastikan file users.js sudah di-load di index.html',
+            'purchase': 'Pastikan file purchase.js sudah di-load di index.html'
         };
 
         const modalHTML = `
@@ -416,6 +429,7 @@ const router = {
         const menuIcons = {
             'pos': '🛒',
             'products': '📦',
+            'purchase': '📥',
             'cash': '💰',
             'reports': '📊',
             'transactions': '📋',
@@ -467,4 +481,4 @@ if (typeof window !== 'undefined') {
     window.router = router;
 }
 
-console.log('[Router] Router system loaded v2.4 - Users Fix Edition');
+console.log('[Router] Router system loaded v2.5 - Purchase Module Edition');
