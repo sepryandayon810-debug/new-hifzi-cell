@@ -563,53 +563,173 @@ const app = {
         const existingModal = document.getElementById('settingsModal');
         if (existingModal) existingModal.remove();
 
+        // Check if dark mode module is available
+        const hasDarkMode = typeof darkModeModule !== 'undefined';
+        const isDark = hasDarkMode ? darkModeModule.isDark : false;
+
+        // Generate Dark Mode section if available
+        let darkModeSection = '';
+        if (hasDarkMode) {
+            const icon = isDark ? '🌙' : '☀️';
+            const title = isDark ? 'Mode Gelap' : 'Mode Terang';
+            const description = isDark ? 'Lebih nyaman di malam hari' : 'Tampilan default terang';
+            const toggleBg = isDark ? '#6366f1' : '#d1d5db';
+            const knobLeft = isDark ? '26px' : '2px';
+            const cardBg = isDark ? '#374151' : '#f3f4f6';
+            const cardBorder = isDark ? '#4b5563' : '#e5e7eb';
+            const tipsBg = isDark ? 'rgba(99, 102, 241, 0.1)' : '#eff6ff';
+
+            darkModeSection = `
+                <div class="settings-section darkmode-settings" style="margin-bottom: 20px;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--dark);">
+                        🎨 Tampilan
+                    </h3>
+                    
+                    <div class="theme-toggle-card" onclick="darkModeModule.toggle()" style="
+                        background: ${cardBg};
+                        border-radius: 16px;
+                        padding: 20px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        border: 2px solid ${cardBorder};
+                        user-select: none;
+                    ">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="
+                                width: 48px;
+                                height: 48px;
+                                border-radius: 12px;
+                                background: ${isDark ? 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)' : 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)'};
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 24px;
+                                transition: all 0.3s;
+                            ">
+                                ${icon}
+                            </div>
+                            <div>
+                                <div style="font-weight: 600; font-size: 16px; color: var(--dark);">
+                                    ${title}
+                                </div>
+                                <div style="font-size: 13px; opacity: 0.7; margin-top: 2px; color: var(--dark);">
+                                    ${description}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="toggle-switch" style="
+                            width: 52px;
+                            height: 28px;
+                            background: ${toggleBg};
+                            border-radius: 14px;
+                            position: relative;
+                            transition: all 0.3s;
+                            flex-shrink: 0;
+                        ">
+                            <div style="
+                                width: 24px;
+                                height: 24px;
+                                background: white;
+                                border-radius: 50%;
+                                position: absolute;
+                                top: 2px;
+                                left: ${knobLeft};
+                                transition: all 0.3s;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                            "></div>
+                        </div>
+                    </div>
+                    
+                    <div style="
+                        margin-top: 12px;
+                        padding: 12px;
+                        background: ${tipsBg};
+                        border-radius: 10px;
+                        border-left: 3px solid var(--primary);
+                    ">
+                        <div style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 4px;">
+                            💡 Tips
+                        </div>
+                        <div style="font-size: 12px; opacity: 0.8; line-height: 1.5; color: var(--dark);">
+                            Mode gelap mengurangi kelelahan mata dan menghemat baterai pada layar OLED.
+                        </div>
+                    </div>
+                    
+                    ${localStorage.getItem('hifzi_darkmode') !== null ? `
+                    <div style="margin-top: 10px; text-align: center;">
+                        <button onclick="event.stopPropagation(); darkModeModule.reset(); app.closeSettings(); setTimeout(() => app.openSettings(), 100);" 
+                                style="font-size: 12px; color: var(--primary); background: none; border: none; cursor: pointer; text-decoration: underline;">
+                            Reset ke default sistem
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid ${isDark ? '#374151' : '#eee'}; margin: 15px 0;">
+            `;
+        }
+
+        const borderColor = isDark ? '#374151' : '#eee';
+        const inputBorder = isDark ? '#4b5563' : '#e0e0e0';
+        const dangerBg = isDark ? 'rgba(248, 113, 113, 0.1)' : '#ffebee';
+        const dangerBorder = isDark ? 'rgba(248, 113, 113, 0.3)' : '#ef5350';
+        const exportBg = isDark ? 'rgba(96, 165, 250, 0.1)' : '#e3f2fd';
+        const exportBorder = isDark ? 'rgba(96, 165, 250, 0.3)' : '#42a5f5';
+        const cancelBg = isDark ? '#374151' : '#f5f5f5';
+
         const modalHTML = `
             <div class="modal active" id="settingsModal" style="display: flex; z-index: 4000; align-items: flex-start; padding-top: 80px;">
                 <div class="modal-content" style="max-width: 380px; width: 90%; max-height: 80vh; overflow-y: auto; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
-                    <div class="modal-header" style="padding: 15px 20px; border-bottom: 1px solid #eee;">
-                        <span class="modal-title" style="font-size: 16px; font-weight: 600;">⚙️ Pengaturan Toko</span>
-                        <button onclick="app.closeSettings()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
+                    <div class="modal-header" style="padding: 15px 20px; border-bottom: 1px solid ${borderColor};">
+                        <span class="modal-title" style="font-size: 16px; font-weight: 600; color: var(--dark);">⚙️ Pengaturan Toko</span>
+                        <button onclick="app.closeSettings()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--dark); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">×</button>
                     </div>
                     
                     <div style="padding: 20px;">
+                        ${darkModeSection}
+                        
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Nama Toko</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: var(--dark);">Nama Toko</label>
                             <input type="text" id="settingStoreName" 
                                    value="${this.data.settings.storeName || 'Hifzi Cell'}" 
-                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid ${inputBorder}; border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--white); color: var(--dark);">
                         </div>
                         
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Alamat Toko</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: var(--dark);">Alamat Toko</label>
                             <textarea id="settingStoreAddress" 
-                                      style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; min-height: 50px; resize: vertical; font-size: 14px; box-sizing: border-box; font-family: inherit;">${this.data.settings.address || ''}</textarea>
+                                      style="width: 100%; padding: 10px 12px; border: 2px solid ${inputBorder}; border-radius: 8px; min-height: 50px; resize: vertical; font-size: 14px; box-sizing: border-box; font-family: inherit; background: var(--white); color: var(--dark);">${this.data.settings.address || ''}</textarea>
                         </div>
                         
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Nomor Telepon</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: var(--dark);">Nomor Telepon</label>
                             <input type="text" id="settingStorePhone" 
                                    value="${this.data.settings.phone || ''}" 
-                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid ${inputBorder}; border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--white); color: var(--dark);">
                         </div>
 
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #555;">Pajak Default (%)</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: var(--dark);">Pajak Default (%)</label>
                             <input type="number" id="settingTax" 
                                    value="${this.data.settings.tax || 0}" 
-                                   style="width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                                   style="width: 100%; padding: 10px 12px; border: 2px solid ${inputBorder}; border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--white); color: var(--dark);">
                         </div>
                         
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
+                        <hr style="border: none; border-top: 1px solid ${borderColor}; margin: 15px 0;">
                         
                         <div style="margin-bottom: 10px;">
-                            <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #d32f2f; font-size: 13px;">⚠️ Zona Berbahaya</label>
+                            <label style="display: block; font-weight: 600; margin-bottom: 10px; color: var(--danger); font-size: 13px;">⚠️ Zona Berbahaya</label>
                             <div style="display: grid; gap: 8px;">
                                 <button onclick="app.confirmResetData()" 
-                                        style="padding: 10px; background: #ffebee; color: #c62828; border: 1px solid #ef5350; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                                        style="padding: 10px; background: ${dangerBg}; color: #f87171; border: 1px solid ${dangerBorder}; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
                                     🗑️ Reset Semua Data
                                 </button>
                                 <button onclick="app.exportData()" 
-                                        style="padding: 10px; background: #e3f2fd; color: #1565c0; border: 1px solid #42a5f5; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                                        style="padding: 10px; background: ${exportBg}; color: #60a5fa; border: 1px solid ${exportBorder}; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500;">
                                     💾 Export Data (JSON)
                                 </button>
                             </div>
@@ -618,9 +738,9 @@ const app = {
                     
                     <div style="display: flex; gap: 10px; justify-content: flex-end; padding: 0 20px 20px;">
                         <button onclick="app.closeSettings()" 
-                                style="padding: 10px 20px; background: #f5f5f5; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: #666;">Batal</button>
+                                style="padding: 10px 20px; background: ${cancelBg}; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--dark);">Batal</button>
                         <button onclick="app.saveSettings()" 
-                                style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">Simpan Perubahan</button>
+                                style="padding: 10px 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">Simpan Perubahan</button>
                     </div>
                 </div>
             </div>
