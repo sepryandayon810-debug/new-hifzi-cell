@@ -1,5 +1,5 @@
 // ============================================
-// APP.JS - HIFZI CELL (v2.6) - Fixed Kasir Lock - Check Active Shift Properly
+// APP.JS - HIFZI CELL (v2.7) - Fixed Kasir Lock + Auto Logout (30 min)
 // ============================================
 
 const app = {
@@ -8,7 +8,7 @@ const app = {
     isCloudConfigLoaded: false,
 
     init() {
-        console.log('[App] Initializing v2.6...');
+        console.log('[App] Initializing v2.7...');
         
         // Init dataManager
         if (typeof dataManager !== 'undefined') {
@@ -156,14 +156,17 @@ const app = {
         this.updateHeader();
         this.updateKasirStatus();
         
+        // ==========================================
+        // TAMBAHAN BARU: Start idle timer (30 menit)
+        // ==========================================
+        this.startIdleTimer();
+        
         // Load cloud config
         if (!this.isCloudConfigLoaded && typeof backupModule !== 'undefined') {
             await this.loadCloudConfigIfAvailable();
         }
         
-        // ==========================================
-        // PERBAIKAN BARU: Cek kasir status dengan cara yang benar
-        // ==========================================
+        // Cek kasir status dengan cara yang benar
         const kasirStatus = dataManager.checkKasirStatusForUser(this.currentUser.userId);
         const userShift = dataManager.getUserShift(this.currentUser.userId);
         const hasActiveShift = !!userShift;
@@ -195,11 +198,168 @@ const app = {
             console.log('[App] Kasir needs to be opened - showing open modal');
             this.showOpenKasirModal();
         } 
-        // Kasir tutup dan tidak bisa buka
+        // Kasir tutup
         else {
             console.log('[App] Kasir is CLOSED - blocking all navigation');
             this.showKasirClosedPage();
         }
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Start Idle Timer (Auto Logout 30 menit)
+    // ==========================================
+    startIdleTimer() {
+        if (typeof utils !== 'undefined' && utils.idleTimer) {
+            utils.idleTimer.init(
+                // onIdle - Logout setelah 30 menit tidak aktif
+                () => {
+                    this.showIdleLogoutModal();
+                },
+                // onWarning - Warning 5 menit sebelum logout
+                () => {
+                    this.showIdleWarningModal();
+                },
+                30 // 30 menit timeout
+            );
+        }
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Stop Idle Timer (saat logout)
+    // ==========================================
+    stopIdleTimer() {
+        if (typeof utils !== 'undefined' && utils.idleTimer) {
+            utils.idleTimer.stop();
+        }
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Modal Warning Idle (5 menit sebelum logout)
+    // ==========================================
+    showIdleWarningModal() {
+        const existingModal = document.getElementById('idleWarningModal');
+        if (existingModal) existingModal.remove();
+        
+        const modalHTML = `
+            <div class="modal active" id="idleWarningModal" style="display: flex; z-index: 5000; align-items: flex-start; padding-top: 100px;">
+                <div class="modal-content" style="max-width: 380px; text-align: center; border: 2px solid #ff9800;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">⏰</div>
+                    <div class="modal-header" style="justify-content: center;">
+                        <span class="modal-title" style="font-size: 16px; color: #ff9800;">Peringatan Tidak Aktif</span>
+                    </div>
+                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
+                        Anda tidak aktif selama <b>25 menit</b>.<br>
+                        Sistem akan <b>logout otomatis</b> dalam <b>5 menit</b> jika tidak ada aktivitas.
+                    </p>
+                    <div style="background: #fff3e0; border: 1px solid #ffcc80; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                        <div style="font-size: 13px; color: #e65100;">
+                            💡 Klik tombol di bawah atau lakukan aktivitas apapun untuk memperpanjang sesi.
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.extendSession()" style="background: #ff9800; width: 100%;">
+                        ✋ Saya Masih Aktif - Lanjutkan Sesi
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Extend Session (reset timer)
+    // ==========================================
+    extendSession() {
+        const modal = document.getElementById('idleWarningModal');
+        if (modal) modal.remove();
+        
+        if (typeof utils !== 'undefined' && utils.idleTimer) {
+            utils.idleTimer.reset();
+        }
+        
+        this.showToast('✅ Sesi diperpanjang. Selamat bekerja!');
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Modal Logout Karena Idle
+    // ==========================================
+    showIdleLogoutModal() {
+        // Hapus modal warning jika ada
+        const warningModal = document.getElementById('idleWarningModal');
+        if (warningModal) warningModal.remove();
+        
+        const existingModal = document.getElementById('idleLogoutModal');
+        if (existingModal) existingModal.remove();
+        
+        const modalHTML = `
+            <div class="modal active" id="idleLogoutModal" style="display: flex; z-index: 5000; align-items: flex-start; padding-top: 100px;">
+                <div class="modal-content" style="max-width: 380px; text-align: center; border: 2px solid #f44336;">
+                    <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
+                    <div class="modal-header" style="justify-content: center;">
+                        <span class="modal-title" style="font-size: 18px; color: #f44336;">Sesi Berakhir</span>
+                    </div>
+                    <p style="color: #666; margin: 15px 0; line-height: 1.6; font-size: 14px;">
+                        Anda tidak aktif selama <b>30 menit</b>.<br>
+                        Sistem telah <b>logout otomatis</b> untuk keamanan data.
+                    </p>
+                    <div style="background: #ffebee; border: 1px solid #ef9a9a; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                        <div style="font-size: 13px; color: #c62828;">
+                            📝 Semua transaksi tersimpan dengan aman.<br>
+                            Silakan login kembali untuk melanjutkan.
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.confirmIdleLogout()" style="background: #f44336; width: 100%;">
+                        🔓 Login Kembali
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Auto logout setelah modal muncul
+        setTimeout(() => {
+            this.performIdleLogout();
+        }, 3000);
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Perform Idle Logout
+    // ==========================================
+    performIdleLogout() {
+        console.log('[App] Performing idle logout...');
+        
+        // Stop idle timer
+        this.stopIdleTimer();
+        
+        // Tutup kasir jika masih buka
+        if (this.currentUser) {
+            const userShift = dataManager.getUserShift(this.currentUser.userId);
+            if (userShift) {
+                // Tutup kasir otomatis
+                dataManager.closeKasir(this.currentUser.userId);
+                console.log('[App] Kasir auto-closed due to idle timeout');
+            }
+        }
+        
+        // Logout
+        if (typeof dataManager !== 'undefined') {
+            dataManager.logout();
+        }
+        
+        localStorage.removeItem('hifzi_current_user');
+        this.currentUser = null;
+        
+        // Reload halaman
+        location.reload();
+    },
+
+    // ==========================================
+    // TAMBAHAN BARU: Confirm Idle Logout (tombol login kembali)
+    // ==========================================
+    confirmIdleLogout() {
+        const modal = document.getElementById('idleLogoutModal');
+        if (modal) modal.remove();
+        
+        this.performIdleLogout();
     },
 
     async loadCloudConfigIfAvailable() {
@@ -319,6 +479,9 @@ const app = {
     },
 
     logout() {
+        // Stop idle timer saat logout manual
+        this.stopIdleTimer();
+        
         if (typeof dataManager !== 'undefined') {
             dataManager.logout();
         }
@@ -495,9 +658,6 @@ const app = {
         this.updateKasirButton();
     },
 
-    // ==========================================
-    // TAMBAHAN: Halaman Kasir Tutup yang memblokir semua akses menu
-    // ==========================================
     showKasirClosedPage() {
         const container = document.getElementById('mainContent');
         if (!container) return;
@@ -505,7 +665,6 @@ const app = {
         const activeShifts = dataManager.getActiveShifts();
         const otherUsersActive = activeShifts.filter(s => s.userId !== this.currentUser.userId);
 
-        // Render halaman kasir tutup
         container.innerHTML = `
             <div class="content-section active" style="text-align: center; padding: 40px 20px;">
                 <div style="font-size: 64px; margin-bottom: 15px;">🔒</div>
@@ -552,26 +711,20 @@ const app = {
             </div>
         `;
 
-        // Blokir navigasi dengan delay
         setTimeout(() => {
             this.blockAllNavigation();
         }, 100);
     },
 
-    // ==========================================
-    // TAMBAHAN: Method untuk memblokir semua navigasi saat kasir tutup
-    // ==========================================
     blockAllNavigation() {
         console.log('[App] Blocking all navigation - Kasir is closed');
         
         const navTabs = document.querySelectorAll('.nav-tab');
         
         navTabs.forEach(tab => {
-            // Clone untuk hapus event listener lama
             const newTab = tab.cloneNode(true);
             tab.parentNode.replaceChild(newTab, tab);
             
-            // Tambah event listener blocker
             newTab.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -580,13 +733,11 @@ const app = {
                 return false;
             });
             
-            // Visual indicator
             newTab.style.opacity = '0.5';
             newTab.style.cursor = 'not-allowed';
             newTab.classList.remove('active');
         });
         
-        // Blokir tombol settings
         const settingsBtn = document.querySelector('.icon-btn[onclick*="openSettings"]');
         if (settingsBtn) {
             const newBtn = settingsBtn.cloneNode(true);
@@ -604,9 +755,6 @@ const app = {
         }
     },
 
-    // ==========================================
-    // TAMBAHAN: Modal yang muncul saat user mencoba akses menu tanpa buka kasir
-    // ==========================================
     showKasirRequiredModal() {
         const existingModal = document.getElementById('kasirRequiredModal');
         if (existingModal) existingModal.remove();
@@ -634,7 +782,6 @@ const app = {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     },
 
-    // Method untuk saveAllModalKasir dengan sync pendingModals
     saveAllModalKasir(modalAwal, extraModal = 0) {
         if (!this.currentUser) return;
         
@@ -655,7 +802,6 @@ const app = {
     },
 
     openSettings() {
-        // Cek kasir status sebelum buka settings
         if (this.currentUser) {
             const userShift = dataManager.getUserShift(this.currentUser.userId);
             if (!userShift) {
