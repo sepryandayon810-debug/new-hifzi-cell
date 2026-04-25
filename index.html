@@ -260,8 +260,8 @@ tr:hover td { background:rgba(237,28,36,.03); }
 /* ================================
    CONFIG
    ================================ */
-// GANTI INI dengan URL Apps Script kamu setelah deploy
-const API_URL = 'https://script.google.com/macros/s/AKfycbzvX1iquDftPCYhOOVuLb3U4QMY0b-Fsgg7LRhkUIylj9wf4zDKm10cVvTK4ECFsyu1EA/exec';
+// ⭐ GANTI INI dengan URL Apps Script kamu setelah deploy
+const API_URL = 'https://script.google.com/macros/s/AKfycbxxxxxxxx/exec';
 
 const PARAM_LIST = [
   { key:'In Waiting Time',           sheet:'IN WAITING TIME',           bobot:5, icon:'fa-clock',        color:'#00AEEF', rawLabel:'Visit <15 Menit' },
@@ -272,6 +272,50 @@ const PARAM_LIST = [
   { key:'Reduce Detractor Mobile',   sheet:'FOLLOW UP DETRACTOR / REDUCE DETRACTOR MOBILE', bobot:5, icon:'fa-chart-line', color:'#F7941D', rawLabel:'Detractor' },
   { key:'Shifting to Selfcare',      sheet:'SHIFTING TO SELFCARE',      bobot:5, icon:'fa-mobile-alt',   color:'#ED1C24', rawLabel:'Selfcare' }
 ];
+
+/* ================================
+   JSONP CLIENT — No CORS
+   ================================ */
+let jsonpId = 0;
+
+function jsonpRequest(params) {
+  return new Promise((resolve, reject) => {
+    const id = ++jsonpId;
+    const cbName = 'kpiCallback_' + id + '_' + Date.now();
+
+    // Buat callback global
+    window[cbName] = function(data) {
+      cleanup();
+      resolve(data);
+    };
+
+    // Timeout 15 detik
+    const timer = setTimeout(function() {
+      cleanup();
+      reject(new Error('Request timeout'));
+    }, 15000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+      delete window[cbName];
+    }
+
+    // Build URL dengan callback
+    params.callback = cbName;
+    params._ = Date.now(); // bypass cache
+    const qs = Object.keys(params).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
+    const url = API_URL + '?' + qs;
+
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function() {
+      cleanup();
+      reject(new Error('Gagal memuat data'));
+    };
+    document.head.appendChild(script);
+  });
+}
 
 /* ================================
    UTILS
@@ -337,11 +381,7 @@ function renderCards(data) {
           <div class="stat-row"><span class="stat-label">Bobot</span><span class="stat-value">${item.bobot}%</span></div>
           <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value" style="color:${ok?'var(--success)':(warn?'var(--warning)':'var(--danger)')}">${score.toFixed(2)}</span></div>
         </div>
-      </div>
-      ${item.rawValue ? `<div class="raw-stats">
-        <div class="raw-stat"><div class="raw-val">${item.rawValue}</div><div class="raw-lbl">${p.rawLabel}</div></div>
-        ${item.rawTotal ? `<div class="raw-stat"><div class="raw-val">${item.rawTotal}</div><div class="raw-lbl">Total</div></div>` : ''}
-      </div>` : ''}`;
+      </div>`;
     container.appendChild(div);
 
     setTimeout(() => {
@@ -372,16 +412,15 @@ function renderTable(data) {
 }
 
 /* ================================
-   DATA FETCH
+   DATA FETCH — JSONP
    ================================ */
 async function loadData() {
   $('loadingOverlay').style.display = 'flex';
   try {
     const tahun = $('filterTahun').value;
     const bulan = $('filterBulan').value;
-    const url = `${API_URL}?action=service&tahun=${encodeURIComponent(tahun)}&bulan=${encodeURIComponent(bulan)}&_=${Date.now()}`;
-    const res = await fetch(url);
-    const json = await res.json();
+    const json = await jsonpRequest({ action: 'service', tahun: tahun, bulan: bulan });
+
     if (json.error) throw new Error(json.error);
     renderCards(json.data || []);
     renderTable(json.data || []);
@@ -390,13 +429,13 @@ async function loadData() {
     showToast('Gagal memuat: ' + e.message, 'error');
     // Fallback demo data
     const demo = [
-      {parameter:'In Waiting Time',target:80.00,realisasi:74.68,bobot:5,graphari:'GraPARI Painan',status:'❌',gap:-5.32,rawValue:758,rawTotal:1015},
-      {parameter:'FCR Mobile',target:80.00,realisasi:87.92,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:7.92,rawValue:932,rawTotal:1080},
-      {parameter:'In SLA Mobile',target:80.00,realisasi:83.28,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:3.28,rawValue:772,rawTotal:927},
-      {parameter:'tNPS Mobile (People)',target:80.00,realisasi:81.93,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:1.93,rawValue:703,rawTotal:858},
-      {parameter:'tNPS Fixed (People)',target:80.00,realisasi:86.61,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:6.61,rawValue:828,rawTotal:956},
-      {parameter:'Reduce Detractor Mobile',target:80.00,realisasi:90.25,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:10.25,rawValue:926,rawTotal:1026},
-      {parameter:'Shifting to Selfcare',target:80.00,realisasi:97.41,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:17.41,rawValue:978,rawTotal:1004}
+      {parameter:'In Waiting Time',target:80.00,realisasi:74.68,bobot:5,graphari:'GraPARI Painan',status:'❌',gap:-5.32},
+      {parameter:'FCR Mobile',target:80.00,realisasi:87.92,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:7.92},
+      {parameter:'In SLA Mobile',target:80.00,realisasi:83.28,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:3.28},
+      {parameter:'tNPS Mobile (People)',target:80.00,realisasi:81.93,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:1.93},
+      {parameter:'tNPS Fixed (People)',target:80.00,realisasi:86.61,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:6.61},
+      {parameter:'Reduce Detractor Mobile',target:80.00,realisasi:90.25,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:10.25},
+      {parameter:'Shifting to Selfcare',target:80.00,realisasi:97.41,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:17.41}
     ];
     renderCards(demo);
     renderTable(demo);
