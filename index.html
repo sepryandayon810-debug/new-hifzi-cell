@@ -24,7 +24,6 @@
 html { font-size:16px; }
 body { background:var(--bg); color:var(--text); min-height:100vh; }
 
-/* Header */
 .header {
   height:var(--header-h); background:linear-gradient(135deg,var(--primary),var(--primary-dark));
   color:white; display:flex; align-items:center; justify-content:space-between;
@@ -41,12 +40,11 @@ body { background:var(--bg); color:var(--text); min-height:100vh; }
 }
 .btn-icon:hover { background:rgba(255,255,255,.3); transform:translateY(-1px); }
 
-/* Filter */
 .filter-bar {
   max-width:960px; margin:0 auto; padding:1.25rem 1rem;
   display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;
 }
-.filter-group { display:flex; flex-direction:column; gap:.35rem; flex:1; min-width:140px; }
+.filter-group { display:flex; flex-direction:column; gap:.35rem; flex:1; min-width:120px; }
 .filter-label { font-size:.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
 .filter-select {
   padding:.65rem 1rem; border:2px solid var(--border); border-radius:.875rem;
@@ -55,7 +53,6 @@ body { background:var(--bg); color:var(--text); min-height:100vh; }
 }
 .filter-select:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(237,28,36,.08); }
 
-/* Score Summary */
 .summary-bar {
   max-width:960px; margin:0 auto; padding:0 1rem 1.25rem;
   display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem;
@@ -74,7 +71,6 @@ body { background:var(--bg); color:var(--text); min-height:100vh; }
 .summary-value.positive { color:var(--success); }
 .summary-value.negative { color:var(--danger); }
 
-/* KPI Grid */
 .kpi-container {
   max-width:960px; margin:0 auto; padding:0 1rem 1.25rem;
   display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1rem;
@@ -85,9 +81,7 @@ body { background:var(--bg); color:var(--text); min-height:100vh; }
   transition:.2s;
 }
 .kpi-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-lg); }
-.kpi-card::before {
-  content:''; position:absolute; top:0; left:0; width:100%; height:4px;
-}
+.kpi-card::before { content:''; position:absolute; top:0; left:0; width:100%; height:4px; }
 .kpi-card.achieved::before { background:var(--success); }
 .kpi-card.below::before { background:var(--danger); }
 .kpi-card.warning::before { background:var(--warning); }
@@ -101,19 +95,12 @@ body { background:var(--bg); color:var(--text); min-height:100vh; }
 .kpi-badge.below { background:rgba(237,28,36,.1); color:var(--danger); }
 .kpi-badge.warning { background:rgba(247,148,29,.1); color:var(--warning); }
 
-/* Ring */
 .kpi-body { display:flex; gap:1.25rem; align-items:center; }
 .ring-wrap { position:relative; width:100px; height:100px; flex-shrink:0; }
 .ring-wrap svg { width:100%; height:100%; transform:rotate(-90deg); }
 .ring-bg { fill:none; stroke:var(--border); stroke-width:10; }
-.ring-fill {
-  fill:none; stroke-width:10; stroke-linecap:round;
-  transition:stroke-dashoffset 1s ease;
-}
-.ring-text {
-  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  text-align:center;
-}
+.ring-fill { fill:none; stroke-width:10; stroke-linecap:round; transition:stroke-dashoffset 1s ease; }
+.ring-text { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; }
 .ring-pct { font-size:1.35rem; font-weight:800; }
 .ring-lbl { font-size:.6rem; color:var(--text-muted); text-transform:uppercase; font-weight:600; }
 
@@ -123,10 +110,15 @@ body { background:var(--bg); color:var(--text); min-height:100vh; }
 .stat-label { color:var(--text-muted); font-weight:500; }
 .stat-value { font-weight:700; }
 
-/* Table */
-.table-section {
-  max-width:960px; margin:0 auto; padding:0 1rem 2rem;
+.raw-stats {
+  margin-top:.75rem; padding-top:.75rem; border-top:1px solid var(--border);
+  display:flex; gap:1rem;
 }
+.raw-stat { flex:1; text-align:center; }
+.raw-val { font-size:1.1rem; font-weight:800; color:var(--text); }
+.raw-lbl { font-size:.65rem; color:var(--text-muted); margin-top:.15rem; }
+
+.table-section { max-width:960px; margin:0 auto; padding:0 1rem 2rem; }
 .table-card {
   background:var(--bg-card); border-radius:var(--radius);
   box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden;
@@ -146,13 +138,11 @@ th {
 td { padding:.7rem 1rem; border-bottom:1px solid var(--border); color:var(--text-sec); }
 tr:hover td { background:rgba(237,28,36,.03); }
 .td-num { font-weight:700; color:var(--text); }
-.td-badge {
-  padding:.2rem .5rem; border-radius:50px; font-size:.7rem; font-weight:700;
-}
+.td-badge { padding:.2rem .5rem; border-radius:50px; font-size:.7rem; font-weight:700; }
 .td-badge.ach { background:rgba(0,166,81,.1); color:var(--success); }
 .td-badge.bel { background:rgba(237,28,36,.1); color:var(--danger); }
+.td-badge.warn { background:rgba(247,148,29,.1); color:var(--warning); }
 
-/* Loading */
 .loading-overlay {
   position:fixed; inset:0; background:var(--bg);
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -165,7 +155,6 @@ tr:hover td { background:rgba(237,28,36,.03); }
 }
 @keyframes spin { to{transform:rotate(360deg)} }
 
-/* Toast */
 .toast {
   position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%) translateY(120px);
   background:#1e293b; color:white; padding:.875rem 1.5rem; border-radius:1rem;
@@ -179,6 +168,7 @@ tr:hover td { background:rgba(237,28,36,.03); }
   .header-title { font-size:1rem; }
   .kpi-container { grid-template-columns:1fr; }
   .summary-bar { grid-template-columns:1fr; }
+  .filter-group { min-width:100%; }
 }
 </style>
 <base target="_blank">
@@ -201,24 +191,28 @@ tr:hover td { background:rgba(237,28,36,.03); }
 </header>
 
 <div class="filter-bar">
-  <div class="filter-group">
-    <label class="filter-label">Periode</label>
-    <select class="filter-select" id="filterBulan">
-      <option>Nov 2025</option>
-      <option>Oct 2025</option>
-      <option>Sep 2025</option>
-      <option>Aug 2025</option>
-      <option>Jul 2025</option>
-      <option>Jun 2025</option>
+  <div class="filter-group" style="flex:0 0 120px">
+    <label class="filter-label">Tahun</label>
+    <select class="filter-select" id="filterTahun">
+      <option>2025</option>
+      <option>2026</option>
     </select>
   </div>
   <div class="filter-group">
-    <label class="filter-label">Area</label>
-    <select class="filter-select" id="filterArea">
-      <option value="all">Semua Area</option>
-      <option>Maluku</option>
-      <option>Papua Barat</option>
-      <option>Papua</option>
+    <label class="filter-label">Bulan</label>
+    <select class="filter-select" id="filterBulan">
+      <option>January</option>
+      <option>February</option>
+      <option>March</option>
+      <option>April</option>
+      <option>May</option>
+      <option>June</option>
+      <option>July</option>
+      <option>August</option>
+      <option>September</option>
+      <option>October</option>
+      <option>November</option>
+      <option>December</option>
     </select>
   </div>
 </div>
@@ -245,13 +239,13 @@ tr:hover td { background:rgba(237,28,36,.03); }
 <!-- Table -->
 <div class="table-section">
   <div class="table-card">
-    <div class="table-header"><i class="fas fa-table" style="color:var(--primary)"></i> Detail per GraPARI</div>
+    <div class="table-header"><i class="fas fa-table" style="color:var(--primary)"></i> Detail KPI Service</div>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th>GraPARI</th><th>Area</th><th>Parameter</th><th>Target</th>
-            <th>Realisasi</th><th>Achievement</th><th>Status</th><th>PIC</th>
+            <th>GraPARI</th><th>Parameter</th><th>Target</th><th>Realisasi</th>
+            <th>Achievement</th><th>Gap</th><th>Status</th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -270,13 +264,13 @@ tr:hover td { background:rgba(237,28,36,.03); }
 const API_URL = 'https://script.google.com/macros/s/AKfycbxxxxxxxx/exec';
 
 const PARAM_LIST = [
-  { key:'In Waiting Time',   target:80,  bobot:5, icon:'fa-clock',            color:'#00AEEF' },
-  { key:'FCR Mobile',        target:97,  bobot:5, icon:'fa-check-circle',     color:'#00A651' },
-  { key:'In SLA Mobile',     target:95,  bobot:5, icon:'fa-ticket-alt',       color:'#F7941D' },
-  { key:'tNPS Mobile (People)',target:97,bobot:5, icon:'fa-smile',            color:'#00AEEF' },
-  { key:'tNPS Fixed (People)',target:55, bobot:5, icon:'fa-smile-beam',       color:'#00A651' },
-  { key:'Reduce Detractor Mobile',target:55,bobot:5, icon:'fa-chart-line',    color:'#F7941D' },
-  { key:'Shifting to Selfcare',target:90, bobot:5, icon:'fa-mobile-alt',      color:'#ED1C24' }
+  { key:'In Waiting Time',           sheet:'IN WAITING TIME',           bobot:5, icon:'fa-clock',        color:'#00AEEF', rawLabel:'Visit <15 Menit' },
+  { key:'FCR Mobile',                sheet:'FCR MOBILE',                bobot:5, icon:'fa-check-circle', color:'#00A651', rawLabel:'FCR' },
+  { key:'In SLA Mobile',             sheet:'SLA TIKET',                 bobot:5, icon:'fa-ticket-alt',   color:'#F7941D', rawLabel:'SLA' },
+  { key:'tNPS Mobile (People)',      sheet:'TNPS MOBILE',               bobot:5, icon:'fa-smile',        color:'#00AEEF', rawLabel:'tNPS' },
+  { key:'tNPS Fixed (People)',       sheet:'TNPS FIXED',                bobot:5, icon:'fa-smile-beam',   color:'#00A651', rawLabel:'tNPS Fixed' },
+  { key:'Reduce Detractor Mobile',   sheet:'FOLLOW UP DETRACTOR / REDUCE DETRACTOR MOBILE', bobot:5, icon:'fa-chart-line', color:'#F7941D', rawLabel:'Detractor' },
+  { key:'Shifting to Selfcare',      sheet:'SHIFTING TO SELFCARE',      bobot:5, icon:'fa-mobile-alt',   color:'#ED1C24', rawLabel:'Selfcare' }
 ];
 
 /* ================================
@@ -319,11 +313,11 @@ function renderCards(data) {
   let achieved = 0, below = 0, totalScore = 0;
 
   PARAM_LIST.forEach(p => {
-    const item = data.find(d => d.parameter === p.key) || { target:p.target, realisasi:0, bobot:p.bobot };
+    const item = data.find(d => d.parameter === p.key) || { target:0, realisasi:0, bobot:p.bobot, status:'-' };
     const ach = item.target > 0 ? (item.realisasi / item.target * 100) : 0;
     const score = (ach/100) * item.bobot;
-    const ok = ach >= 100;
-    const warn = ach >= 95 && ach < 100;
+    const ok = item.status === '✅' || item.status === 'Achieved' || ach >= 100;
+    const warn = !ok && ach >= 95;
 
     if (ok) achieved++; else below++;
     totalScore += score;
@@ -338,12 +332,16 @@ function renderCards(data) {
       <div class="kpi-body">
         <div class="ring-wrap" id="ring-${p.key.replace(/[^a-zA-Z0-9]/g,'')}"></div>
         <div class="kpi-stats">
-          <div class="stat-row"><span class="stat-label">Target</span><span class="stat-value" style="color:${p.color}">${item.target}%</span></div>
-          <div class="stat-row"><span class="stat-label">Realisasi</span><span class="stat-value">${item.realisasi}%</span></div>
+          <div class="stat-row"><span class="stat-label">Target</span><span class="stat-value" style="color:${p.color}">${item.target.toFixed(2)}%</span></div>
+          <div class="stat-row"><span class="stat-label">Realisasi</span><span class="stat-value">${item.realisasi.toFixed(2)}%</span></div>
           <div class="stat-row"><span class="stat-label">Bobot</span><span class="stat-value">${item.bobot}%</span></div>
           <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value" style="color:${ok?'var(--success)':(warn?'var(--warning)':'var(--danger)')}">${score.toFixed(2)}</span></div>
         </div>
-      </div>`;
+      </div>
+      ${item.rawValue ? `<div class="raw-stats">
+        <div class="raw-stat"><div class="raw-val">${item.rawValue}</div><div class="raw-lbl">${p.rawLabel}</div></div>
+        ${item.rawTotal ? `<div class="raw-stat"><div class="raw-val">${item.rawTotal}</div><div class="raw-lbl">Total</div></div>` : ''}
+      </div>` : ''}`;
     container.appendChild(div);
 
     setTimeout(() => {
@@ -360,15 +358,15 @@ function renderTable(data) {
   $('tableBody').innerHTML = data.map(r => {
     const ach = r.target > 0 ? (r.realisasi/r.target*100).toFixed(1) : 0;
     const ok = parseFloat(ach) >= 100;
+    const warn = !ok && parseFloat(ach) >= 95;
     return `<tr>
       <td class="td-num">${r.graphari||'-'}</td>
-      <td>${r.area||'-'}</td>
       <td>${r.parameter}</td>
-      <td>${r.target}%</td>
-      <td>${r.realisasi}%</td>
+      <td>${r.target.toFixed(2)}%</td>
+      <td>${r.realisasi.toFixed(2)}%</td>
       <td><strong>${ach}%</strong></td>
-      <td><span class="td-badge ${ok?'ach':'bel'}">${ok?'Achieved':'Below'}</span></td>
-      <td>${r.pic||'-'}</td>
+      <td>${r.gap ? r.gap.toFixed(2)+'%' : '-'} ${r.gap>0?'▲':(r.gap<0?'▼':'')}</td>
+      <td><span class="td-badge ${ok?'ach':(warn?'warn':'bel')}">${r.status||'-'}</span></td>
     </tr>`;
   }).join('');
 }
@@ -379,10 +377,9 @@ function renderTable(data) {
 async function loadData() {
   $('loadingOverlay').style.display = 'flex';
   try {
+    const tahun = $('filterTahun').value;
     const bulan = $('filterBulan').value;
-    const area = $('filterArea').value;
-    // Tambah timestamp bypass cache
-    const url = `${API_URL}?action=service&bulan=${encodeURIComponent(bulan)}&area=${encodeURIComponent(area)}&_=${Date.now()}`;
+    const url = `${API_URL}?action=service&tahun=${encodeURIComponent(tahun)}&bulan=${encodeURIComponent(bulan)}&_=${Date.now()}`;
     const res = await fetch(url);
     const json = await res.json();
     if (json.error) throw new Error(json.error);
@@ -393,13 +390,13 @@ async function loadData() {
     showToast('Gagal memuat: ' + e.message, 'error');
     // Fallback demo data
     const demo = [
-      {parameter:'In Waiting Time',target:80,realisasi:88.4,bobot:5,graphari:'GraPARI Ambon',area:'Maluku',pic:'GIM'},
-      {parameter:'FCR Mobile',target:97,realisasi:96.23,bobot:5,graphari:'GraPARI Ambon',area:'Maluku',pic:'RPA'},
-      {parameter:'In SLA Mobile',target:95,realisasi:92.4,bobot:5,graphari:'GraPARI Sorong',area:'Papua Barat',pic:'GIM'},
-      {parameter:'tNPS Mobile (People)',target:97,realisasi:95.4,bobot:5,graphari:'GraPARI Jayapura',area:'Papua',pic:'RPA'},
-      {parameter:'tNPS Fixed (People)',target:55,realisasi:52.5,bobot:5,graphari:'GraPARI Ambon',area:'Maluku',pic:'GIM'},
-      {parameter:'Reduce Detractor Mobile',target:55,realisasi:52.5,bobot:5,graphari:'GraPARI Sorong',area:'Papua Barat',pic:'RPA'},
-      {parameter:'Shifting to Selfcare',target:90,realisasi:87.2,bobot:5,graphari:'GraPARI Jayapura',area:'Papua',pic:'GIM'}
+      {parameter:'In Waiting Time',target:80.00,realisasi:74.68,bobot:5,graphari:'GraPARI Painan',status:'❌',gap:-5.32,rawValue:758,rawTotal:1015},
+      {parameter:'FCR Mobile',target:80.00,realisasi:87.92,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:7.92,rawValue:932,rawTotal:1080},
+      {parameter:'In SLA Mobile',target:80.00,realisasi:83.28,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:3.28,rawValue:772,rawTotal:927},
+      {parameter:'tNPS Mobile (People)',target:80.00,realisasi:81.93,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:1.93,rawValue:703,rawTotal:858},
+      {parameter:'tNPS Fixed (People)',target:80.00,realisasi:86.61,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:6.61,rawValue:828,rawTotal:956},
+      {parameter:'Reduce Detractor Mobile',target:80.00,realisasi:90.25,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:10.25,rawValue:926,rawTotal:1026},
+      {parameter:'Shifting to Selfcare',target:80.00,realisasi:97.41,bobot:5,graphari:'GraPARI Painan',status:'✅',gap:17.41,rawValue:978,rawTotal:1004}
     ];
     renderCards(demo);
     renderTable(demo);
@@ -423,8 +420,8 @@ btnTheme.addEventListener('click', () => {
   btnTheme.querySelector('i').className = next==='dark' ? 'fas fa-sun' : 'fas fa-moon';
 });
 
+$('filterTahun').addEventListener('change', loadData);
 $('filterBulan').addEventListener('change', loadData);
-$('filterArea').addEventListener('change', loadData);
 
 // Init
 document.addEventListener('DOMContentLoaded', loadData);
