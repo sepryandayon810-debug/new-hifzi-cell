@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>KPI Service — GraPARI TOMO</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #ED1C24; --primary-dark: #C8102E;
+  --info: #00AEEF; --success: #00A651; --warning: #F7941D; --danger: #ED1C24;
+  --bg: #f5f7fa; --bg-card: #ffffff; --bg-elevated: #ffffff;
+  --text: #1a1a1a; --text-sec: #4a4a4a; --text-muted: #8c8c8c;
+  --border: #e8e8e8; --shadow: 0 4px 24px rgba(0,0,0,0.08); --shadow-lg: 0 12px 40px rgba(0,0,0,0.12);
+  --radius: 1.25rem; --header-h: 64px;
+}
+[data-theme="dark"] {
+  --bg: #0a0a0a; --bg-card: #141414; --bg-elevated: #1a1a1a;
+  --text: #f0f0f0; --text-sec: #a0a0a0; --text-muted: #666;
+  --border: #2a2a2a; --shadow: 0 4px 24px rgba(0,0,0,0.4); --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',sans-serif; }
+html { font-size:16px; }
+body { background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* Header */
+.header {
+  height:var(--header-h); background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+  color:white; display:flex; align-items:center; justify-content:space-between;
+  padding:0 1.25rem; position:sticky; top:0; z-index:100;
+  box-shadow:0 4px 20px rgba(237,28,36,0.25);
+}
+.header-title { font-size:1.15rem; font-weight:800; display:flex; align-items:center; gap:.6rem; }
+.header-sub { font-size:.7rem; opacity:.85; font-weight:400; }
+.btn-icon {
+  width:40px; height:40px; border:none; border-radius:.75rem;
+  background:rgba(255,255,255,.15); color:white; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:1rem;
+  transition:.2s; backdrop-filter:blur(8px);
+}
+.btn-icon:hover { background:rgba(255,255,255,.3); transform:translateY(-1px); }
+
+/* Filter */
+.filter-bar {
+  max-width:960px; margin:0 auto; padding:1.25rem 1rem;
+  display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;
+}
+.filter-group { display:flex; flex-direction:column; gap:.35rem; flex:1; min-width:140px; }
+.filter-label { font-size:.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
+.filter-select {
+  padding:.65rem 1rem; border:2px solid var(--border); border-radius:.875rem;
+  background:var(--bg-card); color:var(--text); font-family:inherit; font-size:.9rem; font-weight:500;
+  outline:none; cursor:pointer; transition:.2s;
+}
+.filter-select:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(237,28,36,.08); }
+
+/* Score Summary */
+.summary-bar {
+  max-width:960px; margin:0 auto; padding:0 1rem 1.25rem;
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem;
+}
+.summary-card {
+  background:var(--bg-card); border-radius:var(--radius); padding:1.25rem;
+  box-shadow:var(--shadow); border:1px solid var(--border); position:relative; overflow:hidden;
+}
+.summary-card::before {
+  content:''; position:absolute; top:0; left:0; width:100%; height:4px;
+  background:linear-gradient(90deg,var(--primary),var(--primary-dark));
+}
+.summary-card.service::before { background:linear-gradient(90deg,var(--info),#0088cc); }
+.summary-label { font-size:.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; }
+.summary-value { font-size:1.75rem; font-weight:800; margin-top:.25rem; }
+.summary-value.positive { color:var(--success); }
+.summary-value.negative { color:var(--danger); }
+
+/* KPI Grid */
+.kpi-container {
+  max-width:960px; margin:0 auto; padding:0 1rem 1.25rem;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1rem;
+}
+.kpi-card {
+  background:var(--bg-card); border-radius:var(--radius); padding:1.25rem;
+  box-shadow:var(--shadow); border:1px solid var(--border); position:relative; overflow:hidden;
+  transition:.2s;
+}
+.kpi-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-lg); }
+.kpi-card::before {
+  content:''; position:absolute; top:0; left:0; width:100%; height:4px;
+}
+.kpi-card.achieved::before { background:var(--success); }
+.kpi-card.below::before { background:var(--danger); }
+.kpi-card.warning::before { background:var(--warning); }
+
+.kpi-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1rem; }
+.kpi-title { font-size:.9rem; font-weight:700; line-height:1.3; max-width:70%; }
+.kpi-badge {
+  padding:.3rem .7rem; border-radius:50px; font-size:.7rem; font-weight:800; text-transform:uppercase;
+}
+.kpi-badge.achieved { background:rgba(0,166,81,.1); color:var(--success); }
+.kpi-badge.below { background:rgba(237,28,36,.1); color:var(--danger); }
+.kpi-badge.warning { background:rgba(247,148,29,.1); color:var(--warning); }
+
+/* Ring */
+.kpi-body { display:flex; gap:1.25rem; align-items:center; }
+.ring-wrap { position:relative; width:100px; height:100px; flex-shrink:0; }
+.ring-wrap svg { width:100%; height:100%; transform:rotate(-90deg); }
+.ring-bg { fill:none; stroke:var(--border); stroke-width:10; }
+.ring-fill {
+  fill:none; stroke-width:10; stroke-linecap:round;
+  transition:stroke-dashoffset 1s ease;
+}
+.ring-text {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  text-align:center;
+}
+.ring-pct { font-size:1.35rem; font-weight:800; }
+.ring-lbl { font-size:.6rem; color:var(--text-muted); text-transform:uppercase; font-weight:600; }
+
+.kpi-stats { flex:1; display:flex; flex-direction:column; gap:.35rem; }
+.stat-row { display:flex; justify-content:space-between; font-size:.82rem; padding:.4rem 0; border-bottom:1px dashed var(--border); }
+.stat-row:last-child { border-bottom:none; }
+.stat-label { color:var(--text-muted); font-weight:500; }
+.stat-value { font-weight:700; }
+
+/* Table */
+.table-section {
+  max-width:960px; margin:0 auto; padding:0 1rem 2rem;
+}
+.table-card {
+  background:var(--bg-card); border-radius:var(--radius);
+  box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden;
+}
+.table-header {
+  padding:1rem 1.25rem; border-bottom:1px solid var(--border);
+  font-weight:700; font-size:1rem; display:flex; align-items:center; gap:.5rem;
+}
+.table-scroll { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:.85rem; }
+th {
+  padding:.75rem 1rem; text-align:left; font-weight:700; font-size:.7rem;
+  text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted);
+  background:#f8f8f8; border-bottom:2px solid var(--border);
+}
+[data-theme="dark"] th { background:#1a1a1a; }
+td { padding:.7rem 1rem; border-bottom:1px solid var(--border); color:var(--text-sec); }
+tr:hover td { background:rgba(237,28,36,.03); }
+.td-num { font-weight:700; color:var(--text); }
+.td-badge {
+  padding:.2rem .5rem; border-radius:50px; font-size:.7rem; font-weight:700;
+}
+.td-badge.ach { background:rgba(0,166,81,.1); color:var(--success); }
+.td-badge.bel { background:rgba(237,28,36,.1); color:var(--danger); }
+
+/* Loading */
+.loading-overlay {
+  position:fixed; inset:0; background:var(--bg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  z-index:9999; transition:opacity .3s;
+}
+.spinner {
+  width:48px; height:48px; border:4px solid var(--border);
+  border-top-color:var(--primary); border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* Toast */
+.toast {
+  position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%) translateY(120px);
+  background:#1e293b; color:white; padding:.875rem 1.5rem; border-radius:1rem;
+  font-size:.9rem; font-weight:600; box-shadow:0 10px 30px rgba(0,0,0,.25);
+  z-index:2000; opacity:0; transition:all .35s cubic-bezier(.175,.885,.32,1.275);
+  display:flex; align-items:center; gap:.6rem;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+@media (max-width:480px) {
+  .header-title { font-size:1rem; }
+  .kpi-container { grid-template-columns:1fr; }
+  .summary-bar { grid-template-columns:1fr; }
+}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p style="margin-top:1rem;color:var(--text-muted);font-size:.9rem">Memuat data KPI...</p>
+</div>
+
+<header class="header">
+  <div>
+    <div class="header-title"><i class="fas fa-headset"></i>KPI Service</div>
+    <div class="header-sub">GraPARI TOMO — Telkomsel</div>
+  </div>
+  <button class="btn-icon" id="btnTheme" title="Toggle Dark Mode">
+    <i class="fas fa-moon"></i>
+  </button>
+</header>
+
+<div class="filter-bar">
+  <div class="filter-group">
+    <label class="filter-label">Periode</label>
+    <select class="filter-select" id="filterBulan">
+      <option>Nov 2025</option>
+      <option>Oct 2025</option>
+      <option>Sep 2025</option>
+      <option>Aug 2025</option>
+      <option>Jul 2025</option>
+      <option>Jun 2025</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label class="filter-label">Area</label>
+    <select class="filter-select" id="filterArea">
+      <option value="all">Semua Area</option>
+      <option>Maluku</option>
+      <option>Papua Barat</option>
+      <option>Papua</option>
+    </select>
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="summary-bar">
+  <div class="summary-card service">
+    <div class="summary-label">Total Achievement Service</div>
+    <div class="summary-value" id="totalScore">-</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Parameter Achieved</div>
+    <div class="summary-value positive" id="achievedCount">-</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Parameter Below</div>
+    <div class="summary-value negative" id="belowCount">-</div>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-container" id="kpiContainer"></div>
+
+<!-- Table -->
+<div class="table-section">
+  <div class="table-card">
+    <div class="table-header"><i class="fas fa-table" style="color:var(--primary)"></i> Detail per GraPARI</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>GraPARI</th><th>Area</th><th>Parameter</th><th>Target</th>
+            <th>Realisasi</th><th>Achievement</th><th>Status</th><th>PIC</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><i class="fas fa-check-circle"></i><span id="toastText">Berhasil</span></div>
+
+<script>
+/* ================================
+   CONFIG
+   ================================ */
+// GANTI INI dengan URL Apps Script kamu setelah deploy
+const API_URL = 'https://script.google.com/macros/s/AKfycbxxxxxxxx/exec';
+
+const PARAM_LIST = [
+  { key:'In Waiting Time',   target:80,  bobot:5, icon:'fa-clock',            color:'#00AEEF' },
+  { key:'FCR Mobile',        target:97,  bobot:5, icon:'fa-check-circle',     color:'#00A651' },
+  { key:'In SLA Mobile',     target:95,  bobot:5, icon:'fa-ticket-alt',       color:'#F7941D' },
+  { key:'tNPS Mobile (People)',target:97,bobot:5, icon:'fa-smile',            color:'#00AEEF' },
+  { key:'tNPS Fixed (People)',target:55, bobot:5, icon:'fa-smile-beam',       color:'#00A651' },
+  { key:'Reduce Detractor Mobile',target:55,bobot:5, icon:'fa-chart-line',    color:'#F7941D' },
+  { key:'Shifting to Selfcare',target:90, bobot:5, icon:'fa-mobile-alt',      color:'#ED1C24' }
+];
+
+/* ================================
+   UTILS
+   ================================ */
+const $ = id => document.getElementById(id);
+
+function showToast(msg, type='success') {
+  const t = $('toast');
+  $('toastText').textContent = msg;
+  t.className = 'toast show';
+  const icon = t.querySelector('i');
+  icon.className = type==='success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
+  icon.style.color = type==='success' ? '#6ee7b7' : '#fca5a5';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function setRing(el, pct, color) {
+  const r = 42;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(pct,100)/100)*circ;
+  el.innerHTML = `
+    <svg viewBox="0 0 100 100">
+      <circle class="ring-bg" cx="50" cy="50" r="${r}"/>
+      <circle class="ring-fill" cx="50" cy="50" r="${r}"
+        stroke="${color}" stroke-dasharray="${circ}" stroke-dashoffset="${offset}"/>
+    </svg>
+    <div class="ring-text">
+      <div class="ring-pct">${pct.toFixed(1)}%</div>
+      <div class="ring-lbl">Ach</div>
+    </div>`;
+}
+
+/* ================================
+   RENDER
+   ================================ */
+function renderCards(data) {
+  const container = $('kpiContainer');
+  container.innerHTML = '';
+  let achieved = 0, below = 0, totalScore = 0;
+
+  PARAM_LIST.forEach(p => {
+    const item = data.find(d => d.parameter === p.key) || { target:p.target, realisasi:0, bobot:p.bobot };
+    const ach = item.target > 0 ? (item.realisasi / item.target * 100) : 0;
+    const score = (ach/100) * item.bobot;
+    const ok = ach >= 100;
+    const warn = ach >= 95 && ach < 100;
+
+    if (ok) achieved++; else below++;
+    totalScore += score;
+
+    const div = document.createElement('div');
+    div.className = `kpi-card ${ok?'achieved':(warn?'warning':'below')}`;
+    div.innerHTML = `
+      <div class="kpi-header">
+        <div class="kpi-title"><i class="fas ${p.icon}" style="margin-right:.4rem;color:${p.color}"></i>${p.key}</div>
+        <span class="kpi-badge ${ok?'achieved':(warn?'warning':'below')}">${ok?'Achieved':(warn?'Warning':'Below')}</span>
+      </div>
+      <div class="kpi-body">
+        <div class="ring-wrap" id="ring-${p.key.replace(/[^a-zA-Z0-9]/g,'')}"></div>
+        <div class="kpi-stats">
+          <div class="stat-row"><span class="stat-label">Target</span><span class="stat-value" style="color:${p.color}">${item.target}%</span></div>
+          <div class="stat-row"><span class="stat-label">Realisasi</span><span class="stat-value">${item.realisasi}%</span></div>
+          <div class="stat-row"><span class="stat-label">Bobot</span><span class="stat-value">${item.bobot}%</span></div>
+          <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value" style="color:${ok?'var(--success)':(warn?'var(--warning)':'var(--danger)')}">${score.toFixed(2)}</span></div>
+        </div>
+      </div>`;
+    container.appendChild(div);
+
+    setTimeout(() => {
+      setRing($('ring-'+p.key.replace(/[^a-zA-Z0-9]/g,'')), ach, ok?p.color:(warn?'var(--warning)':'var(--danger)'));
+    }, 100);
+  });
+
+  $('totalScore').textContent = totalScore.toFixed(2) + ' / 35';
+  $('achievedCount').textContent = achieved + ' / 7';
+  $('belowCount').textContent = below + ' / 7';
+}
+
+function renderTable(data) {
+  $('tableBody').innerHTML = data.map(r => {
+    const ach = r.target > 0 ? (r.realisasi/r.target*100).toFixed(1) : 0;
+    const ok = parseFloat(ach) >= 100;
+    return `<tr>
+      <td class="td-num">${r.graphari||'-'}</td>
+      <td>${r.area||'-'}</td>
+      <td>${r.parameter}</td>
+      <td>${r.target}%</td>
+      <td>${r.realisasi}%</td>
+      <td><strong>${ach}%</strong></td>
+      <td><span class="td-badge ${ok?'ach':'bel'}">${ok?'Achieved':'Below'}</span></td>
+      <td>${r.pic||'-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ================================
+   DATA FETCH
+   ================================ */
+async function loadData() {
+  $('loadingOverlay').style.display = 'flex';
+  try {
+    const bulan = $('filterBulan').value;
+    const area = $('filterArea').value;
+    // Tambah timestamp bypass cache
+    const url = `${API_URL}?action=service&bulan=${encodeURIComponent(bulan)}&area=${encodeURIComponent(area)}&_=${Date.now()}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    renderCards(json.data || []);
+    renderTable(json.data || []);
+  } catch(e) {
+    console.error(e);
+    showToast('Gagal memuat: ' + e.message, 'error');
+    // Fallback demo data
+    const demo = [
+      {parameter:'In Waiting Time',target:80,realisasi:88.4,bobot:5,graphari:'GraPARI Ambon',area:'Maluku',pic:'GIM'},
+      {parameter:'FCR Mobile',target:97,realisasi:96.23,bobot:5,graphari:'GraPARI Ambon',area:'Maluku',pic:'RPA'},
+      {parameter:'In SLA Mobile',target:95,realisasi:92.4,bobot:5,graphari:'GraPARI Sorong',area:'Papua Barat',pic:'GIM'},
+      {parameter:'tNPS Mobile (People)',target:97,realisasi:95.4,bobot:5,graphari:'GraPARI Jayapura',area:'Papua',pic:'RPA'},
+      {parameter:'tNPS Fixed (People)',target:55,realisasi:52.5,bobot:5,graphari:'GraPARI Ambon',area:'Maluku',pic:'GIM'},
+      {parameter:'Reduce Detractor Mobile',target:55,realisasi:52.5,bobot:5,graphari:'GraPARI Sorong',area:'Papua Barat',pic:'RPA'},
+      {parameter:'Shifting to Selfcare',target:90,realisasi:87.2,bobot:5,graphari:'GraPARI Jayapura',area:'Papua',pic:'GIM'}
+    ];
+    renderCards(demo);
+    renderTable(demo);
+  } finally {
+    $('loadingOverlay').style.display = 'none';
+  }
+}
+
+/* ================================
+   THEME & INIT
+   ================================ */
+const btnTheme = $('btnTheme');
+const savedTheme = localStorage.getItem('kpi_theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+btnTheme.querySelector('i').className = savedTheme==='dark' ? 'fas fa-sun' : 'fas fa-moon';
+btnTheme.addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur==='dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('kpi_theme', next);
+  btnTheme.querySelector('i').className = next==='dark' ? 'fas fa-sun' : 'fas fa-moon';
+});
+
+$('filterBulan').addEventListener('change', loadData);
+$('filterArea').addEventListener('change', loadData);
+
+// Init
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+
+</body>
+</html>
